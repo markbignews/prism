@@ -32,3 +32,4 @@ GUI/Untitled.icon/
 # API Keys / Config
 # Uncomment if you store API keys in config:
 # config.json
+*.zip
