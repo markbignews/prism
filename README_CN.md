@@ -4,193 +4,154 @@
 >
 > A narrative reflection companion. See blind spots, find a way forward.
 
-棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终找到出口。
+棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终不再需要它。
 
-不是心理医生，只是一面镜子。
+**不是心理医生，只是一面镜子。**
+
+和大多数追求"有用"的 AI 聊天不同，棱镜追求的是**诚实**。它会挑战你的解释、指出你不断重复的模式、拒绝只附和你的观点。它的目标不是留住你，是帮你走到不需要再打开它的那一天。
 
 ---
 
-## 功能
+## 功能特性
 
-### 核心对话
+### 核心
 
-- **流式对话**：DeepSeek v4-pro（thinking 模式）+ 5 个 MCP 检索工具
-- **思考链可见**：生成时自动滚动显示推理过程
-- **三种对话模式**：理性（冷静分析）/ 平衡（默认）/ 温情（共情优先）
-- **质量守护系统**：Flash 预处理管线自动检测 5 个对话质量维度 + 安全信号（代码强制执行，不依赖模型自主调用）
-- **安全干预**：检测到自杀/自伤/暴力/虐待等信号时，跳过主模型直接输出安全引导（含热线号码）
-- **跨对话记忆**：归纳时自动生成，任意对话中可检索
-- **自动归纳**：增量 + 全量重扫，生成结构化章节
-- **预处理管线**：每轮对话前自动运行 guard + 情绪 + 人物 + 盲点检测（v4-flash，～500ms）
-- **上下文窗口**：≤60 条全文发送（享 1M 上下文），>60 条自动压缩为章节摘要
+- **流式对话** — DeepSeek v4-pro（thinking 模式）+ 5 个检索工具
+- **思考链可见** — 生成时自动滚动显示推理过程
+- **三种对话模式** — 理性、平衡（默认）、温情
+- **质量守护系统** — Flash 预处理管线每轮自动检测 6 个维度（代码强制执行）
+- **安全干预** — 自杀/自伤/暴力/虐待检测跳过主模型，输出热线引导
+- **跨对话记忆** — 归纳时自动生成，任意对话中可检索
+- **自动归纳** — 增量 + 全量重扫混合策略，生成结构化章节
+- **预处理管线** — 每轮 1 次 Flash 调用覆盖 guard + 情绪 + 人物 + 盲点（~500ms）
+- **上下文窗口** — ≤60 条全文，>60 条自动压缩为章节摘要
+- **语义搜索** — 关键词预筛选 + Flash 语义重排序
 
-### MCP 检索工具（5 个，本地执行，零 API 成本）
+### MCP 检索工具（5 个）
 
-| 工具 | 用途 | AI? |
+| 工具 | 用途 | AI？ |
 |------|------|------|
-| `search_chapters` | 语义搜索历史章节（keyword + Flash 重排序），返回标题/摘要/关键词 | ✅ 关键词本地 + Flash 语义 |
+| `search_chapters` | 语义搜索历史章节，返回标题/摘要/关键词 | ✅ keyword + Flash |
 | `fetch_chapter_messages` | 按序号获取章节原文 | ❌ |
-| `search_memory` | 语义搜索跨对话记忆（keyword + Flash 重排序） | ✅ 关键词本地 + Flash 语义 |
+| `search_memory` | 语义搜索跨对话记忆 | ✅ keyword + Flash |
 | `track_person` | 跨对话人物追踪（含别名解析） | ❌ |
 | `emotion_timeline` | 原始情绪序列（模型自行判断趋势） | ❌ |
 
-**注意**：对话质量守护（reality / spiral / blindspots / ingratiation / action_hollow）由 Flash 预处理管线自动执行，每轮对话代码强制运行，不暴露为 MCP 工具。
+质量守护（reality / spiral / blindspots / ingratiation / action_hollow / safety）由预处理管线自动运行，不暴露为工具。
 
 ### 数据与隐私
 
-- **100% 本地存储**：平台自适应默认路径（可自定义）
-  - macOS: `~/Documents/Prism/`
-  - Linux: `~/.local/share/prism/`
-  - Windows: `%APPDATA%/Prism/`
-- 可选 iCloud Drive 同步（仅 macOS）
+- 100% 本地存储：`~/Documents/Prism/`（可自定义）
 - 仅当前对话上下文发送至 DeepSeek API
-- 无遥测、无追踪（iCloud 除外）
-- 支持数据路径迁移，自动复制原有文件
-- 记忆库、情绪数据、盲点记录全部本地落盘
+- 无遥测、无追踪、无分析 SDK
+- 可选 iCloud Drive 同步（macOS 独有，默认关闭）
+- 所有归档为纯 JSON，可读可迁移
 
-### GUI（macOS 桌面应用）
+### GUI / CLI
 
-- macOS 15+ 原生 SwiftUI + AppKit
-- Liquid Glass 设计风格（Apple HIG）
-- Markdown 渲染
-- 侧边栏：对话列表、章节导航、搜索、记忆面板
-- 章节详情弹窗 + 蓝色跳转原文按钮
-- 消息气泡：复制/编辑/重新生成/删除，按钮在气泡外侧
-- 配对删除：删任意一边自动删除配对的问答
-- 跨对话章节搜索，点击结果直接跳转
+| GUI（macOS 15+） | CLI（macOS / Linux / Windows） |
+|---|---|
+| SwiftUI + AppKit，Liquid Glass 设计 | ANSI 终端流式输出 |
+| Markdown 渲染，侧边栏章节导航 | 完整对话管理，`/config` 实时设置 |
+| 6 页首次引导向导 | `/help` 查看所有命令 |
 
-### CLI（命令行）
+---
 
-- ANSI 终端流式输出
-- 全部核心功能：对话、归纳、搜索、查找、删除消息
-- `/config` 实时修改设置（模式、路径等）
-- 跨平台（macOS / Linux / Windows）
+## 消息处理流程
+
+```
+用户消息
+  │
+  ├── [1] Flash 预处理管线（代码强制执行，~500ms）
+  │     └─ 统一一次调用：
+  │          reality — 事实 vs 解释比例
+  │          spiral — 情绪漩涡检测
+  │          blindspots — 解释循环/回避自我/意图-行动差距
+  │          ingratiation — 助手迎合倾向检测
+  │          action_hollow — 历史空头承诺比对
+  │          safety — 安全信号（最高优先级）
+  │          emotions — 情绪标注 → emotion_timeline.json
+  │          persons — 人物提取（含别名解析）→ person_archive.json
+  │
+  ├── [安全覆写] safety == "crisis" → 跳过主模型，返回安全引导
+  │
+  ├── [2] v4-pro 主模型（thinking，流式）+ 5 个 MCP 工具
+  │     └─ guard 提示通过 [监督者方向] 系统消息注入
+  │
+  └── [3] 归档更新（异步，不阻塞主对话）
+```
+
+---
+
+## 质量守护系统
+
+| 维度 | 检测什么 | warning 时 |
+|---|---|---|
+| `reality` | 解释性语言远多于具体事实 | 温和拉回事实层 |
+| `spiral` | 同一话题无情绪位移重复 | 从分析切换到出口引导 |
+| `blindspots` | 解释循环、回避自我、意图-行动差距 | 自然地提示盲点 |
+| `ingratiation` | 上轮回复有迎合倾向 | 回复更独立 |
+| `action_hollow` | 历史上出现过的空头承诺 | 温和提醒过去模式 |
+| `safety` | 自杀/自伤/暴力/虐待 | **覆盖主模型，输出热线** |
+
+---
+
+## 设计决策
+
+**为什么用 Flash 预处理代替本地 guard 工具？**
+关键词匹配误报率高、没有语义理解。一次 Flash 调用覆盖全部 6 个 guard 维度 + 情绪/人物提取，API 成本不变。
+
+**为什么预处理在主模型之前？**
+guard 信号在主模型生成回复前就可用，自然融入回复，不生硬转折。延迟成本约 500ms。
+
+**为什么 Agent + MCP 检索？**
+模型需要理解上下文才能决定搜什么。检索工具纯本地执行（零 API 成本），模型自主决策何时调用。
+
+**为什么上下文窗口阈值设 60 条？**
+DeepSeek Pro 有 1M token 上下文。60 条以内全量发送，超过则压缩——但模型仍可通过工具检索任何压缩内容。
+
+**为什么归纳用混合策略？**
+每次都全量重扫浪费 token，纯增量导致章节风格不一致。3 次增量 + 1 次重扫 = 平衡效率和一致性。归纳时附带预处理管线数据，章节更有洞察。
+
+**为什么搜索用 keyword + Flash 两步式？**
+纯关键词搜不到语义匹配（"被PUA"找不到"精神控制"），纯 embedding 需要额外 API。两步式：keyword 微秒级过滤 → Flash 语义重排序 ~300ms，失败时降级。
+
+**为什么人物提取要解析别名？**
+用户对同一人的称呼会变（"我男朋友"→"张伟"→"前任"）。预处理时传入已知人物列表，要求复用标准名称，避免同一人分裂为多条记录。
+
+**为什么 searchChapters 不返回原文？**
+10 结果 × 8 条消息 = 80 条非必要上下文。现在只返回标题/摘要/关键词，需原文时单独调 fetch_chapter_messages。
 
 ---
 
 ## 快速开始
 
-### 环境要求
-
-- macOS 15+（GUI）/ macOS、Linux、Windows（CLI）
-- Swift 6.0+
-- [DeepSeek API Key](https://platform.deepseek.com)
-
-### GUI
-
 ```bash
-cd GUI
-swift build -c release
+# GUI
+cd GUI && swift build -c release
 cp .build/arm64-apple-macosx/release/Prism Prism.app/Contents/MacOS/Prism
 open Prism.app
-```
 
-首次启动进入设置向导，配置 API Key 和偏好。
-
-### CLI
-
-```bash
-cd CLI
-swift build -c release
+# CLI
+cd CLI && swift build -c release
 ./.build/arm64-apple-macosx/release/prism
 ```
 
-直接打字开始对话，`/help` 查看所有命令。
-
----
-
-## 架构
-
-```
-用户消息
-  │
-  ├── Flash 预处理管线（代码强制执行，~500ms）
-  │     └─ 统一一次调用：
-  │          reality（事实vs解释比例）
-  │          spiral（情绪漩涡检测）
-  │          blindspots（叙事盲点扫描）
-  │          ingratiation（迎合倾向检测）
-  │          action_hollow（空头承诺比对）
-  │          safety（安全信号：自杀/自伤/暴力/虐待）
-  │          emotions（情绪标注，写入 emotion_timeline.json）
-  │          persons（人物提取，含别名解析，写入 person_archive.json）
-  │
-  ├── [安全覆写] safety == "crisis" → 跳过主模型，直接输出安全引导（含热线）
-  │
-  ├── v4-pro（thinking，流式）+ 5 个 MCP 检索工具
-  │     ├─ System Prompt（根据模式：理性/平衡/温情）
-  │     ├─ guard hint（由预处理管线注入 supervisorHint）
-  │     ├─ StoryMemory + 跨对话记忆（top 3 条）
-  │     └─ 章节索引（长对话时提供检索入口）
-  │
-  └── 自动归档更新（Task.detached，不阻塞主对话）
-        ├─ 情绪写入 emotion_timeline.json
-        ├─ 人物写入 person_archive.json
-        └─ 盲点写入 blindspots.json
-
-自动归纳（v4-flash，按对话轮数触发）
-  ├─ 增量归纳（新消息 → 1 章，附带预处理管线产出的情绪/人物/盲点上下文）
-  └─ 全量重扫（每 3 次增量 → 3-10 章）
-       └─ 自动写入跨对话记忆（不额外调 API）
-
-数据流：100% 本地 JSON → API（仅上下文）→ 本地 JSON
-```
-
-**API 调用/轮**：1 次 Flash + 1 次 Pro（日常对话）。
-首次对话跳过预处理管线（无助手回复可分析）。
+首次启动配置 API Key。CLI 中直接打字对话，`/help` 查看命令。
 
 ---
 
 ## CLI 命令
 
-```
-/help                    显示帮助
-/new                     新建对话
-/list                    列出所有对话
-/switch <n>              切换到第 n 个对话
-/delete <n>              删除第 n 个对话
-/delmsg <n>              删除当前对话第 n 条消息（配对删除）
-/rename <n> <名称>       重命名第 n 个对话
-/search <关键词>          跨对话章节搜索（相关度排序）
-/find <关键词>            当前对话内搜索（/find 跳下一个匹配）
-/history [n]              查看最近 n 条消息（含序号）
-/info                    查看当前对话摘要
-/chapters                列出当前对话章节
-/chapter <n>             查看第 n 个章节详情
-/thinking                切换思考链显示
-/settings                查看当前设置
-/summarize               手动归纳当前对话
-/config <键> <值>         修改设置（apiKey/model/mode/datapath/...）
-/lang zh|zh-hant|en      切换语言
-/reset --confirm          还原所有数据
-/exit                    退出
-```
+导航：`/help`, `/new`, `/list`, `/switch <n>`, `/delete <n>`, `/rename <n>`
+消息：`/history [n]`, `/delmsg <n>`, `/find <关键词>`
+搜索：`/chapters`, `/chapter <n>`, `/search <关键词>`
+信息：`/info`, `/settings`
+归纳：`/summarize`
+配置：`/config <键> <值>`
+其他：`/thinking`, `/lang zh|tw|en`, `/reset --confirm`, `/exit`
 
----
-
-## 配置
-
-| 键 | 默认值 | 说明 |
-|-----|---------|------|
-| `apiKey` | — | DeepSeek API Key（必填） |
-| `baseURL` | `https://api.deepseek.com` | API 地址 |
-| `model` | `deepseek-v4-pro` | 对话模型（`pro` / `flash`） |
-| `response` | `standard` | 回复长度（`brief` / `standard` / `detailed`） |
-| `thinking` | on | 深度思考 |
-| `effort` | high | 推理强度（`high` / `max`） |
-| `summary` | 5 | 归纳频率（0 关/2/5/10 轮） |
-| `mode` | balanced | 对话模式（`rational` / `balanced` / `warm`） |
-| `icloud` | off | iCloud 存储（仅 macOS） |
-| `datapath` | 平台默认 | 数据存储路径 |
-| `lang` | zh-Hans | 界面语言（`zh` / `tw` / `en`） |
-
----
-
-## 隐私与合规
-
-- **安全红线**：自杀/自伤/暴力/虐待场景触发安全干预模式
-- **不做诊断**：明确不诊断、不贴心理标签、不冒充医疗专业人员
-- **数据可迁移**：全部数据以 JSON 格式本地存储，可随时复制或迁移
+配置键：`apikey`, `model`, `mode`, `response`, `thinking`, `effort`, `summary`, `icloud`, `datapath`, `lang`
 
 ---
 
@@ -198,39 +159,10 @@ swift build -c release
 
 ```
 chatbot/
-├── CLI/
-│   ├── Package.swift
-│   ├── Sources/
-│   │   ├── main.swift           # CLI 入口 + 命令
-│   │   ├── ChatStore.swift      # 核心状态管理（预处理管线/工具循环/归纳）
-│   │   ├── DeepSeekClient.swift # API 客户端
-│   │   ├── AgentPrompt.swift    # System Prompt（3 套模式）
-│   │   ├── Tools.swift          # 5 个 MCP 检索工具
-│   │   ├── Models.swift         # 数据模型
-│   │   ├── AppSettings.swift    # 配置管理
-│   │   ├── StoryMemory.swift    # 本地记忆匹配
-│   │   ├── L10n.swift           # 多语言
-│   │   └── Terminal.swift       # ANSI 终端引擎
-│   └── prism                    # 发布二进制文件
-├── GUI/
-│   ├── Package.swift
-│   ├── Sources/Prism/
-│   │   ├── PrismApp.swift         # 应用入口
-│   │   ├── ContentView.swift      # 主界面 + 所有子视图
-│   │   ├── ChatStore.swift        # 核心状态（与 CLI 同源）
-│   │   ├── DeepSeekClient.swift   # API 客户端（同源）
-│   │   ├── AgentPrompt.swift      # 提示词（同源）
-│   │   ├── Tools.swift            # MCP 工具（同源）
-│   │   ├── Models.swift           # 数据模型（同源）
-│   │   ├── AppSettings.swift      # 配置（同源）
-│   │   ├── StoryMemory.swift      # 记忆（同源）
-│   │   ├── L10n.swift             # 多语言
-│   │   └── ...
-│   └── Prism.app                  # App 包
-├── INTRODUCTION.md
-├── REQUIREMENTS.md
-├── README.md
-└── README_CN.md
+├── CLI/Sources/       — 12 个源文件（含 main.swift、PrePipeline.swift、SearchExpander.swift）
+├── GUI/Sources/Prism/ — 同一套核心文件 + UI 专有文件
+├── README.md          — 英文说明
+└── README_CN.md       — 中文说明（本文档）
 ```
 
 ---
@@ -238,12 +170,10 @@ chatbot/
 ## 构建
 
 ```bash
-# 两个版本
+# 零第三方依赖，仅需 Swift 6.0+
 cd CLI  && swift build -c release
 cd GUI  && swift build -c release
 ```
-
-零第三方依赖。仅需 Swift 6.0+ 标准库。
 
 ---
 

@@ -13,6 +13,13 @@ GUI/Prism.app/Contents/MacOS/Prism
 
 # macOS
 .DS_Store
+
+# GUI app bundle contents (gitignored, copied from .build/)
+GUI/Prism.app/Contents/Resources/*
+GUI/Prism.app/Contents/Info.plist
+
+# Untitled icon (Xcode artifact)
+GUI/Untitled.icon/
 *.swp
 *.swo
 *~
