@@ -1,10 +1,28 @@
-# 稜鏡 / Prism
+<p align="center">
+  <img src="1.png" alt="Prism Screenshot" width="180" style="border-radius: 28px;"/>
+</p>
 
-> 敘事反思伴侶 · 幫你看清盲點，找到出口
->
-> A narrative reflection companion. See blind spots, find a way forward.
+<p align="center">
+  <strong>稜鏡 / Prism</strong><br>
+  敘事反思伴侶 · 幫你看清盲點，找到出口<br>
+  <em>A narrative reflection companion. See blind spots, find a way forward.</em>
+</p>
 
-**[中文](README_ZH_HANT.md) · [English](README.md) · [简体](README_CN.md)**
+<p align="center">
+  基於 <strong>Swift</strong> 的 vibe coding 項目 · macOS 桌面端應用
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_ZH_HANT.md">繁體中文</a>
+</p>
+
+---
+
+| 對話 | 跨對話記憶 | 人物記憶 |
+|---|---|---|
+| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+
+---
 
 稜鏡是一款**本地優先、尊重隱私**的 AI 對話工具，基於 DeepSeek 大語言模型。它幫助你講出自己的故事、識別敘事盲點、探索替代視角，最終不再需要它。
 

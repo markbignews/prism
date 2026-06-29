@@ -1,10 +1,28 @@
-# 棱镜 / Prism
+<p align="center">
+  <img src="1.png" alt="Prism Screenshot" width="180" style="border-radius: 28px;"/>
+</p>
 
-> 叙事反思伴侣 · 帮你看清盲点，找到出口
->
-> A narrative reflection companion. See blind spots, find a way forward.
+<p align="center">
+  <strong>棱镜 / Prism</strong><br>
+  叙事反思伴侣 · 帮你看清盲点，找到出口<br>
+  <em>A narrative reflection companion. See blind spots, find a way forward.</em>
+</p>
 
-**[简体中文](README_CN.md) · [English](README.md) · [繁體中文](README_ZH_HANT.md)**
+<p align="center">
+  基于 <strong>Swift</strong> 的 vibe coding 项目 · macOS 桌面端应用
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> · <a href="README_ZH_HANT.md">繁體中文</a> · <a href="README_CN.md">简体中文</a>
+</p>
+
+---
+
+| 对话 | 跨对话记忆 | 人物记忆 |
+|---|---|---|
+| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+
+---
 
 棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终不再需要它。
 

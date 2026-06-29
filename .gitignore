@@ -1,0 +1,35 @@
+# Swift Package Manager
+.build/
+.build-arm64-apple-macosx/
+.build-x86_64-apple-macosx/
+DerivedData/
+*.swiftmodule
+*.o
+*.d
+
+# Release binaries (project-local copies)
+CLI/prism
+GUI/Prism.app/Contents/MacOS/Prism
+
+# macOS
+.DS_Store
+
+# GUI app bundle contents (gitignored, copied from .build/)
+GUI/Prism.app/Contents/Resources/*
+GUI/Prism.app/Contents/Info.plist
+
+# Untitled icon (Xcode artifact)
+GUI/Untitled.icon/
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+*.xcworkspace
+*.xcuserdata
+
+# API Keys / Config
+# Uncomment if you store API keys in config:
+# config.json
+*.zip

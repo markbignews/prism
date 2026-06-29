@@ -1,10 +1,28 @@
-# Prism / 棱镜 -叙事反思伴侣 · 帮你看清盲点，找到出口
+<p align="center">
+  <img src="1.png" alt="Prism Screenshot" width="180" style="border-radius: 28px;"/>
+</p>
 
-> A narrative reflection companion. See blind spots, find a way forward.
->
-> 叙事反思伴侣 · 帮你看清盲点，找到出口
+<p align="center">
+  <strong>Prism / 棱镜</strong><br>
+  叙事反思伴侣 · 帮你看清盲点，找到出口<br>
+  <em>A narrative reflection companion. See blind spots, find a way forward.</em>
+</p>
 
-**[English](README.md) · [简体中文](README_CN.md) · [繁體中文](README_ZH_HANT.md)**
+<p align="center">
+  基于 <strong>Swift</strong> 的 vibe coding 项目 · macOS 桌面端应用
+</p>
+
+<p align="center">
+  <a href="README_CN.md">简体中文</a> · <a href="README_ZH_HANT.md">繁體中文</a> · <a href="README.md">English</a>
+</p>
+
+---
+
+| 对话 | 跨对话记忆 | 人物记忆 |
+|---|---|---|
+| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+
+---
 
 Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It helps you tell your story, identify narrative blindspots, explore alternative perspectives, and — when you're ready — move on.
 
