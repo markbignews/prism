@@ -715,104 +715,87 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Scroll trigger: fires when message count changes (send, receive, regenerate).
-    private var scrollTrigger: Int {
-        chatStore.selectedConversation?.messages.count ?? 0
-    }
+    /// Apple's modern programmatic scroll API (macOS 14+).
+    @State private var scrollPosition = ScrollPosition()
 
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(chatStore.selectedConversation?.messages ?? []) { message in
-                        let convID = chatStore.selectedConversationID ?? UUID()
-                        let isLast = message.id == chatStore.selectedConversation?.messages.last?.id
-                        MessageBubble(
-                            message: message,
-                            isSelected: selectedMessageID == message.id,
-                            conversationID: convID,
-                            isStreaming: chatStore.isSending && isLast,
-                            onEdit: { editMessageID = message.id; draft = message.content },
-                            onDelete: {
-                                let msgs = chatStore.selectedConversation?.messages ?? []
-                                if message.role == .user,
-                                   let idx = msgs.firstIndex(where: { $0.id == message.id }),
-                                   idx + 1 < msgs.count,
-                                   msgs[idx + 1].role == .assistant {
-                                    pendingPairedDelete = message
-                                } else {
-                                    chatStore.deleteMessage(in: convID, messageID: message.id)
-                                }
-                            },
-                            onRegenerate: { msgID in
-                                let task = Task { await chatStore.regenerateAssistantMessage(in: convID, messageID: msgID, settings: settings) }
-                                chatStore.currentSendTask = task
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                ForEach(chatStore.selectedConversation?.messages ?? []) { message in
+                    let convID = chatStore.selectedConversationID ?? UUID()
+                    let isLast = message.id == chatStore.selectedConversation?.messages.last?.id
+                    MessageBubble(
+                        message: message,
+                        isSelected: selectedMessageID == message.id,
+                        conversationID: convID,
+                        isStreaming: chatStore.isSending && isLast,
+                        onEdit: { editMessageID = message.id; draft = message.content },
+                        onDelete: {
+                            let msgs = chatStore.selectedConversation?.messages ?? []
+                            if message.role == .user,
+                               let idx = msgs.firstIndex(where: { $0.id == message.id }),
+                               idx + 1 < msgs.count,
+                               msgs[idx + 1].role == .assistant {
+                                pendingPairedDelete = message
+                            } else {
+                                chatStore.deleteMessage(in: convID, messageID: message.id)
                             }
-                        )
-                        .equatable()
-                        .id(message.id)
-                        .onTapGesture {
-                            selectedMessageID = message.id
+                        },
+                        onRegenerate: { msgID in
+                            let task = Task { await chatStore.regenerateAssistantMessage(in: convID, messageID: msgID, settings: settings) }
+                            chatStore.currentSendTask = task
                         }
+                    )
+                    .equatable()
+                    .id(message.id)
+                    .onTapGesture {
+                        selectedMessageID = message.id
                     }
+                }
 
-                    // Invisible anchor — scroll-to-bottom always hits
-                    // the absolute bottom regardless of bubble height.
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottomAnchor")
-                        .onAppear { isScrolledUp = false }
-                        .onDisappear { isScrolledUp = true }
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                // Bottom anchor for isScrolledUp detection
+                Color.clear
+                    .frame(height: 1)
+                    .onAppear { isScrolledUp = false }
+                    .onDisappear { isScrolledUp = true }
             }
-            .defaultScrollAnchor(.bottom)  // macOS 15+ native chat scrolling — no scroll war
-            .safeAreaInset(edge: .bottom) {
-                Spacer().frame(height: 60)
+            .scrollTargetLayout()
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+        }
+        .scrollPosition($scrollPosition, anchor: .bottom)
+        .defaultScrollAnchor(.bottom)
+        .safeAreaInset(edge: .bottom) {
+            Spacer().frame(height: 60)
+        }
+        .onAppear {
+            scrollPosition.scrollTo(edge: .bottom)
+        }
+        .onChange(of: chatStore.selectedConversation?.messages.count ?? 0) { _, newCount in
+            guard newCount > 0 else { return }
+            scrollPosition.scrollTo(edge: .bottom)
+        }
+        .onChange(of: scrollToMessageID) {
+            guard let targetID = scrollToMessageID else { return }
+            selectedMessageID = targetID
+            DispatchQueue.main.async {
+                scrollPosition.scrollTo(id: targetID)
+                scrollToMessageID = nil
             }
-            .onChange(of: chatStore.sendCounter) { _, _ in
-                // User pressed send — immediately scroll to the user message
-                guard let lastID = chatStore.selectedConversation?.messages.last?.id else { return }
-                proxy.scrollTo(lastID, anchor: .bottom)
+        }
+        .onChange(of: scrollToBottomCounter) {
+            scrollPosition.scrollTo(edge: .bottom)
+        }
+        .onChange(of: chatStore.selectedConversationID) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                scrollPosition.scrollTo(edge: .bottom)
             }
-            .onChange(of: scrollTrigger) { _, newCount in
-                // New message added to the list (could be from regenerate or conversation switch)
-                guard newCount > 0,
-                      let lastID = chatStore.selectedConversation?.messages.last?.id else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
-            }
-            .onChange(of: scrollToMessageID) {
-                guard let targetID = scrollToMessageID else { return }
-                selectedMessageID = targetID
-                DispatchQueue.main.async {
-                    proxy.scrollTo(targetID, anchor: .center)
-                    scrollToMessageID = nil
-                }
-            }
-            .onChange(of: scrollToBottomCounter) {
-                // Scroll to the last message directly — avoids the LazyVStack
-                // layout race that the bottomAnchor can hit before render.
-                if let lastID = chatStore.selectedConversation?.messages.last?.id {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
-            }
-            .onChange(of: chatStore.selectedConversationID) { _, _ in
-                // Scroll to last message when switching conversations
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    if let lastID = chatStore.selectedConversation?.messages.last?.id {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
-                }
-            }
-            .onChange(of: editMessageID) {
-                if let msgID = editMessageID,
-                   let conv = chatStore.selectedConversation,
-                   let msg = conv.messages.first(where: { $0.id == msgID }) {
-                    draft = msg.content
-                }
+        }
+        .onChange(of: editMessageID) {
+            if let msgID = editMessageID,
+               let conv = chatStore.selectedConversation,
+               let msg = conv.messages.first(where: { $0.id == msgID }) {
+                draft = msg.content
             }
         }
     }

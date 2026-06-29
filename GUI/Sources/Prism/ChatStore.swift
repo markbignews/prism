@@ -6,12 +6,10 @@ import Combine
 final class ChatStore: ObservableObject {
     @Published private(set) var conversations: [Conversation] = []
     var selectedConversationID: Conversation.ID?
-    var isSending = false
+    @Published var isSending = false
     var errorMessage: String?
     var isSummarizing = false
     var currentSendTask: Task<Void, Never>?
-    /// Incremented on each send(); observed by ContentView for immediate scroll-to-bottom.
-    @Published var sendCounter = 0
     /// Throttles UI publishes during streaming to avoid layout thrashing.
     private var lastStreamingPublish = Date.distantPast
     /// Status of the last summarization attempt (empty = never run / nothing to report).
@@ -463,7 +461,6 @@ final class ChatStore: ObservableObject {
         let userMessage = ChatMessage(role: .user, content: trimmed)
         objectWillChange.send()
         conversations[index].messages.append(userMessage)
-        sendCounter &+= 1
         StoryMemory.ingest(userText: trimmed, messageID: userMessage.id, conversation: &conversations[index])
         conversations[index].updatedAt = Date()
         updateTitleIfNeeded(for: index, firstUserText: trimmed)
