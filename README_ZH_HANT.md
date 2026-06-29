@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  基於 <strong>Swift</strong> 的 vibe coding 項目 · macOS 桌面端應用
+  基於 <strong>Swift</strong> 的 vibe coding 項目 · macOS 桌面端應用 + CLI 命令列版本 · 支援 macOS / Linux / Windows
 </p>
 
 <p align="center">
