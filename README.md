@@ -29,7 +29,7 @@ Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **ho
 - **Windowed context** — ≤60 messages full context (1M token window), >60 compressed with chapter index
 - **Semantic search** — keyword pre-filter + Flash reranking for chapter and memory search
 
-### MCP Retrieval Tools (5 total, local execution, 0 API cost)
+### Retrieval Tools (5 total, local execution, 0 API cost)
 
 | Tool | Purpose | AI? |
 |------|---------|------|
@@ -39,7 +39,7 @@ Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **ho
 | `track_person` | Track people across conversations (alias-aware) | ❌ |
 | `emotion_timeline` | Raw emotion sequence (model judges trend) | ❌ |
 
-**Note**: Quality guards (reality / spiral / blindspots / ingratiation / action_hollow) run automatically in the Flash pre-pipeline every turn — they are not exposed as MCP tools.
+**Note**: Quality guards (reality / spiral / blindspots / ingratiation / action_hollow) run automatically in the Flash pre-pipeline every turn — they are not exposed as tools.
 
 ### Data & Privacy
 
@@ -86,7 +86,7 @@ User Message
   │
   ├── [Safety override] safety == "crisis" → skip main model, return crisis response
   │
-  ├── [2] v4-pro main model (thinking, streaming) + 5 MCP tools
+  ├── [2] v4-pro main model (thinking, streaming) + 5 tools
   │     ├─ guard hints via [supervisorHint] system message
   │     └─ chapter index for conversations > 60 messages
   │
@@ -158,7 +158,7 @@ Compression is not deletion — the model retrieves any compressed message via s
 **Why pre-pipeline before the main model?**
 Guard signals are available before the model generates its reply, so they integrate naturally into the response. The latency cost is ~500ms.
 
-**Why Agent + MCP for retrieval?**
+**Why Agent + tools for retrieval?**
 The model needs context to decide what to search for. Retrieval tools are purely local (zero API cost) and the model can decide when to use them.
 
 **Why context window threshold at 60 messages?**
