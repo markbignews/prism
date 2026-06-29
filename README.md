@@ -253,7 +253,9 @@ cd GUI  && swift build -c release
 
 ## License
 
-To be determined.
+[MIT](LICENSE)
+
+[MIT](LICENSE)
 
 ---
 

@@ -177,7 +177,7 @@ cd GUI  && swift build -c release
 
 ## 授權
 
-待定。
+[MIT](LICENSE)
 
 ---
 

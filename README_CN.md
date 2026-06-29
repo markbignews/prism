@@ -178,7 +178,7 @@ cd GUI  && swift build -c release
 
 ## 许可证
 
-待定。
+[MIT](LICENSE)
 
 ---
 
