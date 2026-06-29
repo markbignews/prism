@@ -1,4 +1,4 @@
-# Prism / 棱镜
+# Prism / 棱镜 -叙事反思伴侣 · 帮你看清盲点，找到出口
 
 > A narrative reflection companion. See blind spots, find a way forward.
 >
