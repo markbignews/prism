@@ -4,7 +4,7 @@
 >
 > 叙事反思伴侣 · 帮你看清盲点，找到出口
 
-**[English](README.md) · [中文](README_CN.md)**
+**[English](README.md) · [简体中文](README_CN.md) · [繁體中文](README_ZH_HANT.md)**
 
 Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It helps you tell your story, identify narrative blindspots, explore alternative perspectives, and — when you're ready — move on.
 
@@ -154,9 +154,6 @@ Compression is not deletion — the model retrieves any compressed message via s
 ---
 
 ## Design Decisions
-
-**Why Flash pre-pipeline instead of local guard tools?**
-Keyword matching had high false-positive rates and no semantic understanding. One Flash call covers all 6 guard dimensions + emotion/person extraction with the same API cost as the old approach.
 
 **Why pre-pipeline before the main model?**
 Guard signals are available before the model generates its reply, so they integrate naturally into the response. The latency cost is ~500ms.

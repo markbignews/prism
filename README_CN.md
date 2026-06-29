@@ -4,7 +4,7 @@
 >
 > A narrative reflection companion. See blind spots, find a way forward.
 
-**[中文](README_CN.md) · [English](README.md)**
+**[简体中文](README_CN.md) · [English](README.md) · [繁體中文](README_ZH_HANT.md)**
 
 棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终不再需要它。
 
@@ -99,9 +99,6 @@
 ---
 
 ## 设计决策
-
-**为什么用 Flash 预处理代替本地 guard 工具？**
-关键词匹配误报率高、没有语义理解。一次 Flash 调用覆盖全部 6 个 guard 维度 + 情绪/人物提取，API 成本不变。
 
 **为什么预处理在主模型之前？**
 guard 信号在主模型生成回复前就可用，自然融入回复，不生硬转折。延迟成本约 500ms。
