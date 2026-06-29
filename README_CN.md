@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="1.png" alt="Prism Screenshot" width="180" style="border-radius: 28px;"/>
+  <img src="icon.png" alt="棱镜" width="120" style="border-radius: 22px;"/>
 </p>
 
 <p align="center">
@@ -18,17 +18,17 @@
 
 ---
 
-| 对话 | 跨对话记忆 | 人物记忆 |
-|---|---|---|
-| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终不再需要它。
+
+和大多数追求"有用"的 AI 聊天不同，棱镜追求的是**诚实**。它会挑战你的解释、指出你不断重复的模式、拒绝只附和你的观点。它的目标不是留住你，是帮你走到不需要再打开它的那一天。
 
 ---
 
-棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终不再需要它。
+### 截图
 
-**不是心理医生，只是一面镜子。**
-
-和大多数追求"有用"的 AI 聊天不同，棱镜追求的是**诚实**。它会挑战你的解释、指出你不断重复的模式、拒绝只附和你的观点。它的目标不是留住你，是帮你走到不需要再打开它的那一天。
+| 对话 | 跨对话记忆 | 人物记忆 |
+|---|---|---|
+| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 

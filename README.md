@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="1.png" alt="Prism Screenshot" width="180" style="border-radius: 28px;"/>
+  <img src="icon.png" alt="Prism" width="120" style="border-radius: 22px;"/>
 </p>
 
 <p align="center">
@@ -18,17 +18,17 @@
 
 ---
 
-| 对话 | 跨对话记忆 | 人物记忆 |
-|---|---|---|
-| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It helps you tell your story, identify narrative blindspots, explore alternative perspectives, and — when you're ready — move on.
+
+Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **honesty**. It challenges your interpretations, points out patterns you keep repeating, and refuses to just agree with you. The goal is not to keep you talking — it's to help you reach the point where you no longer need it.
 
 ---
 
-Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It helps you tell your story, identify narrative blindspots, explore alternative perspectives, and — when you're ready — move on.
+### Screenshots
 
-**It's not a therapist. It's a mirror.**
-
-Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **honesty**. It challenges your interpretations, points out patterns you keep repeating, and refuses to just agree with you. The goal is not to keep you talking — it's to help you reach the point where you no longer need it.
+| 对话 | 跨对话记忆 | 人物记忆 |
+|---|---|---|
+| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 

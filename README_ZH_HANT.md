@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="1.png" alt="Prism Screenshot" width="180" style="border-radius: 28px;"/>
+  <img src="icon.png" alt="稜鏡" width="120" style="border-radius: 22px;"/>
 </p>
 
 <p align="center">
@@ -18,15 +18,15 @@
 
 ---
 
-| 對話 | 跨對話記憶 | 人物記憶 |
-|---|---|---|
-| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+稜鏡是一款**本地優先、尊重隱私**的 AI 對話工具，基於 DeepSeek 大語言模型。它幫助你講出自己的故事、識別敘事盲點、探索替代視角，最終不再需要它。
 
 ---
 
-稜鏡是一款**本地優先、尊重隱私**的 AI 對話工具，基於 DeepSeek 大語言模型。它幫助你講出自己的故事、識別敘事盲點、探索替代視角，最終不再需要它。
+### 截圖
 
-**不是心理醫生，只是一面鏡子。**
+| 對話 | 跨對話記憶 | 人物記憶 |
+|---|---|---|
+| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 
