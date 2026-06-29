@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" alt="Prism" width="120" style="border-radius: 22px;"/>
+  <img src="GUI/icon.png" alt="Prism" width="120" style="border-radius: 22px;"/>
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **ho
 
 | 对话 | 跨对话记忆 | 人物记忆 |
 |---|---|---|
-| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+| <img src="GUI/1.png" width="240" style="border-radius: 16px;"/> | <img src="GUI/2.png" width="240" style="border-radius: 16px;"/> | <img src="GUI/3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 

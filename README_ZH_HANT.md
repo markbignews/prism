@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" alt="稜鏡" width="120" style="border-radius: 22px;"/>
+  <img src="GUI/icon.png" alt="稜鏡" width="120" style="border-radius: 22px;"/>
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 
 | 對話 | 跨對話記憶 | 人物記憶 |
 |---|---|---|
-| <img src="1.png" width="240" style="border-radius: 16px;"/> | <img src="2.png" width="240" style="border-radius: 16px;"/> | <img src="3.png" width="240" style="border-radius: 16px;"/> |
+| <img src="GUI/1.png" width="240" style="border-radius: 16px;"/> | <img src="GUI/2.png" width="240" style="border-radius: 16px;"/> | <img src="GUI/3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 
