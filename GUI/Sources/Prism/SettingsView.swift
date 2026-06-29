@@ -61,6 +61,17 @@ struct SettingsView: View {
                     }
                 }
 
+                Picker(L10n.text(.conversationMode, settings.language), selection: $settings.conversationMode) {
+                    Text(L10n.text(.modeRational, settings.language)).tag(ConversationMode.rational)
+                    Text(L10n.text(.modeBalanced, settings.language)).tag(ConversationMode.balanced)
+                    Text(L10n.text(.modeWarm, settings.language)).tag(ConversationMode.warm)
+                }
+                .pickerStyle(.segmented)
+
+                Text(L10n.text(.conversationModeHint, settings.language))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Picker(L10n.text(.responseLength, settings.language), selection: $settings.responseLength) {
                     Text(L10n.text(.modeBrief, settings.language)).tag(ResponseLength.brief)
                     Text(L10n.text(.modeStandard, settings.language)).tag(ResponseLength.standard)

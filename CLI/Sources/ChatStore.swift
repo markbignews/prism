@@ -77,6 +77,7 @@ final class ChatStore {
 
     func deleteSelectedConversation() {
         guard let selectedConversationID else { return }
+        guard !isSummarizing else { return }
         conversations.removeAll { $0.id == selectedConversationID }
         self.selectConversation(conversations.first?.id)
         if conversations.isEmpty {
@@ -87,6 +88,7 @@ final class ChatStore {
     }
 
     func deleteConversation(id: UUID) {
+        guard !isSummarizing else { return }
         conversations.removeAll { $0.id == id }
         if selectedConversationID == id {
             selectConversation(conversations.first?.id)
@@ -590,20 +592,17 @@ final class ChatStore {
                 await self?.applyPrePipelineResults(preResult, for: id)
             }
         } catch is CancellationError {
-            // User stopped generation — keep partial content with a cancelled marker.
-            let existingContent = conversations[index].messages.first(where: { $0.id == assistantID })?.content ?? ""
-            let baseContent = finalContent.isEmpty ? existingContent : finalContent
-            let displayContent: String
-            if baseContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                displayContent = "[Cancelled]"
-            } else {
-                displayContent = baseContent + "\n\n---\n[Cancelled]"
+            // User stopped generation — replace partial content with cancel marker.
+            let cancelMsg = switch settings.language {
+            case .simplifiedChinese: "[已取消生成]"
+            case .traditionalChinese: "[已取消生成]"
+            case .english: "[Generation cancelled]"
             }
             finishStreamingMessage(
                 assistantID,
                 in: id,
-                content: displayContent,
-                reasoning: "[Cancelled]"
+                content: cancelMsg,
+                reasoning: cancelMsg
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -723,8 +722,9 @@ final class ChatStore {
             return
         }
 
-        // Build full transcript with message indices
-        let transcript = conv.messages.enumerated().map { i, msg in
+        // Build full transcript with message indices — filter out cancelled/error markers
+        let summarizable = filterSummarizable(conv.messages)
+        let transcript = summarizable.enumerated().map { i, msg in
             let roleLabel = msg.role == .user ? "User" : "Assistant"
             let preview = String(msg.content.prefix(300))
             return "[\(i + 1)][\(roleLabel)]: \(preview)"
@@ -864,6 +864,22 @@ final class ChatStore {
 
         guard !parts.isEmpty else { return "" }
         return "\n\n[对话分析上下文 — 来自质量守护系统的洞察]\n" + parts.joined(separator: "\n\n") + "\n"
+    }
+
+    /// Filter out cancelled, error, and empty messages that should not be included in chapters.
+    private func filterSummarizable(_ messages: [ChatMessage]) -> [ChatMessage] {
+        let skipPatterns = ["[已取消生成]", "[Generation cancelled]", "[Request Failed]", "[Cancelled]", "[Error]"]
+        return messages.filter { msg in
+            if msg.role == .system { return false }
+            let trimmed = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return false }
+            for pattern in skipPatterns {
+                if trimmed == pattern || trimmed.hasPrefix("[Request Failed]") {
+                    return false
+                }
+            }
+            return true
+        }
     }
 
     private func performSummarization(for index: Int, settings: AppSettings) async {

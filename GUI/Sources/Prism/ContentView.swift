@@ -589,8 +589,6 @@ struct ChatView: View {
     @Binding var selectedChapter: StoryChapter?
     @Binding var editMessageID: ChatMessage.ID?
 
-    /// Throttle scroll-to-bottom during streaming to prevent animation stacking.
-    @State private var lastAutoScrollTime: Date = .distantPast
     /// Back-to-bottom button visible when the user scrolls up.
     @State private var isScrolledUp = true
     @State private var scrollToBottomCounter = 0
@@ -717,13 +715,9 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Single scroll trigger value: changes when the last message needs a scroll-to-bottom.
-    /// Combines count, content, and reasoning into one signal to prevent triple-animation stacking.
-    private var scrollTrigger: String {
-        guard let last = chatStore.selectedConversation?.messages.last else { return "" }
-        // Use content length instead of full content to avoid O(n) string hashing;
-        // reasoning length is enough to signal change without the full text value.
-        return "\(last.id.uuidString):c\(last.content.count):r\(last.reasoning?.count ?? 0)"
+    /// Scroll trigger: fires when message count changes (send, receive, regenerate).
+    private var scrollTrigger: Int {
+        chatStore.selectedConversation?.messages.count ?? 0
     }
 
     private var messageList: some View {
@@ -773,11 +767,22 @@ struct ChatView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)
             }
+            .defaultScrollAnchor(.bottom)  // macOS 15+ native chat scrolling — no scroll war
             .safeAreaInset(edge: .bottom) {
                 Spacer().frame(height: 60)
             }
-            .onChange(of: scrollTrigger) {
-                autoScrollToBottom(proxy: proxy)
+            .onChange(of: chatStore.sendCounter) { _, _ in
+                // User pressed send — immediately scroll to the user message
+                guard let lastID = chatStore.selectedConversation?.messages.last?.id else { return }
+                proxy.scrollTo(lastID, anchor: .bottom)
+            }
+            .onChange(of: scrollTrigger) { _, newCount in
+                // New message added to the list (could be from regenerate or conversation switch)
+                guard newCount > 0,
+                      let lastID = chatStore.selectedConversation?.messages.last?.id else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    proxy.scrollTo(lastID, anchor: .bottom)
+                }
             }
             .onChange(of: scrollToMessageID) {
                 guard let targetID = scrollToMessageID else { return }
@@ -812,20 +817,6 @@ struct ChatView: View {
         }
     }
 
-    /// Auto-scroll: scroll to the absolute-bottom anchor so expanding
-    /// reasoning / content is always followed, even during streaming.
-    private func autoScrollToBottom(proxy: ScrollViewProxy) {
-        if !chatStore.isSending {
-            let now = Date()
-            guard now.timeIntervalSince(lastAutoScrollTime) > 0.12 else { return }
-            lastAutoScrollTime = now
-        }
-
-        // Defer to let SwiftUI finish layout with the new content height
-        DispatchQueue.main.async {
-            proxy.scrollTo("bottomAnchor", anchor: .bottom)
-        }
-    }
 }
 
 // MARK: - Chapter Detail Sheet

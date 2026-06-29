@@ -4,12 +4,16 @@ import Combine
 
 @MainActor
 final class ChatStore: ObservableObject {
-    private(set) var conversations: [Conversation] = []
+    @Published private(set) var conversations: [Conversation] = []
     var selectedConversationID: Conversation.ID?
     var isSending = false
     var errorMessage: String?
     var isSummarizing = false
     var currentSendTask: Task<Void, Never>?
+    /// Incremented on each send(); observed by ContentView for immediate scroll-to-bottom.
+    @Published var sendCounter = 0
+    /// Throttles UI publishes during streaming to avoid layout thrashing.
+    private var lastStreamingPublish = Date.distantPast
     /// Status of the last summarization attempt (empty = never run / nothing to report).
     var lastSummaryStatus: String = ""
 
@@ -78,6 +82,7 @@ final class ChatStore: ObservableObject {
 
     func deleteSelectedConversation() {
         guard let selectedConversationID else { return }
+        guard !isSummarizing else { return }  // block deletion during summarization
         conversations.removeAll { $0.id == selectedConversationID }
         self.selectConversation(conversations.first?.id)
         if conversations.isEmpty {
@@ -88,6 +93,7 @@ final class ChatStore: ObservableObject {
     }
 
     func deleteConversation(id: UUID) {
+        guard !isSummarizing else { return }  // block deletion during summarization
         conversations.removeAll { $0.id == id }
         if selectedConversationID == id {
             selectConversation(conversations.first?.id)
@@ -455,14 +461,16 @@ final class ChatStore: ObservableObject {
         }
         errorMessage = nil
         let userMessage = ChatMessage(role: .user, content: trimmed)
+        objectWillChange.send()
         conversations[index].messages.append(userMessage)
+        sendCounter &+= 1
         StoryMemory.ingest(userText: trimmed, messageID: userMessage.id, conversation: &conversations[index])
         conversations[index].updatedAt = Date()
         updateTitleIfNeeded(for: index, firstUserText: trimmed)
 
         let requestMessages = buildWindowedMessages(for: index)
         let assistantID = UUID()
-        conversations[index].messages.append(
+        objectWillChange.send(); conversations[index].messages.append(
             ChatMessage(id: assistantID, role: .assistant, content: "", reasoning: nil)
         )
         save()
@@ -542,6 +550,7 @@ final class ChatStore: ObservableObject {
                 // looks stuck between streaming and the next round).
                 if let msgIndex = conversations[index].messages.lastIndex(where: { $0.id == assistantID }),
                    conversations[index].messages[msgIndex].content.isEmpty {
+                    objectWillChange.send()
                     conversations[index].messages[msgIndex].content = "🔧 正在查询…"
                 }
 
@@ -559,6 +568,7 @@ final class ChatStore: ObservableObject {
                 // Clear placeholder + save so UI sees the transition
                 if let msgIndex = conversations[index].messages.lastIndex(where: { $0.id == assistantID }),
                    conversations[index].messages[msgIndex].content == "🔧 正在查询…" {
+                    objectWillChange.send()
                     conversations[index].messages[msgIndex].content = ""
                 }
                 save()
@@ -591,20 +601,17 @@ final class ChatStore: ObservableObject {
                 await self?.applyPrePipelineResults(preResult, for: id)
             }
         } catch is CancellationError {
-            // User stopped generation — keep partial content with a cancelled marker.
-            let existingContent = conversations[index].messages.first(where: { $0.id == assistantID })?.content ?? ""
-            let baseContent = finalContent.isEmpty ? existingContent : finalContent
-            let displayContent: String
-            if baseContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                displayContent = "[Cancelled]"
-            } else {
-                displayContent = baseContent + "\n\n---\n[Cancelled]"
+            // User stopped generation — replace partial content with cancel marker.
+            let cancelMsg = switch settings.language {
+            case .simplifiedChinese: "[已取消生成]"
+            case .traditionalChinese: "[已取消生成]"
+            case .english: "[Generation cancelled]"
             }
             finishStreamingMessage(
                 assistantID,
                 in: id,
-                content: displayContent,
-                reasoning: "[Cancelled]"
+                content: cancelMsg,
+                reasoning: cancelMsg
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -715,8 +722,9 @@ final class ChatStore: ObservableObject {
     private func fullReSummarize(at index: Int, settings: AppSettings) async {
         guard index < conversations.count else { return }
 
+        objectWillChange.send()
         isSummarizing = true
-        defer { isSummarizing = false }
+        defer { isSummarizing = false; objectWillChange.send() }
 
         let conv = conversations[index]
         guard conv.messages.count >= 2 else {
@@ -724,8 +732,9 @@ final class ChatStore: ObservableObject {
             return
         }
 
-        // Build full transcript with message indices
-        let transcript = conv.messages.enumerated().map { i, msg in
+        // Build full transcript with message indices — filter out cancelled/error markers
+        let summarizable = filterSummarizable(conv.messages)
+        let transcript = summarizable.enumerated().map { i, msg in
             let roleLabel = msg.role == .user ? "User" : "Assistant"
             let preview = String(msg.content.prefix(300))
             return "[\(i + 1)][\(roleLabel)]: \(preview)"
@@ -867,10 +876,27 @@ final class ChatStore: ObservableObject {
         return "\n\n[对话分析上下文 — 来自质量守护系统的洞察]\n" + parts.joined(separator: "\n\n") + "\n"
     }
 
+    /// Filter out cancelled, error, and empty messages that should not be included in chapters.
+    private func filterSummarizable(_ messages: [ChatMessage]) -> [ChatMessage] {
+        let skipPatterns = ["[已取消生成]", "[Generation cancelled]", "[Request Failed]", "[Cancelled]", "[Error]"]
+        return messages.filter { msg in
+            if msg.role == .system { return false }
+            let trimmed = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return false }
+            for pattern in skipPatterns {
+                if trimmed == pattern || trimmed.hasPrefix("[Request Failed]") {
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
     private func performSummarization(for index: Int, settings: AppSettings) async {
         guard index < conversations.count else { return }
+        objectWillChange.send()
         isSummarizing = true
-        defer { isSummarizing = false }
+        defer { isSummarizing = false; objectWillChange.send() }
 
         let conv = conversations[index]
         let startIndex = conv.lastSummaryMessageIndex
@@ -879,7 +905,8 @@ final class ChatStore: ObservableObject {
             return
         }
 
-        let newMessages = Array(conv.messages.suffix(from: startIndex))
+        let rawMessages = Array(conv.messages.suffix(from: startIndex))
+        let newMessages = filterSummarizable(rawMessages)
         guard newMessages.count >= 2 else {
             lastSummaryStatus = "新消息不足（需至少2条）"
             return
@@ -1024,11 +1051,19 @@ final class ChatStore: ObservableObject {
         L10n.text(.fallbackReasoning, language)
     }
 
+    /// Throttled publish for streaming — updates the data on every token but only
+    /// notifies SwiftUI at ~20 Hz to avoid layout thrashing and black screens.
+    private func publishDuringStreaming() {
+        let now = Date()
+        guard now.timeIntervalSince(lastStreamingPublish) > 0.05 else { return }  // 20 fps
+        lastStreamingPublish = now
+        objectWillChange.send()
+    }
+
     private func append(_ delta: DeepSeekStreamDelta, to messageID: UUID, in conversationID: UUID) {
         guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }),
               let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
 
-        
         switch delta {
         case .content(let token):
             conversations[conversationIndex].messages[messageIndex].content += token
@@ -1036,15 +1071,17 @@ final class ChatStore: ObservableObject {
             conversations[conversationIndex].messages[messageIndex].reasoning =
                 (conversations[conversationIndex].messages[messageIndex].reasoning ?? "") + token
         case .toolCall:
-            break  // handled separately via ChatStore.toolCallHandler
+            break
         }
         conversations[conversationIndex].updatedAt = Date()
+        publishDuringStreaming()
     }
 
     private func finishStreamingMessage(_ messageID: UUID, in conversationID: UUID, content: String, reasoning: String) {
         guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }),
               let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
 
+        objectWillChange.send()  // always publish final frame
         conversations[conversationIndex].messages[messageIndex].content = content
         conversations[conversationIndex].messages[messageIndex].reasoning = reasoning
         conversations[conversationIndex].updatedAt = Date()
