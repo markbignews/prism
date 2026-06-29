@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="GUI/icon.png" alt="Prism" width="120" style="border-radius: 22px;"/>
+  <img src="assets/icon.png" alt="Prism" width="120" style="border-radius: 22px;"/>
 </p>
 
 <p align="center">
@@ -18,9 +18,7 @@
 
 ---
 
-Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It helps you tell your story, identify narrative blindspots, explore alternative perspectives, and — when you're ready — move on.
-
-Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **honesty**. It challenges your interpretations, points out patterns you keep repeating, and refuses to just agree with you. The goal is not to keep you talking — it's to help you reach the point where you no longer need it.
+Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It analyzes your narrative patterns, tracks emotional changes over time, and surfaces blindspots you might be missing. Designed for reflection.
 
 ---
 
@@ -28,65 +26,30 @@ Unlike most AI chat apps that optimize for helpfulness, Prism optimizes for **ho
 
 | 对话 | 跨对话记忆 | 人物记忆 |
 |---|---|---|
-| <img src="GUI/1.png" width="240" style="border-radius: 16px;"/> | <img src="GUI/2.png" width="240" style="border-radius: 16px;"/> | <img src="GUI/3.png" width="240" style="border-radius: 16px;"/> |
+| <img src="assets/1.png" width="240" style="border-radius: 16px;"/> | <img src="assets/2.png" width="240" style="border-radius: 16px;"/> | <img src="assets/3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 
 ## Features
 
-### Core
-
 - **Streaming conversation** with DeepSeek v4-pro (thinking mode) + 5 retrieval tools
 - **Reasoning chain** visible and auto-scrolling during generation
-- **Three conversation modes** — Rational (cool analysis), Balanced (default), Warm (empathetic)
-- **Quality guard system** — Flash pre-pipeline auto-detects 6 dialogue quality dimensions every turn (code-enforced, not model-driven)
-- **Safety intervention** — suicide / self-harm / violence / abuse detection overrides the main model with crisis hotlines
+- **Three conversation modes** — Rational, Balanced (default), Warm
+- **Quality guard system** — Flash pre-pipeline detects 6 dimensions every turn (safety override is code-enforced)
+- **Safety intervention** — suicide/self-harm/violence/abuse detection skips the main model and outputs crisis hotlines
 - **Cross-conversation memory** — auto-generated from chapter summaries, retrievable in any conversation
-- **Auto-summarization** — incremental + full re-scan, generates structured chapters
+- **Auto-summarization** — incremental + full re-scan hybrid strategy
 - **Pre-pipeline** — one Flash call per turn covering guard + emotion + person extraction (~500ms)
-- **Windowed context** — ≤60 messages full context (1M token window), >60 compressed with chapter index
-- **Semantic search** — keyword pre-filter + Flash reranking for chapter and memory search
-
-### Retrieval Tools (5 total, local execution, 0 API cost)
-
-| Tool | Purpose | AI? |
-|------|---------|------|
-| `search_chapters` | Semantic search across chapters (keyword + Flash rerank), returns title/summary/keywords | ✅ local keyword + Flash rerank |
-| `fetch_chapter_messages` | Retrieve full chapter messages by index | ❌ |
-| `search_memory` | Semantic cross-conversation memory search (keyword + Flash rerank) | ✅ local keyword + Flash rerank |
-| `track_person` | Track people across conversations (alias-aware) | ❌ |
-| `emotion_timeline` | Raw emotion sequence (model judges trend) | ❌ |
-
-**Note**: Quality guards (reality / spiral / blindspots / ingratiation / action_hollow) run automatically in the Flash pre-pipeline every turn — they are not exposed as tools.
-
-### Data & Privacy
-
-- **100% local storage** — platform-adaptive default path (configurable)
-  - macOS: `~/Documents/Prism/`
-  - Linux: `~/.local/share/prism/`
-  - Windows: `%APPDATA%/Prism/`
-- Optional iCloud Drive sync (macOS only)
-- Only current conversation context is sent to DeepSeek API
-- No telemetry, no cloud sync (unless iCloud enabled), no tracking
-- Data path migration with automatic file transfer
-- Memory, emotions, blindspots all stored locally as plain JSON
-
-### GUI
-
-- macOS 15+ native SwiftUI + AppKit, Liquid Glass design
-- Markdown rendering, sidebar with chapters and memory panel
-- Chapter detail sheet with jump-to-source, paired message deletion
-- 6-page onboarding wizard, settings for API key / model / mode / iCloud
-
-### CLI
-
-- ANSI terminal streaming, cross-platform (macOS, Linux, Windows)
-- All core features plus `/config` for live settings (no restart needed)
-- Full conversation management with numbered commands
+- **Windowed context** — ≤60 messages full context, >60 compressed with chapter index
+- **Semantic search** — keyword pre-filter + Flash reranking for chapters and memory
+- **Emotion tracking** — automatically labeled every turn, viewable as timeline
+- **Person tracking** — alias-aware extraction across conversations
+- **Blindspot scanning** — explanation loops, self-avoidance, intention-action gaps
+- **Conversation title generation** — auto-named from chapter summaries via Flash
 
 ---
 
-## How It Works: Message Flow
+## How It Works
 
 ```
 User Message
@@ -95,150 +58,108 @@ User Message
   │     └─ Unified single call:
   │          reality          — fact vs. interpretation ratio
   │          spiral           — emotional stagnation
-  │          blindspots       — explanation loops, avoidance, intention-action gaps
+  │          blindspots       — explanation loops, self-avoidance, intention-action gaps
   │          ingratiation     — assistant pandering check
   │          action_hollow    — past unfulfilled intentions
   │          safety           — suicide/self-harm/violence/abuse (highest priority)
   │          emotions         — emotion labeling → emotion_timeline.json
   │          persons          — person extraction (alias-aware) → person_archive.json
   │
-  ├── [Safety override] safety == "crisis" → skip main model, return crisis response
+  ├── [Safety override] safety == "crisis" → skip main model entirely
+  │     return immediate crisis response with hotlines
   │
-  ├── [2] v4-pro main model (thinking, streaming) + 5 tools
-  │     ├─ guard hints via [supervisorHint] system message
-  │     └─ chapter index for conversations > 60 messages
+  ├── [2] v4-pro main model (thinking, streaming)
+  │     ├─ supervisorHint guard hints injected as system message
+  │     ├─ 5 retrieval tools available
+  │     └─ windowed message context (≤60 full, >60 compressed)
   │
   └── [3] Archive update (Task.detached, non-blocking)
-        ├─ emotions → emotion_timeline.json
-        ├─ persons → person_archive.json
-        └─ blindspots → blindspots.json
+        ├─ emotions → emotion_timeline.json (capped at 200)
+        ├─ persons → person_archive.json (capped at 200)
+        └─ blindspots → blindspots.json (capped at 300)
 ```
-
-**Key behaviors:**
-- First exchange skips pre-pipeline (no assistant reply yet to analyze)
-- Safety crisis overrides everything — main model is skipped entirely
-- Flash failure degrades gracefully — all guard flags default to `ok`
 
 ---
 
 ## Quality Guard System
 
-Instead of relying on the model to self-check, Prism runs a **code-enforced pre-pipeline** every turn. One Flash call evaluates 6 dimensions:
+A single Flash call evaluates 6 dimensions every turn. Guard results flow into the main model as `[supervisorHint]` system messages. The safety dimension can **bypass the main model entirely**.
 
-| Dimension | What it detects | Warning behavior |
+| Dimension | What it detects | Behavior on warning |
 |---|---|---|
 | `reality` | Too much interpretation, too few facts | Gently pull back to concrete events |
 | `spiral` | Same topic repeated, no emotional shift | Switch from analysis to exit guidance |
-| `blindspots` | Explanation loops, self-avoidance, intention-action gaps | Surface the blindspot naturally |
+| `blindspots` | Explanation loops, self-avoidance, intention gaps | Surface the blindspot naturally |
 | `ingratiation` | Last assistant reply was pandering | Become more independent |
 | `action_hollow` | Intention expressed before without follow-through | Gently remind of past patterns |
-| `safety` | Suicide, self-harm, violence, abuse | **Override main model — crisis response** |
+| `safety` | Suicide, self-harm, violence, abuse | **Override main model — crisis response with hotlines** |
 
-Results are injected via `[supervisorHint]`. The model doesn't know it's being "checked" — it just receives a natural hint.
+**Skips:** first exchange (no assistant reply yet), very short messages (< 5 characters). Flash errors degrade gracefully (all flags default to `ok`).
 
 ---
 
 ## Safety Intervention
 
-The only **code-enforced override** in the system. When `safety == "crisis"`:
+The only **code-enforced override**. When the pre-pipeline returns `safety.flag == "crisis"`:
 
-1. Main model (v4-pro) is **skipped entirely**
-2. A pre-defined crisis response with hotlines is injected directly
-3. Safety state persists — next turn's pre-pipeline continues monitoring
-4. Auto-clears when the user is safe again
+1. Main model is **skipped entirely**
+2. A pre-defined crisis response with hotlines is streamed directly
+3. Safety state persists via UserDefaults — next turn continues monitoring
+4. Auto-clears when `safety.flag == "ok"` is returned
 
-**Hotlines:** Chinese: 400-161-9995, 010-82951332, 110. English: 988, HOME to 741741, 911.
+**Hotlines:** Chinese (400-161-9995, 010-82951332, 110) and English (988, HOME to 741741, 911).
 
 ---
 
-## Context Window Strategy
+## Retrieval Tools
 
-| Length | Strategy |
+5 tools. All execute locally from in-memory JSON archives (zero API cost). `search_chapters` and `search_memory` optionally use Flash reranking: keyword pre-filter → semantic rerank. Falls back to keywords on Flash failure.
+
+| Tool | Parameters | Returns | AI cost |
+|---|---|---|---|
+| `track_person` | `name` (required) | Person archive record | None |
+| `emotion_timeline` | `count` (default 5) | Raw emotion sequence | None |
+| `search_chapters` | `query` (required), `count` (default 5) | Title, summary, keywords | Flash rerank (optional) |
+| `fetch_chapter_messages` | `index` (required, 1-based) | Full chapter text (≤12 msgs) | None |
+| `search_memory` | `query` (required), `count` (default 10) | Memory entries | Flash rerank (optional) |
+
+---
+
+## Conversation Modes
+
+| Mode | Temperature | Tone |
+|---|---|---|
+| **Rational** | 0.1 | Cool, analytical, minimal emotional framing |
+| **Balanced** (default) | 0.35 | Empathetic but honest, challenges when needed |
+| **Warm** | 0.6 | Emotional safety prioritized, gentle pushback |
+
+---
+
+## Context Window & Summarization
+
+| Topic | Detail |
 |---|---|
-| **≤ 60 messages** | Full text sent + chapter index |
-| **> 60 messages** | Last 40 messages full. Older content compressed to chapter summaries. |
+| **≤ 60 messages** | Full context + chapter index |
+| **> 60 messages** | Last 40 full, older compressed to chapter summaries |
+| **Trigger** | Every N exchanges (default 5, configurable 2/5/10/off) |
+| **Incremental** | New messages → 1 chapter, enriched with archive context |
+| **Full re-scan** | Every 3 incrementals, entire conversation re-chaptered, title regenerated |
+| **On switch** | Pending content summarized when leaving a conversation |
 
-Compression is not deletion — the model retrieves any compressed message via search tools.
-
----
-
-## Summarization
-
-- **Trigger**: every N exchanges (default 5, configurable)
-- **Incremental** (default): new messages → 1 chapter, enriched with pre-pipeline archive context
-- **Full re-scan** (every 3 incrementals): entire conversation re-chaptered, title regenerated
-- **On switch**: pending content summarized when leaving a conversation
+Compression is not deletion — model retrieves compressed content via search tools.
 
 ---
 
-## Design Decisions
+## Archives
 
-**Why pre-pipeline before the main model?**
-Guard signals are available before the model generates its reply, so they integrate naturally into the response. The latency cost is ~500ms.
+All data stored as local plain JSON at `~/Documents/Prism/Data/`.
 
-**Why Agent + tools for retrieval?**
-The model needs context to decide what to search for. Retrieval tools are purely local (zero API cost) and the model can decide when to use them.
-
-**Why context window threshold at 60 messages?**
-DeepSeek Pro has 1M token context. Under 60 messages, full context fits. Beyond that, compression kicks in — but the model can still retrieve any compressed message via tools.
-
-**Why hybrid summarization?**
-Full re-scan every time wastes tokens. Pure incremental leads to inconsistent chapter styles. 3 incrementals + 1 re-scan balances efficiency and quality. Summarization is enriched with pre-pipeline archive data for deeper chapter insights.
-
-**Why keyword + Flash two-stage search?**
-Pure keyword misses semantic matches ("被PUA" won't find "精神控制"). Pure embedding needs a separate API. Two-stage: keyword filters to top 15 (microseconds) → Flash reranks semantically (~300ms). Flash failure falls back to keyword results.
-
-**Why person alias resolution?**
-Users change how they refer to the same person ("my boyfriend" → "Zhang Wei" → "my ex"). The pre-pipeline receives the existing person archive and merges new mentions into existing records when they refer to the same person.
-
-**Why emotion_timeline no longer returns trend?**
-A hardcoded 3-data-point trend (3 negatives = deteriorating) is statistically meaningless. The model now receives raw emotion sequences and judges trends itself — it's much better at this than hardcoded thresholds.
-
-**Why searchChapters no longer returns messages?**
-10 results × 8 messages each = 80 messages of unnecessary context for the model to process. Results now include title, summary, and keywords only. The agent calls fetch_chapter_messages when it needs full text.
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Swift 6.0+
-- [DeepSeek API Key](https://platform.deepseek.com)
-- GUI: macOS 15+, CLI: macOS / Linux / Windows
-
-### GUI
-
-```bash
-cd GUI
-swift build -c release
-cp .build/arm64-apple-macosx/release/Prism Prism.app/Contents/MacOS/Prism
-open Prism.app
-```
-
-### CLI
-
-```bash
-cd CLI
-swift build -c release
-./.build/arm64-apple-macosx/release/prism
-```
-
----
-
-## CLI Commands
-
-```
-Navigation:      /help, /new, /list, /switch <n>, /delete <n>, /rename <n> <name>
-Messages:        /history [n], /delmsg <n>, /find <keyword>
-Search:          /chapters, /chapter <n>, /search <keyword>
-Info:            /info, /settings
-Summarization:   /summarize
-Config:          /config <key> <value>
-Other:           /thinking, /lang zh|tw|en, /reset --confirm, /exit
-```
-
-Config keys: `apikey`, `model`, `mode`, `response`, `thinking`, `effort`, `summary`, `icloud`, `datapath`, `lang`.
+| Archive | Cap | Maintained by |
+|---|---|---|
+| `person_archive.json` | 200 (by recency) | Pre-pipeline |
+| `emotion_timeline.json` | 200 (newest) | Pre-pipeline |
+| `blindspots.json` | 300 (newest) | Pre-pipeline |
+| `memory.json` | 500 (newest) | Summarization |
 
 ---
 
@@ -246,32 +167,81 @@ Config keys: `apikey`, `model`, `mode`, `response`, `thinking`, `effort`, `summa
 
 ```
 chatbot/
-├── CLI/Sources/       — main.swift, ChatStore.swift, PrePipeline.swift, DeepSeekClient.swift,
-│                        AgentPrompt.swift, Tools.swift, SearchExpander.swift, StoryMemory.swift,
-│                        Models.swift, AppSettings.swift, L10n.swift, Terminal.swift
-├── CLI/prism          — Release binary
-├── GUI/Sources/Prism/ — Same 8 shared files + PrismApp.swift, ContentView.swift,
-│                        OnboardingView.swift, SettingsView.swift, MarkdownText.swift
-├── GUI/Prism.app/     — App bundle
-├── README.md          — This file
-└── README_CN.md       — Chinese version
+├── CLI/Sources/        (12 files — main.swift, ChatStore, PrePipeline, DeepSeekClient,
+│                        AgentPrompt, Tools, SearchExpander, StoryMemory, Models,
+│                        AppSettings, L10n, Terminal)
+├── GUI/Sources/Prism/  (15 files — same 10 shared + ContentView, OnboardingView,
+│                        PrismApp, SettingsView, MarkdownText)
+├── assets/             Screenshots and app icon
+├── LICENSE
+├── README.md           This file
+├── README_CN.md        Simplified Chinese
+└── README_ZH_HANT.md   Traditional Chinese
 ```
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Swift 6.0+
+- [DeepSeek API Key](https://platform.deepseek.com)
+- GUI: macOS 15+, CLI: macOS, Linux, Windows
+
+### GUI
+```bash
+cd GUI && swift build -c release
+cp .build/arm64-apple-macosx/release/Prism Prism.app/Contents/MacOS/Prism
+open Prism.app
+```
+
+### CLI
+```bash
+cd CLI && swift build -c release
+./.build/arm64-apple-macosx/release/prism
+```
+
+Type to chat. `/help` for all commands. `/config` for live settings.
+
+---
+
+## CLI Commands
+
+| Category | Commands |
+|---|---|
+| Navigation | `/help`, `/new`, `/list`, `/switch <n>`, `/delete <n>`, `/rename <n>` |
+| Messages | `/history [n]`, `/delmsg <n>`, `/find <keyword>` |
+| Search | `/chapters`, `/chapter <n>`, `/search <keyword>` |
+| Info | `/info`, `/settings` |
+| Summarization | `/summarize` |
+| Config | `/config <key> <value>` |
+| Other | `/thinking`, `/lang zh\|tw\|en`, `/reset --confirm`, `/exit` |
+
+Config keys: `apikey`, `model`, `mode`, `response`, `thinking`, `effort`, `summary`, `icloud`, `datapath`, `lang`
 
 ---
 
 ## Building
 
 ```bash
-# Zero dependencies. Swift 6.0+ only.
+# Zero third-party dependencies. Swift 6.0+ only.
 cd CLI  && swift build -c release
 cd GUI  && swift build -c release
 ```
 
 ---
 
-## License
+## Privacy
 
-[MIT](LICENSE)
+- **100% local storage** at `~/Documents/Prism/` (configurable)
+- Only current conversation context sent to DeepSeek API
+- No telemetry, no analytics SDK
+- Optional iCloud Drive sync (macOS, opt-in)
+- All archives are plain JSON — readable, portable, deletable
+
+---
+
+## License
 
 [MIT](LICENSE)
 
