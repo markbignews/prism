@@ -4,6 +4,8 @@
 >
 > A narrative reflection companion. See blind spots, find a way forward.
 
+**[中文](README_CN.md) · [English](README.md)**
+
 棱镜是一款**本地优先、尊重隐私**的 AI 对话工具，基于 DeepSeek 大语言模型。它帮助你讲出自己的故事、识别叙事盲点、探索替代视角，最终不再需要它。
 
 **不是心理医生，只是一面镜子。**

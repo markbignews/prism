@@ -4,6 +4,8 @@
 >
 > 叙事反思伴侣 · 帮你看清盲点，找到出口
 
+**[English](README.md) · [中文](README_CN.md)**
+
 Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It helps you tell your story, identify narrative blindspots, explore alternative perspectives, and — when you're ready — move on.
 
 **It's not a therapist. It's a mirror.**
