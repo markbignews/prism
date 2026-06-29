@@ -32,11 +32,11 @@ Prism is a **local-first, privacy-respecting** AI conversation tool powered by D
 
 ## Features
 
-- **Streaming conversation** with DeepSeek v4-pro (thinking mode) + 5 retrieval tools
+- **Streaming conversation** with DeepSeek v4-pro (thinking mode, configurable to v4-flash) + 5 retrieval tools
 - **Reasoning chain** visible and auto-scrolling during generation
 - **Three conversation modes** — Rational, Balanced (default), Warm
 - **Quality guard system** — Flash pre-pipeline detects 6 dimensions every turn (safety override is code-enforced)
-- **Safety intervention** — suicide/self-harm/violence/abuse detection skips the main model and outputs crisis hotlines
+- **Safety intervention** — suicide/self-harm/violence/abuse detection skips the main model and outputs a crisis response
 - **Cross-conversation memory** — auto-generated from chapter summaries, retrievable in any conversation
 - **Auto-summarization** — incremental + full re-scan hybrid strategy
 - **Pre-pipeline** — one Flash call per turn covering guard + emotion + person extraction (~500ms)
@@ -66,7 +66,7 @@ User Message
   │          persons          — person extraction (alias-aware) → person_archive.json
   │
   ├── [Safety override] safety == "crisis" → skip main model entirely
-  │     return immediate crisis response with hotlines
+  │     return immediate crisis response
   │
   ├── [2] v4-pro main model (thinking, streaming)
   │     ├─ supervisorHint guard hints injected as system message
@@ -92,7 +92,7 @@ A single Flash call evaluates 6 dimensions every turn. Guard results flow into t
 | `blindspots` | Explanation loops, self-avoidance, intention gaps | Surface the blindspot naturally |
 | `ingratiation` | Last assistant reply was pandering | Become more independent |
 | `action_hollow` | Intention expressed before without follow-through | Gently remind of past patterns |
-| `safety` | Suicide, self-harm, violence, abuse | **Override main model — crisis response with hotlines** |
+| `safety` | Suicide, self-harm, violence, abuse | **Override main model — crisis response** |
 
 **Skips:** first exchange (no assistant reply yet), very short messages (< 5 characters). Flash errors degrade gracefully (all flags default to `ok`).
 
@@ -103,11 +103,9 @@ A single Flash call evaluates 6 dimensions every turn. Guard results flow into t
 The only **code-enforced override**. When the pre-pipeline returns `safety.flag == "crisis"`:
 
 1. Main model is **skipped entirely**
-2. A pre-defined crisis response with hotlines is streamed directly
+2. A pre-defined crisis response is streamed directly
 3. Safety state persists via UserDefaults — next turn continues monitoring
 4. Auto-clears when `safety.flag == "ok"` is returned
-
-**Hotlines:** Chinese (400-161-9995, 010-82951332, 110) and English (988, HOME to 741741, 911).
 
 ---
 

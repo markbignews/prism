@@ -21,13 +21,7 @@ extension ChatStore {
             检测到的安全信号：
             \(signalList)
 
-            请务必联系专业心理援助：
-            📞 **全国心理援助热线：400-161-9995**（24小时）
-            📞 **北京心理危机研究与干预中心：010-82951332**
-            📞 **希望24热线：400-161-9995**（学生专线按1，抑郁与自伤按2，生命热线按3）
-            或者立即前往最近的医院急诊科。
-
-            🔴 **如果现在有紧急危险，请立即拨打 110（中国大陆）/ 999（香港）**
+            请尽快联系专业的心理援助机构或前往最近的医院急诊科。专业人员能提供你需要的帮助。
 
             你的安全是最重要的。我暂停叙事分析，这些话题等你安全了再回来聊。你愿意告诉我你现在是否安全吗？
             """
@@ -41,13 +35,7 @@ extension ChatStore {
             \(signalList)
             \(resourceBlock)
 
-            Please reach out for help right now:
-            📞 **National Suicide Prevention Lifeline: 988** (US, 24/7)
-            📞 **Crisis Text Line: Text HOME to 741741** (US)
-            📞 **International Association for Suicide Prevention: https://www.iasp.info/resources/Crisis_Centres/**
-            Or go to your nearest emergency room.
-
-            🔴 **If you are in immediate danger, call your local emergency number (911 US / 999 UK / 112 EU / 110 CN / 119 JP / 000 AU)**
+            Please reach out to a mental health professional or go to your nearest emergency room. They can provide the help you need.
 
             Your safety comes first. I'm pausing all narrative analysis. We can talk about these things when you're in a safe place. Can you tell me if you're safe right now?
             """
