@@ -4,12 +4,12 @@
 
 <p align="center">
   <strong>稜鏡 / Prism</strong><br>
-  敘事反思伴侶 · 幫你看清盲點，找到出口<br>
-  <em>A narrative reflection companion. See blind spots, find a way forward.</em>
+  敘事分析 Agent · Narrative Analysis Agent<br>
 </p>
 
 <p align="center">
-  基於 <strong>Swift</strong> 的 vibe coding 項目 · macOS 桌面端應用 + CLI 命令列版本 · 支援 macOS / Linux / Windows
+  <img src="https://img.shields.io/badge/macOS_Version-SwiftUI-blue" alt="macOS"/>
+  <img src="https://img.shields.io/badge/Windows_Version-WinUI_3-blue" alt="Windows"/>
 </p>
 
 <p align="center">
@@ -18,7 +18,9 @@
 
 ---
 
-稜鏡是一款**本地優先、尊重隱私**的 AI 對話工具，基於 DeepSeek 大語言模型。它分析你的敘事模式、追蹤情緒變化、發現你可能忽略的盲點。為反思而設計。
+稜鏡是一款**本地優先、尊重隱私**的敘事分析 Agent，基於 DeepSeek 大語言模型。它識別敘事模式、追蹤情緒變化、發現盲點。
+
+> 本產品係敘事分析 Agent，不屬於《人工智能擬人化互動服務管理暫行辦法》(2026.7.15施行) 所規定的"擬人化互動服務"。不提供持續性情感陪伴。未滿14周歲請在監護人陪同下使用。
 
 ---
 
@@ -30,74 +32,28 @@
 
 ---
 
-## 功能
+## 版本
 
-- **串流對話** — DeepSeek v4-pro（thinking 模式）+ 5 個檢索工具
-- **思考鏈可見** — 生成時自動滾動顯示推理過程
-- **三種對話模式** — 理性 / 平衡（預設）/ 溫情
-- **品質守護** — Flash 預處理每輪檢測 6 個維度
-- **安全干預** — 自殺/自傷/暴力/虐待檢測跳過主模型
-- **跨對話記憶** — 歸納時自動生成，任意對話可檢索
-- **自動歸納** — 增量 + 全量重掃混合策略
-- **預處理管線** — 每輪 1 次 Flash 呼叫
-- **語意搜尋** — 關鍵詞 + Flash 重新排序
-- **情緒追蹤** — 每輪自動標註
-- **人物追蹤** — 自動提取，別名解析
+| 版本 | 平台 | 技術棧 |
+|---|---|---|
+| **macOS Version** | macOS 15+ | SwiftUI + Swift Agent (嵌入式) |
+| **Windows Version** | Windows 10+ | WinUI 3 + C# Agent (嵌入式) |
 
 ---
 
-## 處理流程
-
-```
-使用者訊息
-  │
-  ├── Flash 預處理（~500ms）
-  │     reality / spiral / blindspots / ingratiation / action_hollow / safety
-  │     emotions → emotion_timeline.json
-  │     persons → person_archive.json
-  │
-  ├── [安全覆寫] safety == "crisis" → 跳過主模型
-  │
-  ├── v4-pro 主模型 + 5 個檢索工具
-  │
-  └── 歸檔更新（非同步）
-```
-
----
-
-## 品質守護
-
-| 維度 | 說明 |
-|---|---|
-| `reality` | 事實 vs 解釋比例 |
-| `spiral` | 情緒無位移 |
-| `blindspots` | 解釋循環、迴避自我、意圖差距 |
-| `ingratiation` | 迎合傾向 |
-| `action_hollow` | 空頭承諾 |
-| `safety` | 安全訊號，**覆蓋主模型** |
-
----
-
-## 檢索工具（5 個）
-
-全部本機執行，零 API 成本。搜尋工具可選 Flash 重新排序。
-
-`track_person` · `emotion_timeline` · `search_chapters` · `fetch_chapter_messages` · `search_memory`
-
----
-
-## 快速開始
+## 建置
 
 ```bash
-# GUI
 cd GUI && swift build -c release
-cp .build/arm64-apple-macosx/release/Prism Prism.app/Contents/MacOS/Prism
-open Prism.app
-
-# CLI
-cd CLI && swift build -c release
-./.build/arm64-apple-macosx/release/prism
 ```
+
+零第三方依賴，僅需 Swift 6.0+。
+
+---
+
+## 隱私
+
+100% 本地儲存 · 僅當前上下文發 API · 無遙測
 
 ---
 

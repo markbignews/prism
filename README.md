@@ -4,12 +4,12 @@
 
 <p align="center">
   <strong>Prism / 棱镜</strong><br>
-  叙事反思伴侣 · 帮你看清盲点，找到出口<br>
-  <em>A narrative reflection companion. See blind spots, find a way forward.</em>
+  叙事分析 Agent · Narrative Analysis Agent<br>
 </p>
 
 <p align="center">
-  A <strong>Swift</strong> vibe coding project · macOS desktop app + CLI · Supports macOS / Linux / Windows
+  <img src="https://img.shields.io/badge/macOS_Version-SwiftUI-blue" alt="macOS"/>
+  <img src="https://img.shields.io/badge/Windows_Version-WinUI_3-blue" alt="Windows"/>
 </p>
 
 <p align="center">
@@ -18,7 +18,9 @@
 
 ---
 
-Prism is a **local-first, privacy-respecting** AI conversation tool powered by DeepSeek. It analyzes your narrative patterns, tracks emotional changes over time, and surfaces blindspots you might be missing. Designed for reflection.
+Prism is a **local-first, privacy-respecting** narrative analysis Agent powered by DeepSeek. It identifies narrative patterns, tracks emotional changes over time, and surfaces blindspots.
+
+> 本产品系叙事分析 Agent，不属于《人工智能拟人化互动服务管理暂行办法》(2026.7.15施行) 所规定的"拟人化互动服务"。不提供持续性情感陪伴。未满14周岁请在监护人陪同下使用。
 
 ---
 
