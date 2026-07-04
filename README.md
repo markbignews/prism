@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS_Version-SwiftUI-blue" alt="macOS"/>
-  <img src="https://img.shields.io/badge/Windows_Version-WinUI_3-blue" alt="Windows"/>
+  <img src="https://img.shields.io/badge/macOS-SwiftUI-blue" alt="macOS"/>
+  <img src="https://img.shields.io/badge/Windows-WinUI_3_(WIP)-lightgrey" alt="Windows"/>
 </p>
 
 <p align="center">
@@ -18,245 +18,76 @@
 
 ---
 
-Prism is a **local-first, privacy-respecting** emotion analysis Agent powered by DeepSeek. It helps you understand your emotional patterns, track sentiment shifts over time, identify narrative blindspots, and explore alternative perspectives on your experiences.
+## What is Prism?
 
-**What it does:**
-- **Emotion Tracking** — automatically labels emotional states across conversations, building a timeline of your sentiment journey
-- **Narrative Pattern Analysis** — identifies recurring themes, explanation loops, and behavioral patterns in how you tell your story
-- **Blindspot Detection** — surfaces gaps between what you say you'll do and what you describe doing; highlights when you focus on others' actions while omitting your own
-- **Multi-Perspective Analysis** — when your story is structurally complete, offers alternative interpretations of the same events
-- **Cross-Conversation Memory** — distills insights from past conversations into a searchable knowledge base
+Prism is a **local-first, privacy-respecting** emotion analysis Agent powered by DeepSeek. It runs entirely on your device — no cloud storage, no telemetry, no accounts. It analyzes your personal narratives, tracks emotional patterns across conversations, and surfaces cognitive blindspots you might be missing.
 
-**What it does NOT do:**
-- It does not provide emotional companionship or simulate a human relationship
-- It does not diagnose, treat, or replace mental health professionals
-- It does not simply agree with you — the quality guard system actively prevents pandering
-
-> 本产品系情感分析 Agent，不属于《人工智能拟人化互动服务管理暂行办法》(2026.7.15施行) 所规定的"拟人化互动服务"。本产品不提供持续性情感陪伴、不模拟自然人人格、不诱导情感依赖。未满14周岁请在监护人陪同下使用。连续使用超过2小时，建议休息。
+**It is an analytical tool, not a companion, not a therapist.** The quality guard system actively prevents emotional pandering and ensures analysis stays grounded in observable facts.
 
 ---
 
-### Screenshots
+## What It Does
 
-| 对话 | 跨对话记忆 | 人物记忆 |
+- **Emotion Tracking** — automatically labels your emotional states across every conversation, building a searchable timeline of your sentiment journey
+- **Narrative Pattern Analysis** — detects recurring themes, explanation loops, and behavioral patterns in how you frame your experiences
+- **Blindspot Detection** — surfaces gaps between stated intentions and described actions; flags when you focus extensively on others while omitting your own role
+- **Multi-Perspective Analysis** — when your story has enough structure, generates alternative interpretations of the same events from different viewpoints
+- **Cross-Conversation Memory** — distills insights from past conversations into a searchable knowledge base that persists across sessions
+- **Semantic Search** — keyword pre-filter plus Flash model reranking finds relevant content even when you use different words
+- **Safety Intervention** — code-enforced pipeline detects crisis signals and overrides the main model to provide professional resource guidance
+
+## How It Works
+
+Every message triggers a pipeline: a Flash guard model analyzes quality + safety + emotion + person extraction → the main Pro model generates a response with guard hints injected as context → archive data is persisted to local JSON.
+
+---
+
+## Screenshots
+
+| Conversation | Cross-Conversation Memory | Person Tracking |
 |---|---|---|
 | <img src="assets/1.png" width="240" style="border-radius: 16px;"/> | <img src="assets/2.png" width="240" style="border-radius: 16px;"/> | <img src="assets/3.png" width="240" style="border-radius: 16px;"/> |
 
 ---
 
-## Features
+## Key Features
 
-- **Streaming conversation** with DeepSeek v4-pro (thinking mode, configurable to v4-flash) + 5 retrieval tools
-- **Reasoning chain** visible and auto-scrolling during generation
-- **Three conversation modes** — Rational, Balanced (default), Warm
-- **Quality guard system** — Flash pre-pipeline detects 6 dimensions every turn (safety override is code-enforced)
-- **Safety intervention** — suicide/self-harm/violence/abuse detection skips the main model and outputs a crisis response
-- **Cross-conversation memory** — auto-generated from chapter summaries, retrievable in any conversation
-- **Auto-summarization** — incremental + full re-scan hybrid strategy
-- **Pre-pipeline** — one Flash call per turn covering guard + emotion + person extraction (~500ms)
-- **Windowed context** — ≤60 messages full context, >60 compressed with chapter index
-- **Semantic search** — keyword pre-filter + Flash reranking for chapters and memory
-- **Emotion tracking** — automatically labeled every turn, viewable as timeline
-- **Person tracking** — alias-aware extraction across conversations
-- **Blindspot scanning** — explanation loops, self-avoidance, intention-action gaps
-- **Conversation title generation** — auto-named from chapter summaries via Flash
-
----
-
-## How It Works
-
-```
-User Message
-  │
-  ├── [1] Flash Pre-pipeline (code-enforced, ~500ms)
-  │     └─ Unified single call:
-  │          reality          — fact vs. interpretation ratio
-  │          spiral           — emotional stagnation
-  │          blindspots       — explanation loops, self-avoidance, intention-action gaps
-  │          ingratiation     — assistant pandering check
-  │          action_hollow    — past unfulfilled intentions
-  │          safety           — suicide/self-harm/violence/abuse (highest priority)
-  │          emotions         — emotion labeling → emotion_timeline.json
-  │          persons          — person extraction (alias-aware) → person_archive.json
-  │
-  ├── [Safety override] safety == "crisis" → skip main model entirely
-  │     return immediate crisis response
-  │
-  ├── [2] v4-pro main model (thinking, streaming)
-  │     ├─ supervisorHint guard hints injected as system message
-  │     ├─ 5 retrieval tools available
-  │     └─ windowed message context (≤60 full, >60 compressed)
-  │
-  └── [3] Archive update (Task.detached, non-blocking)
-        ├─ emotions → emotion_timeline.json (capped at 200)
-        ├─ persons → person_archive.json (capped at 200)
-        └─ blindspots → blindspots.json (capped at 300)
-```
-
----
-
-## Quality Guard System
-
-A single Flash call evaluates 6 dimensions every turn. Guard results flow into the main model as `[supervisorHint]` system messages. The safety dimension can **bypass the main model entirely**.
-
-| Dimension | What it detects | Behavior on warning |
-|---|---|---|
-| `reality` | Too much interpretation, too few facts | Gently pull back to concrete events |
-| `spiral` | Same topic repeated, no emotional shift | Switch from analysis to exit guidance |
-| `blindspots` | Explanation loops, self-avoidance, intention gaps | Surface the blindspot naturally |
-| `ingratiation` | Last assistant reply was pandering | Become more independent |
-| `action_hollow` | Intention expressed before without follow-through | Gently remind of past patterns |
-| `safety` | Suicide, self-harm, violence, abuse | **Override main model — crisis response** |
-
-**Skips:** first exchange (no assistant reply yet), very short messages (< 5 characters). Flash errors degrade gracefully (all flags default to `ok`).
-
----
-
-## Safety Intervention
-
-The only **code-enforced override**. When the pre-pipeline returns `safety.flag == "crisis"`:
-
-1. Main model is **skipped entirely**
-2. A pre-defined crisis response is streamed directly
-3. Safety state persists via UserDefaults — next turn continues monitoring
-4. Auto-clears when `safety.flag == "ok"` is returned
-
----
-
-## Retrieval Tools
-
-5 tools. All execute locally from in-memory JSON archives (zero API cost). `search_chapters` and `search_memory` optionally use Flash reranking: keyword pre-filter → semantic rerank. Falls back to keywords on Flash failure.
-
-| Tool | Parameters | Returns | AI cost |
-|---|---|---|---|
-| `track_person` | `name` (required) | Person archive record | None |
-| `emotion_timeline` | `count` (default 5) | Raw emotion sequence | None |
-| `search_chapters` | `query` (required), `count` (default 5) | Title, summary, keywords | Flash rerank (optional) |
-| `fetch_chapter_messages` | `index` (required, 1-based) | Full chapter text (≤12 msgs) | None |
-| `search_memory` | `query` (required), `count` (default 10) | Memory entries | Flash rerank (optional) |
-
----
-
-## Conversation Modes
-
-| Mode | Temperature | Tone |
-|---|---|---|
-| **Rational** | 0.1 | Cool, analytical, minimal emotional framing |
-| **Balanced** (default) | 0.35 | Empathetic but honest, challenges when needed |
-| **Warm** | 0.6 | Emotional safety prioritized, gentle pushback |
-
----
-
-## Context Window & Summarization
-
-| Topic | Detail |
-|---|---|
-| **≤ 60 messages** | Full context + chapter index |
-| **> 60 messages** | Last 40 full, older compressed to chapter summaries |
-| **Trigger** | Every N exchanges (default 5, configurable 2/5/10/off) |
-| **Incremental** | New messages → 1 chapter, enriched with archive context |
-| **Full re-scan** | Every 3 incrementals, entire conversation re-chaptered, title regenerated |
-| **On switch** | Pending content summarized when leaving a conversation |
-
-Compression is not deletion — model retrieves compressed content via search tools.
-
----
-
-## Archives
-
-All data stored as local plain JSON at `~/Documents/Prism/Data/`.
-
-| Archive | Cap | Maintained by |
-|---|---|---|
-| `person_archive.json` | 200 (by recency) | Pre-pipeline |
-| `emotion_timeline.json` | 200 (newest) | Pre-pipeline |
-| `blindspots.json` | 300 (newest) | Pre-pipeline |
-| `memory.json` | 500 (newest) | Summarization |
-
----
-
-## Project Structure
-
-```
-chatbot/
-├── CLI/Sources/        (12 files — main.swift, ChatStore, PrePipeline, DeepSeekClient,
-│                        AgentPrompt, Tools, SearchExpander, StoryMemory, Models,
-│                        AppSettings, L10n, Terminal)
-├── macOS Version/Sources/Prism/  (15 files — same 10 shared + ContentView, OnboardingView,
-│                        PrismApp, SettingsView, MarkdownText)
-├── assets/             Screenshots and app icon
-├── LICENSE
-├── README.md           This file
-├── README_CN.md        Simplified Chinese
-└── README_ZH_HANT.md   Traditional Chinese
-```
+- Streaming conversation with DeepSeek v4-pro (thinking mode) + 5 retrieval tools
+- Three modes — Rational, Balanced (default), Warm
+- Flash pre-pipeline: 6-dimension quality guard + emotion labeling + person extraction every turn
+- Auto-summarization: incremental + periodic full re-scan with chapter generation
+- 5 retrieval tools: person tracking, emotion timeline, chapter search, chapter fetch, cross-conversation memory
+- 29 synonym groups (Chinese + English) for semantic search
+- Safety intervention: code-enforced crisis detection overrides the main model
+- 100% local JSON storage — your data never leaves your device
 
 ---
 
 ## Quick Start
 
-### Prerequisites
-- Swift 6.0+
-- [DeepSeek API Key](https://platform.deepseek.com)
-- GUI: macOS 15+, CLI: macOS, Linux, Windows
-
-### GUI
 ```bash
 cd "macOS Version" && swift build -c release
-cp .build/arm64-apple-macosx/release/Prism Prism.app/Contents/MacOS/Prism
 open Prism.app
 ```
 
-### CLI
-```bash
-cd CLI && swift build -c release
-./.build/arm64-apple-macosx/release/prism
-```
+Requires: macOS 15+, Swift 6.0+, DeepSeek API Key.
 
-Type to chat. `/help` for all commands. `/config` for live settings.
+On first launch, enter your API key in the setup wizard.
 
 ---
 
-## CLI Commands
+## Compliance
 
-| Category | Commands |
-|---|---|
-| Navigation | `/help`, `/new`, `/list`, `/switch <n>`, `/delete <n>`, `/rename <n>` |
-| Messages | `/history [n]`, `/delmsg <n>`, `/find <keyword>` |
-| Search | `/chapters`, `/chapter <n>`, `/search <keyword>` |
-| Info | `/info`, `/settings` |
-| Summarization | `/summarize` |
-| Config | `/config <key> <value>` |
-| Other | `/thinking`, `/lang zh\|tw\|en`, `/reset --confirm`, `/exit` |
-
-Config keys: `apikey`, `model`, `mode`, `response`, `thinking`, `effort`, `summary`, `icloud`, `datapath`, `lang`
-
----
-
-## Building
-
-```bash
-# Zero third-party dependencies. Swift 6.0+ only.
-cd CLI  && swift build -c release
-cd "macOS Version"  && swift build -c release
-```
+> 本产品系情感分析 Agent，不属于《人工智能拟人化互动服务管理暂行办法》(2026.7.15施行) 所规定的"拟人化互动服务"。本产品不提供持续性情感陪伴、不模拟自然人人格、不诱导情感依赖、不替代专业心理健康服务。未满14周岁请在监护人陪同下使用。
 
 ---
 
 ## Privacy
 
-- **100% local storage** at `~/Documents/Prism/` (configurable)
-- Only current conversation context sent to DeepSeek API
-- No telemetry, no analytics SDK
-- Optional iCloud Drive sync (macOS, opt-in)
-- All archives are plain JSON — readable, portable, deletable
+100% local storage · Only conversation context sent to API · No telemetry, no analytics · All data is plain JSON you can read, copy, or delete.
 
 ---
 
 ## License
 
 [MIT](LICENSE)
-
----
-
-*Prism — not here to keep you. Here to help you leave.*
