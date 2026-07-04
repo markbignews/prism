@@ -264,7 +264,7 @@ enum L10n {
         .emptyMirrorHint: "从一个具体场景开始。我会帮你拆分事实与解释、梳理感受，并在故事足够完整时提供多个可能的叙事视角。",
         // Onboarding
         .onboardingWelcomeTitle: "欢迎使用棱镜",
-        .onboardingWelcomeBody: "棱镜是基于 DeepSeek 的叙事分析 Agent。它识别你的叙事模式、追踪情绪变化、发现盲点。",
+        .onboardingWelcomeBody: "棱镜是基于 DeepSeek 的情感分析 Agent。它识别你的叙事模式、追踪情绪变化、发现盲点。",
         .onboardingPurposeTitle: "棱镜能做什么",
         .onboardingPurposeBody: "棱镜基于 DeepSeek 大语言模型，通过对话帮你梳理叙事中的事实、解释、情绪和未知信息。",
         .onboardingFeaturesTitle: "核心特性",

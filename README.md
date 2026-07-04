@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Prism / 棱镜</strong><br>
-  叙事分析 Agent · Narrative Analysis Agent<br>
+  情感分析 Agent · Emotion Analysis Agent<br>
 </p>
 
 <p align="center">
@@ -18,9 +18,21 @@
 
 ---
 
-Prism is a **local-first, privacy-respecting** narrative analysis Agent powered by DeepSeek. It identifies narrative patterns, tracks emotional changes over time, and surfaces blindspots.
+Prism is a **local-first, privacy-respecting** emotion analysis Agent powered by DeepSeek. It helps you understand your emotional patterns, track sentiment shifts over time, identify narrative blindspots, and explore alternative perspectives on your experiences.
 
-> 本产品系叙事分析 Agent，不属于《人工智能拟人化互动服务管理暂行办法》(2026.7.15施行) 所规定的"拟人化互动服务"。不提供持续性情感陪伴。未满14周岁请在监护人陪同下使用。
+**What it does:**
+- **Emotion Tracking** — automatically labels emotional states across conversations, building a timeline of your sentiment journey
+- **Narrative Pattern Analysis** — identifies recurring themes, explanation loops, and behavioral patterns in how you tell your story
+- **Blindspot Detection** — surfaces gaps between what you say you'll do and what you describe doing; highlights when you focus on others' actions while omitting your own
+- **Multi-Perspective Analysis** — when your story is structurally complete, offers alternative interpretations of the same events
+- **Cross-Conversation Memory** — distills insights from past conversations into a searchable knowledge base
+
+**What it does NOT do:**
+- It does not provide emotional companionship or simulate a human relationship
+- It does not diagnose, treat, or replace mental health professionals
+- It does not simply agree with you — the quality guard system actively prevents pandering
+
+> 本产品系情感分析 Agent，不属于《人工智能拟人化互动服务管理暂行办法》(2026.7.15施行) 所规定的"拟人化互动服务"。本产品不提供持续性情感陪伴、不模拟自然人人格、不诱导情感依赖。未满14周岁请在监护人陪同下使用。连续使用超过2小时，建议休息。
 
 ---
 
