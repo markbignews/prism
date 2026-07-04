@@ -44,7 +44,7 @@
 ## 建置
 
 ```bash
-cd GUI && swift build -c release
+cd "macOS Version" && swift build -c release
 ```
 
 零第三方依賴，僅需 Swift 6.0+。

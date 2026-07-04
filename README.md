@@ -170,7 +170,7 @@ chatbot/
 ├── CLI/Sources/        (12 files — main.swift, ChatStore, PrePipeline, DeepSeekClient,
 │                        AgentPrompt, Tools, SearchExpander, StoryMemory, Models,
 │                        AppSettings, L10n, Terminal)
-├── GUI/Sources/Prism/  (15 files — same 10 shared + ContentView, OnboardingView,
+├── macOS Version/Sources/Prism/  (15 files — same 10 shared + ContentView, OnboardingView,
 │                        PrismApp, SettingsView, MarkdownText)
 ├── assets/             Screenshots and app icon
 ├── LICENSE
@@ -190,7 +190,7 @@ chatbot/
 
 ### GUI
 ```bash
-cd GUI && swift build -c release
+cd "macOS Version" && swift build -c release
 cp .build/arm64-apple-macosx/release/Prism Prism.app/Contents/MacOS/Prism
 open Prism.app
 ```
@@ -226,7 +226,7 @@ Config keys: `apikey`, `model`, `mode`, `response`, `thinking`, `effort`, `summa
 ```bash
 # Zero third-party dependencies. Swift 6.0+ only.
 cd CLI  && swift build -c release
-cd GUI  && swift build -c release
+cd "macOS Version"  && swift build -c release
 ```
 
 ---
