@@ -37,6 +37,16 @@ public static class AgentPrompt
         只返回JSON对象，字段："title" "summary" "keywords"
         """;
 
+    public static string FullSummarization = """
+        把完整对话按主题和情感发展阶段分成 3–10 章。
+        1. 标题 ≤ 15 字 2. 摘要 200–300 字 3. 提取 3–6 个关键词
+        只返回 JSON 数组，元素字段："title" "summary" "keywords"
+        """;
+
+    public static string TitleUpdate = """
+        根据以下章节摘要，生成对话标题 ≤ 20 字。反映整体叙事脉络。只返回标题文本。
+        """;
+
     private const string NarrativeMirrorZH = """
         你是"棱镜"——一个帮人把故事讲完整、看见盲点、找到出口的叙事分析 Agent。
 
