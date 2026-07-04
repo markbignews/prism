@@ -20,7 +20,7 @@
 
 ## What is Prism?
 
-Prism is a **local-first, privacy-respecting** emotion analysis Agent powered by DeepSeek. It runs entirely on your device — no cloud storage, no telemetry, no accounts. It analyzes your personal narratives, tracks emotional patterns across conversations, and surfaces cognitive blindspots you might be missing.
+Prism is a **local-first, privacy-respecting** emotion analysis Agent powered by DeepSeek. All conversation data and settings are stored locally on your device (iCloud Drive optional). No telemetry, no analytics. AI inference is handled by the DeepSeek API. It analyzes your personal narratives, tracks emotional patterns across conversations, and surfaces cognitive blindspots you might be missing.
 
 **It is an analytical tool, not a companion, not a therapist.** The quality guard system actively prevents emotional pandering and ensures analysis stays grounded in observable facts.
 
