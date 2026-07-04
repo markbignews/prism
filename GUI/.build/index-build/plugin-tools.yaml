@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "Core-arm64-apple-macosx-debug.module": ["<Core-arm64-apple-macosx-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "Prism-arm64-apple-macosx-debug.module": ["<Prism-arm64-apple-macosx-debug.module>"]
+  "main": ["<Prism-arm64-apple-macosx-debug.module>"]
+  "test": ["<Prism-arm64-apple-macosx-debug.module>"]
+default: "main"
+nodes:
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/loong/Documents/chatbot/Core/Sources/AgentPrompt.swift","/Users/loong/Documents/chatbot/Core/Sources/AppSettings.swift","/Users/loong/Documents/chatbot/Core/Sources/ChatAgent.swift","/Users/loong/Documents/chatbot/Core/Sources/DeepSeekClient.swift","/Users/loong/Documents/chatbot/Core/Sources/L10n.swift","/Users/loong/Documents/chatbot/Core/Sources/Models.swift","/Users/loong/Documents/chatbot/Core/Sources/PrePipeline.swift","/Users/loong/Documents/chatbot/Core/Sources/SearchExpander.swift","/Users/loong/Documents/chatbot/Core/Sources/StoryMemory.swift","/Users/loong/Documents/chatbot/Core/Sources/Tools.swift"]
+    outputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/sources"]
+    description: "Write auxiliary file /Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/sources"
+
+  "/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Prism.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/loong/Documents/chatbot/GUI/Sources/Prism/ChatStore.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift"]
+    outputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Prism.build/sources"]
+    description: "Write auxiliary file /Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Prism.build/sources"
+
+  "/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+
+  "<Core-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Core.swiftmodule"]
+    outputs: ["<Core-arm64-apple-macosx-debug.module>"]
+
+  "<Prism-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Prism.swiftmodule"]
+    outputs: ["<Prism-arm64-apple-macosx-debug.module>"]
+
+  "C.Core-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/loong/Documents/chatbot/Core/Sources/AgentPrompt.swift","/Users/loong/Documents/chatbot/Core/Sources/AppSettings.swift","/Users/loong/Documents/chatbot/Core/Sources/ChatAgent.swift","/Users/loong/Documents/chatbot/Core/Sources/DeepSeekClient.swift","/Users/loong/Documents/chatbot/Core/Sources/L10n.swift","/Users/loong/Documents/chatbot/Core/Sources/Models.swift","/Users/loong/Documents/chatbot/Core/Sources/PrePipeline.swift","/Users/loong/Documents/chatbot/Core/Sources/SearchExpander.swift","/Users/loong/Documents/chatbot/Core/Sources/StoryMemory.swift","/Users/loong/Documents/chatbot/Core/Sources/Tools.swift","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/sources"]
+    outputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Core.swiftmodule"]
+    description: "Compiling Swift Module 'Core' (10 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","Core","-emit-dependencies","-emit-module","-emit-module-path","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Core.swiftmodule","-output-file-map","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/output-file-map.json","-parse-as-library","-incremental","@/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/sources","-I","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx15.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-Onone","-enable-testing","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Core.build/include/Core-Swift.h","-swift-version","6","-Xfrontend","-experimental-lazy-typecheck","-Xfrontend","-experimental-skip-all-function-bodies","-Xfrontend","-experimental-allow-module-with-compiler-errors","-Xfrontend","-empty-abi-descriptor","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","core"]
+
+  "C.Prism-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/loong/Documents/chatbot/GUI/Sources/Prism/ChatStore.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift","/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Core.swiftmodule","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Prism.build/sources"]
+    outputs: ["/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Prism.swiftmodule"]
+    description: "Compiling Swift Module 'Prism' (6 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","Prism","-emit-dependencies","-emit-module","-emit-module-path","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules/Prism.swiftmodule","-output-file-map","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Prism.build/output-file-map.json","-incremental","@/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Prism.build/sources","-I","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx15.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-Onone","-enable-testing","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/loong/Documents/chatbot/GUI/.build/index-build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","Prism_main","-swift-version","6","-Xfrontend","-experimental-lazy-typecheck","-Xfrontend","-experimental-skip-all-function-bodies","-Xfrontend","-experimental-allow-module-with-compiler-errors","-Xfrontend","-empty-abi-descriptor","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","gui"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/loong/Documents/chatbot/GUI/Sources/Prism/","/Users/loong/Documents/chatbot/GUI/Package.swift","/Users/loong/Documents/chatbot/GUI/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

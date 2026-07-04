@@ -19,7 +19,7 @@ enum ToolRegistry {
 
     // MARK: - Memory Search
 
-    @MainActor private static func searchMemory(query: String, store: ChatStore, limit: Int) -> String {
+    @MainActor private static func searchMemory(query: String, store: ChatAgent, limit: Int) -> String {
         let entries = store.searchMemory(query: query, limit: limit)
         let results: [[String: Any]] = entries.map { entry in
             [
@@ -42,7 +42,7 @@ enum ToolRegistry {
     static func execute(
         name: String,
         arguments: String,
-        store: ChatStore,
+        store: ChatAgent,
         settings: AppSettings? = nil
     ) async -> String {
         let args: [String: String]
@@ -110,7 +110,7 @@ enum ToolRegistry {
     // MARK: - Individual Tool Executors
 
     /// Look up a person across all conversations.
-    @MainActor private static func trackPerson(name: String, store: ChatStore) -> String {
+    @MainActor private static func trackPerson(name: String, store: ChatAgent) -> String {
         let archive = store.personArchive
         guard !name.isEmpty else {
             return #"{"found":false,"reason":"empty name"}"#
@@ -128,7 +128,7 @@ enum ToolRegistry {
     }
 
     /// Return recent emotional trajectory — raw data only, model judges the trend.
-    @MainActor private static func emotionTimeline(count: Int, store: ChatStore) -> String {
+    @MainActor private static func emotionTimeline(count: Int, store: ChatAgent) -> String {
         let timeline = store.emotionTimeline.suffix(count)
         var result: [[String: Any]] = []
         for entry in timeline {
@@ -149,7 +149,7 @@ enum ToolRegistry {
 
     /// Search past chapter summaries — returns full message content for matches
     /// so the agent can read the original conversation text.
-    @MainActor private static func searchChapters(query: String, store: ChatStore) -> String {
+    @MainActor private static func searchChapters(query: String, store: ChatAgent) -> String {
         let allChapters = store.allChapters
         let topN = 10
 
@@ -186,7 +186,7 @@ enum ToolRegistry {
     }
 
     /// Fetch all messages for a specific chapter by index (1-based).
-    @MainActor private static func fetchChapterMessages(args: [String: String], store: ChatStore) -> String {
+    @MainActor private static func fetchChapterMessages(args: [String: String], store: ChatAgent) -> String {
         guard let indexStr = args["index"],
               let index = Int(indexStr),
               index >= 1 else {
@@ -222,7 +222,7 @@ enum ToolRegistry {
         return str
     }
 
-    @MainActor private static func buildChapterResults(chapters: [StoryChapter], store: ChatStore) -> String {
+    @MainActor private static func buildChapterResults(chapters: [StoryChapter], store: ChatAgent) -> String {
         let results: [[String: Any]] = chapters.map { ch in
             return [
                 "title": ch.title,

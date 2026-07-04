@@ -1,0 +1,103 @@
+{
+  "": {
+    "dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Prism.d",
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Prism.o",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/primary.swiftdeps"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/AgentPrompt.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AgentPrompt.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AgentPrompt~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AgentPrompt.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AgentPrompt.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/AppSettings.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AppSettings.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AppSettings~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AppSettings.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/AppSettings.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ChatAgent.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatAgent.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatAgent~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatAgent.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatAgent.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ChatStore.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatStore.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatStore~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatStore.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ChatStore.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ContentView.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ContentView.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/ContentView.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/DeepSeekClient.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/DeepSeekClient.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/DeepSeekClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/DeepSeekClient.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/DeepSeekClient.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/L10n.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/L10n.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/L10n~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/L10n.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/L10n.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/MarkdownText.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/MarkdownText~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/MarkdownText.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/MarkdownText.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/Models.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Models.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Models.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Models.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/OnboardingView.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/OnboardingView~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/OnboardingView.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/OnboardingView.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrePipeline.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrePipeline.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrePipeline~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrePipeline.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrePipeline.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrismApp.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrismApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrismApp.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/PrismApp.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/SearchExpander.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SearchExpander.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SearchExpander~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SearchExpander.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SearchExpander.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SettingsView.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SettingsView.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/SettingsView.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/StoryMemory.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/StoryMemory.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/StoryMemory~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/StoryMemory.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/StoryMemory.dia"
+  },
+  "/Users/loong/Documents/chatbot/GUI/Sources/Prism/Tools.swift": {
+    "object": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Tools.swift.o",
+    "swiftmodule": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Tools~partial.swiftmodule",
+    "swift-dependencies": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Tools.swiftdeps",
+    "diagnostics": "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/release/Prism.build/Tools.dia"
+  }
+}

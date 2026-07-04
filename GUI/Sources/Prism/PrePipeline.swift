@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Unified Pre‑Pipeline (extension of ChatStore)
 
-extension ChatStore {
+extension ChatAgent {
     // MARK: - Safety Crisis Response
 
     /// Build a safety intervention response in the user's language.

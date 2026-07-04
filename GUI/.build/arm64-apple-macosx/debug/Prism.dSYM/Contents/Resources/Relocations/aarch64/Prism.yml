@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism'
+relocations:     []
+...

@@ -1,0 +1,838 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.Core-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/sources",
+      "importPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/AgentPrompt.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/AppSettings.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Conversations.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Memory.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Messaging.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Persistence.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+PrePipeline.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Search.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Summarization.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/DeepSeekClient.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/L10n.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/SearchExpander.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/StoryMemory.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/Tools.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "Core",
+      "moduleOutputPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules/Core.swiftmodule",
+      "objects" : [
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AgentPrompt.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AppSettings.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Conversations.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Memory.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Messaging.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Persistence.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+PrePipeline.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Search.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Summarization.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/DeepSeekClient.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/L10n.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Models.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/SearchExpander.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/StoryMemory.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Tools.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/include/Core-Swift.h",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "core"
+      ],
+      "outputFileMapPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AgentPrompt.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AppSettings.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Conversations.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Memory.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Messaging.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Persistence.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+PrePipeline.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Search.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Summarization.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/DeepSeekClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/L10n.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/SearchExpander.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/StoryMemory.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Tools.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules/Core.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/AgentPrompt.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/AppSettings.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Conversations.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Memory.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Messaging.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Persistence.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+PrePipeline.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Search.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Summarization.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/DeepSeekClient.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/L10n.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/Models.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/SearchExpander.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/StoryMemory.swift",
+        "/Users/loong/Documents/chatbot/Core/Sources/Core/Tools.swift"
+      ],
+      "tempsPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.Prism-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/sources",
+      "importPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules/Core.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "Prism",
+      "moduleOutputPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules/Prism.swiftmodule",
+      "objects" : [
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/ContentView.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/MarkdownText.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/OnboardingView.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/PrismApp.swift.o",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/SettingsView.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "Prism_main",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "gui"
+      ],
+      "outputFileMapPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/ContentView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/MarkdownText.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/OnboardingView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/PrismApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/SettingsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules/Prism.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift",
+        "/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift",
+        "/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift",
+        "/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift",
+        "/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift"
+      ],
+      "tempsPath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "Core" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "Core",
+      "-package-name",
+      "core",
+      "-c",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/AgentPrompt.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/AppSettings.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Conversations.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Memory.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Messaging.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Persistence.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+PrePipeline.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Search.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Summarization.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/DeepSeekClient.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/L10n.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/Models.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/SearchExpander.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/StoryMemory.swift",
+      "/Users/loong/Documents/chatbot/Core/Sources/Core/Tools.swift",
+      "-I",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/include/Core-Swift.h",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "core",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ],
+    "Prism" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "Prism",
+      "-package-name",
+      "gui",
+      "-c",
+      "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift",
+      "/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift",
+      "/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift",
+      "/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift",
+      "/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift",
+      "-I",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "Prism_main",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "gui",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "Core" : [
+
+    ],
+    "Prism" : [
+      "Core"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/AgentPrompt.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/AppSettings.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Conversations.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Memory.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Messaging.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Persistence.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+PrePipeline.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Search.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Summarization.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/DeepSeekClient.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/L10n.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/SearchExpander.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/StoryMemory.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/Core/Sources/Core/Tools.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/sources"
+    },
+    "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AgentPrompt.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AppSettings.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Conversations.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Memory.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Messaging.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Persistence.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+PrePipeline.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Search.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Summarization.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/DeepSeekClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/L10n.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/SearchExpander.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/StoryMemory.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Tools.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.product/Objects.LinkFileList"
+    },
+    "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism-entitlement.plist"
+    },
+    "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/ContentView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/MarkdownText.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/OnboardingView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/PrismApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/Sources/Prism/SettingsView.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/sources"
+    },
+    "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AgentPrompt.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/AppSettings.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Conversations.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Memory.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Messaging.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Persistence.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+PrePipeline.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Search.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore+Summarization.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/ChatStore.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/DeepSeekClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/L10n.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/SearchExpander.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/StoryMemory.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/Tools.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/ContentView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/MarkdownText.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/OnboardingView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/PrismApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.build/SettingsView.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Prism.product/Objects.LinkFileList"
+    },
+    "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}

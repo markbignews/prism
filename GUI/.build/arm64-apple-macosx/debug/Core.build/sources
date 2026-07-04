@@ -1,0 +1,16 @@
+/Users/loong/Documents/chatbot/Core/Sources/Core/AgentPrompt.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/AppSettings.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Conversations.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Memory.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Messaging.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Persistence.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+PrePipeline.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Search.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore+Summarization.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/ChatStore.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/DeepSeekClient.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/L10n.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/Models.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/SearchExpander.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/StoryMemory.swift
+/Users/loong/Documents/chatbot/Core/Sources/Core/Tools.swift

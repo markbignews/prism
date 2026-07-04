@@ -1,0 +1,3 @@
+module Core {
+    header "/Users/loong/Documents/chatbot/GUI/.build/arm64-apple-macosx/debug/Core.build/include/Core-Swift.h"
+}
