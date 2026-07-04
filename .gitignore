@@ -1,0 +1,15 @@
+# macOS system files
+.DS_Store
+**/.DS_Store
+
+# Build artifacts
+macOS Version/.build/
+macOS Version/Prism.app/
+
+# Icon working files
+assets/Untitled.icon/
+macOS Version/Untitled.icon/
+
+# Other platform versions (not mature)
+Qt Version/
+Web Version/
