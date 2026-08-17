@@ -1,0 +1,14 @@
+# macOS system files
+.DS_Store
+**/.DS_Store
+
+# Swift and Tauri build outputs
+**/.build/
+**/target/
+
+# Packaged apps are kept only in release/
+swift version/Prism.app/
+Tauri Version/macOS Version/Prism.app/
+
+# Local/working icon artifact
+Tauri Version/Tauri Version
