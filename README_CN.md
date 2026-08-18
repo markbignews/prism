@@ -1,6 +1,6 @@
 # Prism / 棱镜
 
-Prism 是一个面向个人叙事的情绪分析与认知反思实验项目。它把 SwiftUI 和 Tauri 作为跨平台界面外壳，把对话、记忆、人物、盲点、情绪与叙事时间轴组织到同一套本地优先的数据模型中。
+Prism 是一个面向个人叙事的情绪分析与认知反思工具。它把 SwiftUI 和 Tauri 作为跨平台界面外壳，把对话、记忆、人物、盲点、情绪与叙事时间轴组织到同一套本地优先的数据模型中。
 
 ## 当前版本
 
@@ -10,7 +10,7 @@ Prism 是一个面向个人叙事的情绪分析与认知反思实验项目。�
 | Tauri macOS | macOS（按配置） | HTML/CSS/JavaScript 前端 + Rust 核心 |
 | Tauri Windows | Windows 11+ | 独立工程，MSVC 工具链，NSIS 当前用户安装包 |
 
-Windows 工程位于 [`Prism/Tauri Version/Windows Version`](Prism/Tauri%20Version/Windows%20Version/README.md)，不是旧版 WinUI 工程。macOS 与 Windows 的最终安装包必须分别在对应平台验证；macOS 构建不能证明 Windows `.exe` 或 NSIS 安装包可用。
+Windows 工程位于 [`Prism/Tauri Version/Windows Version`](Prism/Tauri%20Version/Windows%20Version/README.md)，采用独立的 Tauri、MSVC 工具链和 NSIS 当前用户安装包。
 
 Tauri 客户端基于 **Tauri 2**；当前应用配置版本为 `1.0.14`。
 
@@ -44,4 +44,4 @@ Prism/
 └── README*.md                     # 产品与平台文档
 ```
 
-这是实验性测试项目，不把本地 macOS 检查包装成已验证的 Windows 发布物，也不把产品描述成陪伴或医疗服务。
+Prism 是一个持续迭代的本地优先叙事分析工具，不是陪伴型产品或医疗服务。

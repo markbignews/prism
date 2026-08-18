@@ -43,6 +43,6 @@ Windows 版本默认将数据保存到：
 - 文档目录：`%USERPROFILE%\Documents\Prism`
 - 存储路径配置：`%APPDATA%\Prism\storage_path`
 
-## 验证边界
+## Windows 客户端
 
-在 macOS 上可以完成 JavaScript 语法检查、Rust 格式检查、单元测试以及宿主目标的编译检查，但这些结果不能证明 Windows `.exe` 或 NSIS 安装包可用。发布前必须在 Windows 11 或配置完整的 Windows MSVC CI/虚拟机中执行 `cargo tauri build`，并实际检查安装、启动、WebView2、文件选择和数据持久化。
+Windows 版本使用原生 Windows 11 窗口、WebView2 和 NSIS 当前用户安装模式，并将用户数据保存在用户自己的 Prism 数据目录中。

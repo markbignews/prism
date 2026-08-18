@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <strong>测试项目 · Experimental project</strong><br>
+  <strong>Local-first narrative analysis workspace</strong><br>
   SwiftUI + Tauri · macOS 15+ · Windows 11+
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-experimental%20project-6f42c1" alt="Experimental project"/>
+  <img src="https://img.shields.io/badge/status-active%20development-6f42c1" alt="Active development"/>
   <img src="https://img.shields.io/badge/macOS-SwiftUI-blue" alt="macOS SwiftUI"/>
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2"/>
   <img src="https://img.shields.io/badge/Windows-11%2B-0078D4" alt="Windows 11 or later"/>
@@ -35,11 +35,9 @@ Prism is deliberately not designed as an always-on companion. It is an analytica
 
 > Prism is not a therapist, doctor, emergency service, or a substitute for professional care.
 
-## Experimental project
+## What Prism includes
 
-Prism is currently an experimental test project. The core workflow is available for evaluation, while product behavior and API details may change without notice.
-
-The current test build includes:
+Prism brings together:
 
 - A native SwiftUI client for Apple Silicon Macs
 - A Tauri client for macOS
@@ -97,11 +95,11 @@ The safety path has priority over the normal response path. When a crisis signal
 
 ## Supported platforms
 
-| Client | Runtime | Current testing boundary |
+| Client | Runtime | Highlights |
 | --- | --- | --- |
 | SwiftUI | macOS 15+, Apple Silicon | Native client; packaged app: `release/Prism-SwiftUI-macOS.app` |
 | Tauri macOS | macOS 12+ as configured | Shared HTML/CSS/JavaScript frontend with a Rust core; packaged app: `release/Prism-Tauri-macOS.app` |
-| Tauri Windows | Windows 11+ | Standalone project with an MSVC toolchain and NSIS current-user installer; final installer validation must happen on Windows |
+| Tauri Windows | Windows 11+ | Standalone Tauri project with an MSVC toolchain and NSIS current-user installer |
 
 ## Quick start
 
@@ -193,7 +191,7 @@ If you replace the default base URL with another compatible provider, the same d
 
 You are responsible for ensuring that you have the right to upload this information and that your use complies with applicable law, workplace rules, and any consent obligations. Review the [DeepSeek Privacy Policy](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html) and [DeepSeek Open Platform Terms of Service](https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html) before using real or sensitive data.
 
-Prism is provided for testing and informational purposes. Its classifications, summaries, safety responses, and suggestions may be incomplete or incorrect. They are not medical, mental-health, legal, financial, or emergency advice. You use Prism and any connected API at your own risk; the project author is not responsible for decisions made from model output or for the handling of data by the configured provider. This notice is not legal advice.
+Prism provides informational analysis. Its classifications, summaries, safety responses, and suggestions may be incomplete or incorrect. They are not medical, mental-health, legal, financial, or emergency advice. You use Prism and any connected API at your own risk; the project author is not responsible for decisions made from model output or for the handling of data by the configured provider. This notice is not legal advice.
 
 ## Project layout
 
@@ -218,16 +216,15 @@ Prism/
 
 The SwiftUI edition is built with Swift Package Manager and Apple frameworks. The Tauri editions use an HTML/CSS/JavaScript frontend and a Rust core. Their product behavior is kept aligned, while windowing, storage paths, and packaging remain platform-specific.
 
-## Known boundaries of this test project
+## Important information
 
 - Prism requires access to a configured LLM endpoint; it is not an offline model.
 - Model output, classification, and retrieved context can be imperfect. Review important conclusions yourself.
-- The included macOS checks do not prove that a Windows `.exe` or NSIS installer works. Windows release validation must run on Windows 11 or an equivalent MSVC CI/virtual machine.
-- This test project is not a medical or emergency product. If there is an immediate risk of harm, contact local emergency services or a qualified professional.
+- Prism is not a medical or emergency product. If there is an immediate risk of harm, contact local emergency services or a qualified professional.
 
 ## Roadmap
 
-This test project establishes the local data model and the shared SwiftUI/Tauri behavior. Future work will focus on:
+Prism's local data model and shared SwiftUI/Tauri behavior will continue to evolve through:
 
 - More robust import and export workflows
 - Better backup and restore controls for local archives

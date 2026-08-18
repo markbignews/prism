@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <strong>测试项目 · Experimental project</strong><br>
+  <strong>本地优先的叙事分析工作空间</strong><br>
   SwiftUI + Tauri · macOS 15+ · Windows 11+
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-experimental%20project-6f42c1" alt="Experimental project"/>
+  <img src="https://img.shields.io/badge/status-active%20development-6f42c1" alt="Active development"/>
   <img src="https://img.shields.io/badge/macOS-SwiftUI-blue" alt="macOS SwiftUI"/>
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2"/>
   <img src="https://img.shields.io/badge/Windows-11%2B-0078D4" alt="Windows 11 或更高版本"/>
@@ -35,11 +35,9 @@
 
 > 棱镜不是心理治疗师、医生、急救服务，也不能替代专业帮助。
 
-## 测试项目
+## 棱镜包含的能力
 
-棱镜目前是一个用于测试和评估的实验性项目。核心流程已经可以体验，但产品行为和 API 细节可能随时调整。
-
-当前测试版本包括：
+棱镜将以下能力整合在一起：
 
 - 面向 Apple Silicon Mac 的原生 SwiftUI 客户端
 - macOS Tauri 客户端
@@ -97,11 +95,11 @@ SwiftUI 和 Tauri 客户端共享核心行为，同时保留必要的平台差�
 
 ## 支持的平台
 
-| 客户端 | 运行环境 | 当前测试边界 |
+| 客户端 | 运行环境 | 能力概览 |
 | --- | --- | --- |
 | SwiftUI | macOS 15+、Apple Silicon | 原生客户端；打包应用位于 `release/Prism-SwiftUI-macOS.app` |
 | Tauri macOS | 按配置支持 macOS 12+ | 共享 HTML/CSS/JavaScript 前端和 Rust 核心；打包应用位于 `release/Prism-Tauri-macOS.app` |
-| Tauri Windows | Windows 11+ | 独立工程，需要 MSVC 工具链和当前用户 NSIS 安装包；最终安装包必须在 Windows 上验证 |
+| Tauri Windows | Windows 11+ | 独立 Tauri 工程，需要 MSVC 工具链和当前用户 NSIS 安装包 |
 
 ## 快速开始
 
@@ -193,7 +191,7 @@ NSIS 安装包会写入 `src-tauri\target\release\bundle\nsis`。Windows 工程�
 
 你需要确认自己有权上传这些信息，并确保使用方式符合适用法律、工作场所规定以及必要的授权或同意要求。使用真实或敏感数据前，请阅读 [DeepSeek 隐私政策](https://cdn.deepseek.com/policies/zh-CN/deepseek-privacy-policy.html) 和 [DeepSeek 开放平台服务条款](https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html)。
 
-棱镜仅用于测试和信息参考。分类、摘要、安全回应和建议可能不完整或不准确，不构成医疗、心理健康、法律、财务或紧急建议。你需要自行承担使用棱镜及其连接 API 的风险；项目作者不对基于模型输出作出的决定，或所配置服务商对数据的处理承担责任。本条款不构成法律意见。
+棱镜提供信息参考与叙事分析。分类、摘要、安全回应和建议可能不完整或不准确，不构成医疗、心理健康、法律、财务或紧急建议。你需要自行承担使用棱镜及其连接 API 的风险；项目作者不对基于模型输出作出的决定，或所配置服务商对数据的处理承担责任。本条款不构成法律意见。
 
 ## 项目结构
 
@@ -218,16 +216,15 @@ Prism/
 
 SwiftUI 版本使用 Swift Package Manager 和 Apple 框架构建。Tauri 版本使用 HTML/CSS/JavaScript 前端和 Rust 核心。各客户端保持产品行为一致，但窗口、存储路径和打包方式按平台分别处理。
 
-## 这个测试项目的已知边界
+## 重要信息
 
 - 棱镜需要访问已配置的 LLM 端点，不是离线模型。
 - 模型输出、分类结果和检索上下文可能不完美，请自行复核重要结论。
-- 在 macOS 上完成的检查不能证明 Windows `.exe` 或 NSIS 安装包可用；Windows 测试验证必须在 Windows 11 或等效的 MSVC CI/虚拟机中进行。
-- 这个测试项目不是医疗或急救产品。如果存在即时伤害风险，请联系当地急救服务或专业人员。
+- 棱镜不是医疗或急救产品。如果存在即时伤害风险，请联系当地急救服务或专业人员。
 
 ## 后续方向
 
-这个测试项目建立了本地数据模型以及 SwiftUI/Tauri 之间的共享行为。后续工作将集中在：
+棱镜的本地数据模型以及 SwiftUI/Tauri 之间的共享行为会继续完善，后续将集中在：
 
 - 更可靠的导入和导出流程
 - 更完善的本地归档备份与恢复控制
