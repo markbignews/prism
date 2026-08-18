@@ -27,7 +27,7 @@ enum AgentPrompt {
         ISO8601DateFormatter().string(from: date)
     }
 
-    // MARK: - Main System Prompt (v4-pro, MCP‑enabled)
+    // MARK: - Main System Prompt (v4-pro, local-tools enabled)
 
     static func system(language: AppLanguage, mode: ConversationMode = .balanced, responseLength: ResponseLength = .standard) -> String {
         let outputLanguage = switch language {

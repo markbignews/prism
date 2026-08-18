@@ -25,7 +25,7 @@ Prism 采用 **Agent-Facade 设计模式** 组织数据与 UI 绑定：
        ▼
 [ ChatAgent (@MainActor — 核心业务逻辑编排) ]
        ├── DeepSeekClient        # HTTP 客户端：SSE 流式解析 + 非流式归纳
-       ├── ToolRegistry          # 6 个 MCP 风格本地工具 schema 注册与原生执行
+       ├── ToolRegistry          # 6 个本地函数调用工具的 schema 注册与原生执行
        ├── AgentPrompt           # 系统提示词 (三种镜模式) + 归纳 + 重排序
        ├── StoryMemory           # 基于章节的本地上下文记忆与关键词提取
        ├── PrePipeline           # 单次统一 Flash JSON 调用 (守护+情绪+人物+盲点)
@@ -63,7 +63,7 @@ Prism 采用 **Agent-Facade 设计模式** 组织数据与 UI 绑定：
  │ 3. 主模型对话周期 (DeepSeek R1 Stream)    │   │  4. 触发硬性危机干预    │
  │    - 注入 [监督者方向] 守护提示          │   │  - 暂停主模型分析       │
  │    - 注入 Context 本地检索与跨对话记忆    │   │  - 强制流式打出本地援助  │
- │    - 激活 MCP 工具循环 (最多 3 轮)        │   │  - 状态写入 UserDefaults│
+ │    - 激活本地工具调用循环 (最多 3 轮)      │   │  - 状态写入 UserDefaults│
  └────────────────────┬─────────────────────┘   └────────────────────────┘
                       │
                       ▼
@@ -95,7 +95,7 @@ Prism 采用 **Agent-Facade 设计模式** 组织数据与 UI 绑定：
 
 ---
 
-### 2. 本地工具 (7 MCP-style Tools)
+### 2. 本地工具（6 个函数调用工具）
 Prism 注册了 6 个本地工具供模型按需调度。工具本身不请求任何云端接口，只读写本地数据：
 
 | 工具名 | 数据来源 | 返回内容规范 |

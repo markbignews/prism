@@ -1528,7 +1528,7 @@ final class ChatAgent {
         return result
     }
 
-    // MARK: - MCP Tool Data Stores (local JSON)
+    // MARK: - Local Tool Data Stores (local JSON)
 
     private var dataFolder: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Documents/Prism/Data")
@@ -1615,7 +1615,7 @@ final class ChatAgent {
         return event
     }
 
-    /// Add a blindspot record from external tools (e.g. scan_blindspots MCP).
+    /// Add a blindspot record from an external tool integration.
     func addBlindspot(_ record: BlindspotRecord) {
         blindspots.append(record)
         if blindspots.count > 300 { blindspots = Array(blindspots.suffix(300)) }
@@ -2014,7 +2014,7 @@ final class ChatAgent {
         try? data.write(to: url, options: .atomic)
     }
 
-    // MARK: - MCP Tool Execution
+    // MARK: - Local Tool Execution
 
     /// Execute a single tool call from the model and return the JSON result.
     func executeTool(name: String, arguments: String, settings: AppSettings? = nil) async -> String {

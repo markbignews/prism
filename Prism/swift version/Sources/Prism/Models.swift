@@ -233,7 +233,7 @@ struct NarrativeEvent: Identifiable, Codable, Equatable {
     var updatedAt = Date()
 }
 
-// MARK: - MCP Tool Call / Response (Function Calling wire format)
+// MARK: - Tool Call / Response (Function Calling wire format)
 
 struct ToolCall: Equatable {
     var id: String
