@@ -3,12 +3,15 @@
 **/.DS_Store
 
 # Build artifacts
-macOS Version/.build/
-macOS Version/Prism.app/
+Prism/swift version/.build/
+Prism/swift version/Prism.app/
+Prism/Tauri Version/macOS Version/Prism.app/
+note/.build/
+Prism/**/src-tauri/target/
 
 # Icon working files
 assets/Untitled.icon/
-macOS Version/Untitled.icon/
+Prism/swift version/Untitled.icon/
 
 # Other platform versions (not mature)
 Qt Version/
