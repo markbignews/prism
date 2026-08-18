@@ -52,13 +52,13 @@ Prism 围绕这些问题建立本地数据模型。对话是入口，章节是�
 | --- | --- | --- | --- | --- |
 | SwiftUI | macOS 15+、Apple Silicon | Swift 6 / Swift Package Manager | 以 `Package.swift` 为准 | 原生 macOS 客户端 |
 | Tauri macOS | macOS 12+（由 Tauri bundle 配置声明） | Tauri 2 / HTML/CSS/JavaScript / Rust | 应用配置 `1.0.14` | 跨平台前端与 Rust 核心的 macOS 客户端 |
-| Tauri Windows | Windows 11+ | Tauri 2 / Rust MSVC / WebView2 / NSIS | 应用配置 `1.0.14` | 独立 Windows 工程与当前用户安装包 |
+| Tauri Windows | Windows 11+ | Tauri 2 / Rust MSVC / WebView2 / NSIS | 应用配置 `1.0.14` | 独立 Windows 工程；暂未在 Windows 环境完成编译和打包 |
 
 版本来源：
 
 - SwiftUI 的 Swift 工具版本为 `6.0`，最低平台为 macOS 15，定义在 [`Prism/swift version/Package.swift`](Prism/swift%20version/Package.swift)。
 - Tauri 客户端使用 Tauri 2；应用配置版本为 `1.0.14`，定义在各客户端的 `src-tauri/tauri.conf.json`。
-- Windows 客户端是 `Prism/Tauri Version/Windows Version` 下的独立工程，使用 Windows 自己的 Tauri 配置，不把 macOS 配置当作 Windows 配置。
+- Windows 客户端代码位于 `Prism/Tauri Version/Windows Version`，目前暂未在 Windows 环境完成编译和打包。
 - 当前文档整理日期：**2026-08-18**。后续以仓库中的配置文件和提交记录为准。
 
 ## 功能总览
@@ -272,6 +272,8 @@ cargo tauri build --bundles app
 ### 运行或打包 Windows Tauri
 
 Windows 工程目录为 `Prism/Tauri Version/Windows Version`。在 PowerShell 中执行：
+
+> 当前仓库提供 Windows 构建入口和平台配置，但暂未在 Windows 环境完成编译和打包。
 
 ```powershell
 cd "Prism\Tauri Version\Windows Version"
