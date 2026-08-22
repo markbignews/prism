@@ -42,6 +42,19 @@ extension ChatAgent {
         }
     }
 
+    /// Do not silently continue with ordinary relationship analysis when the
+    /// safety pass failed or returned an incomplete result.
+    func buildSafetyUncertaintyResponse(language: AppLanguage) -> String {
+        switch language {
+        case .simplifiedChinese:
+            return "我暂时无法可靠完成安全判断，所以先不做关系分析。如果你现在有自伤、伤人、暴力、胁迫或无法离开的风险，请先联系当地急救服务、可信任的人或最近的急诊。你现在是否处于安全环境？"
+        case .traditionalChinese:
+            return "我暫時無法可靠完成安全判斷，所以先不做關係分析。如果你現在有自傷、傷人、暴力、脅迫或無法離開的風險，請先聯絡當地急救服務、可信任的人或最近的急診。你現在是否處於安全環境？"
+        case .english:
+            return "I could not reliably complete the safety check, so I will pause relationship analysis for now. If there is any risk of self-harm, harm to others, violence, coercion, or being unable to leave, contact local emergency services, someone you trust, or the nearest emergency department. Are you currently in a safe place?"
+        }
+    }
+
     /// Save safety crisis context so the next turn's pre‑pipeline can re‑inject it.
     @MainActor
     func saveSafetyContext(for index: Int, hint: String, resources: String) async {
@@ -72,11 +85,12 @@ extension ChatAgent {
         var guardHint: String = ""
         // Safety crisis — separate from normal guard hints, triggers immediate override
         var safetyCrisis: Bool = false
+        var safetyUncertain: Bool = false
         var safetySignals: [String] = []
         var safetyHint: String = ""
         var safetyResources: String = ""
         // Parsed archive data
-        var emotions: [(segment: String, emotion: String, intensity: Double)] = []
+        var emotions: [(segment: String, emotion: String, intensity: Double, confidence: Double?)] = []
         var persons: [(name: String, role: String)] = []
         var blindspotFindings: [(pattern: String, evidence: String, counterQuestion: String)] = []
     }
@@ -101,13 +115,13 @@ extension ChatAgent {
 
         2. spiral — 用户是否在同一情绪状态下反复讨论同一话题，没有情感位移。
            有位移（新角度/新行动/强度下降）= ok；原地打转 = warning。
-           hint: 建议从分析切换到出口引导，暂停、换个角度、或承认遗憾。
+           hint: 建议从分析切换到下一步引导，暂停、换个角度、或承认遗憾。
 
-        3. blindspots — 检测三种叙事盲点：
+           3. blindspots — 只检测可供用户检验的暂时性模式假设：
            a) 解释循环：反复用不同措辞解释同一件事
            b) 回避自我：大量描述他人行为，很少描述自己的感受和行动
            c) 意图-行动差距：反复表达意图但缺乏具体行动描述
-           每项发现含 pattern / evidence / counter_question / severity(new|recurring|persistent)。
+           每项发现含 pattern / evidence / counter_question / severity(new|recurring|persistent)。不要诊断、不要给用户贴标签；历史结果只能作为待验证假设。
            比对历史盲点判断 severity。无盲点则 flag = ok。
 
         4. ingratiation — 只检查助手(assistant)最近一轮回复：
@@ -117,8 +131,8 @@ extension ChatAgent {
            - 过度称赞（频繁使用赞美词）
            严格判断。正常共情不算迎合。无信号时 flag = ok。
 
-        5. action_hollow — 用户当前意图是否与历史盲点模式匹配（说过类似话但未行动）。
-           仅当用户表达了新意图且与历史盲点明确对应时才 warning。
+        5. action_hollow — 用户当前意图是否与历史记录显示出可能的行动障碍或矛盾（不要称为“空头承诺”）。
+           仅当用户表达了新意图且与历史记录明确对应时才 warning；优先探索阻碍和矛盾，不要施压。
 
         6. safety — 安全信号检测（最高优先级）。
            检测用户消息中是否存在以下安全信号：
@@ -127,21 +141,21 @@ extension ChatAgent {
            c) 精神错乱状态描述
            d) 未成年人受害场景
            e) 明确求助信号（被囚禁、被控制、极度危险处境）
-           只要有明确的安全信号，flag = "crisis"，不得是 ok。
+           明确的安全信号 flag = "crisis"；明确没有安全信号 flag = "ok"；证据不足、输出不完整或无法判断 flag = "uncertain"，不得假装安全。
            提供具体的 suggest 告诉主模型应该怎么说，以及可用的求助资源。
-           严格判断——宁紧勿松。不确定时不标记 crisis。
+           严格判断，不把普通悲伤、冲突或非主流表达自动标成危机。
 
         ═══════════════════════════════════════
         二、emotions（情绪标注）
         ═══════════════════════════════════════
         标注用户消息中最显著的1-3个情绪片段。
-        每项含 segment（简短摘引）/ emotion（愤怒/悲伤/恐惧/焦虑/释然/希望/困惑/羞耻/孤独）/ intensity（0.0-1.0）。
+        每项含 segment（简短摘引）/ emotion（愤怒/悲伤/恐惧/焦虑/释然/希望/困惑/羞耻/孤独）/ intensity（0.0-1.0，粗略估计）/ confidence（0.0-1.0，可选）。
         不标注不明显的情绪。
 
         ═══════════════════════════════════════
         三、persons（人物提取）
         ═══════════════════════════════════════
-        提取用户消息中提及的真实人物。每项含 name / role(ex-partner/家人/朋友/同事/其他)。
+        提取用户消息中提及的真实人物。每项含 name / role(ex-partner/家人/朋友/同事/其他)，role 必须来自用户原话或明确上下文，不要自行推断。
         不输出泛化指代（如"他们""那些人"）。
 
         注意别名解析：用户可能在不同时间用不同称呼指代同一人。
@@ -159,9 +173,9 @@ extension ChatAgent {
             "blindspots": {"flag":"ok|warning","findings":[{"pattern":"...","evidence":"...","counter_question":"...","severity":"new|recurring|persistent"}],"hint":""},
             "ingratiation": {"flag":"ok|warning","signals":["..."],"hint":""},
             "action_hollow": {"flag":"ok|warning","matched_count":0,"persistent_count":0,"hint":""},
-            "safety": {"flag":"ok|crisis","signals":["..."],"suggest":"","resources":""}
+            "safety": {"flag":"ok|uncertain|crisis","signals":["..."],"suggest":"","resources":""}
           },
-          "emotions": [{"segment":"...","emotion":"...","intensity":0.0}],
+          "emotions": [{"segment":"...","emotion":"...","intensity":0.0,"confidence":0.0}],
           "persons": [{"name":"...","role":"..."}]
         }
         如果某维度正常，flag 为 ok，hint 为空。只标记明确的模式，不猜测。emotions/persons 数组为空时返回 []。
@@ -171,6 +185,7 @@ extension ChatAgent {
     /// Run the unified pre‑pipeline: one Flash API call covering guard + emotion + person + blindspots.
     func runPrePipeline(for conversationID: UUID, requestSentAt: Date, settings: AppSettings) async -> PrePipelineResult {
         var result = PrePipelineResult()
+        result.safetyUncertain = true
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return result }
         let conv = conversations[index]
 
@@ -182,25 +197,24 @@ extension ChatAgent {
             .map { "[\($0.role.rawValue)][sentAt=\(AgentPrompt.transcriptTimestamp($0.createdAt))] \($0.content)" }
             .joined(separator: "\n\n")
 
-        // Skip for trivial messages
+        // Run the safety pass even on the first and very short turns. A short
+        // message can still contain an urgent signal (for example, “救我”).
         let lastUserText = conv.messages.last(where: { $0.role == .user })?.content
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard lastUserText.count >= 5 else { return result }
-
-        // Skip on first exchange: no assistant reply exists yet, so ingratiation
-        // has nothing to check, spiral has no history, and action_hollow has no
-        // blindspot baseline. Emotions and persons will be richer starting from
-        // the second exchange (2 user msgs + 1 assistant reply).
-        let hasAssistantReply = conv.messages.contains(where: {
-            $0.role == .assistant && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
-        guard hasAssistantReply else { return result }
+        guard !lastUserText.isEmpty else {
+            result.safetyUncertain = true
+            return result
+        }
 
         // Build user content with context
-        let knownPersons = personArchive.map { "\($0.name)(\($0.role))" }.joined(separator: ", ")
-        let blindspotsHistory = blindspots.isEmpty
+        let knownPersons = personArchive
+            .filter { $0.conversationIDs?.contains(conversationID) == true }
+            .map { "\($0.name)(\($0.role))" }
+            .joined(separator: ", ")
+        let currentBlindspots = blindspots.filter { $0.conversationID == conversationID }
+        let blindspotsHistory = currentBlindspots.isEmpty
             ? "（无历史盲点记录）"
-            : blindspots.map { "- [\($0.severity)] \($0.pattern): \($0.evidence)" }.joined(separator: "\n")
+            : currentBlindspots.map { "- [暂定-\($0.severity)] \($0.pattern): \($0.evidence)" }.joined(separator: "\n")
 
         // Check for active safety crisis context from previous turns
         let safetyContext: String
@@ -235,9 +249,12 @@ extension ChatAgent {
         do {
             let raw = try await client.summarize(systemPrompt: prePipelineSystemPrompt, userContent: userContent)
             result.rawJSON = raw
-            parsePrePipelineJSON(raw, into: &result, conversationID: conversationID)
+            if !parsePrePipelineJSON(raw, into: &result, conversationID: conversationID) {
+                result.safetyUncertain = true
+            }
         } catch {
             print("[PrePipeline] ⚠ Flash API error: \(error.localizedDescription)")
+            result.safetyUncertain = true
         }
 
         return result
@@ -251,6 +268,9 @@ extension ChatAgent {
 
     /// Apply pre‑pipeline results to local archives (detached, non‑blocking).
     func applyPrePipelineResults(_ result: PrePipelineResult, for conversationID: UUID, requestSentAt: Date) async {
+        // Do not persist inferred profiles or relationship hypotheses when the
+        // safety pass was incomplete or the turn was escalated to crisis mode.
+        guard !result.safetyUncertain, !result.safetyCrisis else { return }
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return }
         let conv = conversations[index]
 
@@ -261,6 +281,7 @@ extension ChatAgent {
                 segment: e.segment,
                 emotion: e.emotion,
                 intensity: e.intensity,
+                confidence: e.confidence,
                 createdAt: requestSentAt
             ))
         }
@@ -268,7 +289,9 @@ extension ChatAgent {
 
         // Merge persons (cap at 200 unique entries)
         for p in result.persons {
-            if let idx = personArchive.firstIndex(where: { $0.name == p.name }) {
+            if let idx = personArchive.firstIndex(where: {
+                $0.name == p.name && $0.conversationIDs?.contains(conversationID) == true
+            }) {
                 personArchive[idx].lastMentionedAt = requestSentAt
                 personArchive[idx].mentionCount += 1
                 personArchive[idx].notes.append("\(conv.title): \(p.role)")
@@ -277,7 +300,8 @@ extension ChatAgent {
                     name: p.name,
                     role: p.role,
                     firstMentionedAt: requestSentAt,
-                    lastMentionedAt: requestSentAt
+                    lastMentionedAt: requestSentAt,
+                    conversationIDs: [conversationID]
                 ))
             }
         }
@@ -290,7 +314,9 @@ extension ChatAgent {
         // Merge blindspots
         for f in result.blindspotFindings {
             var severity = "new"
-            if let existing = blindspots.first(where: { $0.pattern == f.pattern }) {
+            if let existing = blindspots.first(where: {
+                $0.conversationID == conversationID && $0.pattern == f.pattern
+            }) {
                 severity = existing.severity == "persistent" ? "persistent" : "recurring"
             }
             blindspots.append(BlindspotRecord(
@@ -313,7 +339,8 @@ extension ChatAgent {
 
     // MARK: - Pre‑Pipeline JSON Parser
 
-    func parsePrePipelineJSON(_ text: String, into result: inout PrePipelineResult, conversationID: UUID) {
+    @discardableResult
+    func parsePrePipelineJSON(_ text: String, into result: inout PrePipelineResult, conversationID: UUID) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Extract JSON object — Flash may wrap in markdown or add surrounding text
@@ -342,7 +369,7 @@ extension ChatAgent {
               let data = jsonStr.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("[PrePipeline] ⚠ Could not parse JSON from response")
-            return
+            return false
         }
 
         // ── Parse guard ──
@@ -370,12 +397,22 @@ extension ChatAgent {
                     result.safetySignals = (safetyObj["signals"] as? [String]) ?? []
                     result.safetyHint = (safetyObj["suggest"] as? String) ?? "立即进行安全干预。"
                     result.safetyResources = (safetyObj["resources"] as? String) ?? ""
+                    result.safetyUncertain = false
                 } else if flag == "ok" && hasActiveSafetyCrisis(for: conversationID) {
                     // Auto-clear: user is no longer in crisis
                     clearSafetyCrisis(for: conversationID)
                     print("[Safety] Crisis cleared for conversation \(conversationID)")
+                    result.safetyUncertain = false
+                } else if flag == "ok" {
+                    result.safetyUncertain = false
+                } else {
+                    result.safetyUncertain = true
                 }
+            } else {
+                result.safetyUncertain = true
             }
+        } else {
+            result.safetyUncertain = true
         }
 
         // ── Parse emotions ──
@@ -384,7 +421,8 @@ extension ChatAgent {
                 guard let seg = e["segment"] as? String,
                       let emo = e["emotion"] as? String,
                       let int = e["intensity"] as? Double else { return nil }
-                return (seg, emo, int)
+                let confidence = (e["confidence"] as? Double).map { min(max($0, 0), 1) }
+                return (seg, emo, int, confidence)
             }
         }
 
@@ -409,7 +447,8 @@ extension ChatAgent {
             }
         }
 
-        print("[PrePipeline] guard:\(result.guardWarningDimensions.count)warnings emotions:\(result.emotions.count) persons:\(result.persons.count) blindspots:\(result.blindspotFindings.count)")
+        print("[PrePipeline] guard:\(result.guardWarningDimensions.count)warnings emotions:\(result.emotions.count) persons:\(result.persons.count) blindspots:\(result.blindspotFindings.count) safetyUncertain:\(result.safetyUncertain)")
+        return true
     }
 
 }

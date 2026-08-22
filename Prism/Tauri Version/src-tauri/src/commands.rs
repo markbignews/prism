@@ -282,14 +282,32 @@ pub async fn re_summarize(state: State<'_, Arc<AppState>>, conv_id: String) -> R
 
 #[tauri::command]
 pub async fn query_emotions(state: State<'_, Arc<AppState>>) -> Result<Vec<EmotionEntry>, String> {
+    let conversation_id = *state.agent.selected_conversation_id.read().await;
     let archives = state.agent.archives.lock().await;
-    Ok(archives.get_recent_emotions(50))
+    Ok(conversation_id
+        .map(|id| archives.get_recent_emotions_for_conversation(id, 50))
+        .unwrap_or_default())
 }
 
 #[tauri::command]
 pub async fn query_persons(state: State<'_, Arc<AppState>>) -> Result<Vec<PersonRecord>, String> {
+    let conversation_id = *state.agent.selected_conversation_id.read().await;
     let archives = state.agent.archives.lock().await;
-    Ok(archives.all_persons())
+    Ok(conversation_id
+        .map(|id| {
+            archives
+                .all_persons()
+                .into_iter()
+                .filter(|person| {
+                    person
+                        .conversation_ids
+                        .as_ref()
+                        .map(|ids| ids.contains(&id))
+                        .unwrap_or(false)
+                })
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 #[tauri::command]
@@ -297,8 +315,9 @@ pub async fn query_person(
     state: State<'_, Arc<AppState>>,
     name: String,
 ) -> Result<Option<PersonRecord>, String> {
+    let conversation_id = *state.agent.selected_conversation_id.read().await;
     let archives = state.agent.archives.lock().await;
-    Ok(archives.find_person(&name))
+    Ok(conversation_id.and_then(|id| archives.find_person(&name, id)))
 }
 
 #[tauri::command]
@@ -338,12 +357,30 @@ pub async fn get_usage_stats(state: State<'_, Arc<AppState>>) -> Result<UsageSta
     Ok(state.agent.client.usage_stats().await)
 }
 
+/// Fetch the provider balance without invoking a model.
+#[tauri::command]
+pub async fn get_user_balance(
+    state: State<'_, Arc<AppState>>,
+) -> Result<crate::deepseek_client::DeepSeekBalanceResponse, String> {
+    state.agent.client.user_balance().await
+}
+
 #[tauri::command]
 pub async fn query_blindspots(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<BlindspotRecord>, String> {
+    let conversation_id = *state.agent.selected_conversation_id.read().await;
     let archives = state.agent.archives.lock().await;
-    Ok(archives.recent_blindspots(10))
+    Ok(conversation_id
+        .map(|id| {
+            archives
+                .recent_blindspots(50)
+                .into_iter()
+                .filter(|spot| spot.conversation_id == id)
+                .take(10)
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 #[tauri::command]

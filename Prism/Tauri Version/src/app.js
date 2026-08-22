@@ -77,6 +77,7 @@ window.api = {
   queryMemory: function(q) { return loggedInvoke('query_memory', { query: q || null }); },
   queryNarrativeEvents: function(c) { return loggedInvoke('query_narrative_events', { convId: c || null }); },
   getUsageStats: function() { return loggedInvoke('get_usage_stats'); },
+  getUserBalance: function() { return loggedInvoke('get_user_balance'); },
   queryBlindspots: function() { return loggedInvoke('query_blindspots'); },
   getChapters: function(c) { return loggedInvoke('get_chapters', { convId: c.toString() }); },
   getChapterMessages: function(c, i) { return loggedInvoke('get_chapter_messages', { convId: c.toString(), index: i }); },
@@ -127,6 +128,11 @@ const I18N = {
     inputTokens: 'Input tokens',
     outputTokens: 'Output tokens',
     cacheHitRate: 'Cache hit rate',
+    accountBalance: 'Account balance',
+    balanceUnavailable: 'Balance unavailable',
+    totalBalance: 'Total',
+    grantedBalance: 'Granted',
+    toppedUpBalance: 'Topped up',
     noNarrativeEvents: 'Narrated events with a clear period or date will appear here.',
     conversationStarted: 'Conversation started',
     firstMessage: 'First message',
@@ -237,6 +243,11 @@ const I18N = {
     inputTokens: '输入 Token',
     outputTokens: '输出 Token',
     cacheHitRate: '缓存命中率',
+    accountBalance: '账户余额',
+    balanceUnavailable: '余额暂不可用',
+    totalBalance: '总余额',
+    grantedBalance: '赠余额度',
+    toppedUpBalance: '充值余额',
     noNarrativeEvents: '带有明确时期或日期的叙事事件会显示在这里。',
     conversationStarted: '对话发起',
     firstMessage: '第一条消息',
@@ -347,6 +358,11 @@ const I18N = {
     inputTokens: '輸入 Token',
     outputTokens: '輸出 Token',
     cacheHitRate: '快取命中率',
+    accountBalance: '帳戶餘額',
+    balanceUnavailable: '餘額暫不可用',
+    totalBalance: '總餘額',
+    grantedBalance: '贈送餘額',
+    toppedUpBalance: '充值餘額',
     noNarrativeEvents: '帶有明確時期或日期的敘事事件會顯示在這裡。',
     conversationStarted: '對話發起',
     firstMessage: '第一則訊息',
@@ -442,6 +458,7 @@ const S = {
   lang: 'en',
   platform: 'windows',
   chapters: [],
+  providerBalance: null,
   contextUsage: null,
   convSectionOpen: true,
   chapterSectionOpen: true,
@@ -640,6 +657,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     L.i('Init', 'Settings loaded', { lang: S.settings.language, mode: S.settings.defaultMode, hasApiKey: !!S.settings.apiKey });
     if (S.settings.apiKey) {
       S.apiKeySet = true;
+      // Account metadata is refreshed at launch without a model call. The
+      // Memory panel reuses this value and refreshes on demand if needed.
+      window.api.getUserBalance().then(balance => {
+        S.providerBalance = balance;
+      }).catch(error => {
+        L.w('Init', 'Provider balance unavailable', { error: errMsg(error) });
+      });
     }
     if (S.settings.defaultMode) {
       S.mode = S.settings.defaultMode;
@@ -2689,6 +2713,30 @@ async function loadMemoryData() {
     html += `</div></div>`;
   } catch (error) {
     L.w('Memory', 'Could not load model usage', { error: errMsg(error) });
+  }
+
+  // ── 0b. Provider balance (metadata request; no model invocation) ──
+  try {
+    const balance = S.providerBalance || await window.api.getUserBalance();
+    S.providerBalance = balance;
+    const infos = Array.isArray(balance?.balanceInfos) ? balance.balanceInfos : [];
+    html += `<div class="mem-section">`;
+    html += `<div class="mem-section-hdr"><span class="mem-section-icon green">${iconSvg('scale')}</span>${t('accountBalance')}</div>`;
+    if (infos.length) {
+      html += `<div class="usage-grid">`;
+      infos.forEach(info => {
+        const currency = esc(info.currency || '');
+        html += `<div class="usage-card"><div class="usage-value">${esc(info.totalBalance || '—')} ${currency}</div>`;
+        html += `<div class="usage-label">${t('totalBalance')} · ${esc(info.grantedBalance || '0')} ${currency}</div>`;
+        html += `<div class="usage-label">${t('toppedUpBalance')} · ${esc(info.toppedUpBalance || '0')} ${currency}</div></div>`;
+      });
+      html += `</div>`;
+    } else {
+      html += `<div class="mem-empty" style="padding:12px 0">${t('balanceUnavailable')}</div>`;
+    }
+    html += `</div>`;
+  } catch (error) {
+    L.w('Memory', 'Could not load provider balance', { error: errMsg(error) });
   }
 
   // ── 1. Narrative Timeline ──

@@ -446,18 +446,30 @@ fn temporal_context(
         .rev()
         .take(5)
         .map(|emotion| {
+            let confidence = emotion
+                .confidence
+                .map(|value| format!(" confidence={:.1}", value))
+                .unwrap_or_default();
             format!(
-                "- {} {} intensity={:.1}",
+                "- {} {} intensity={:.1}{}",
                 temporal_stamp(emotion.created_at),
                 emotion.emotion,
-                emotion.intensity
+                emotion.intensity,
+                confidence
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
     let relationship_lines = persons
         .iter()
-        .filter(|person| person.mention_count > 0)
+        .filter(|person| {
+            person.mention_count > 0
+                && person
+                    .conversation_ids
+                    .as_ref()
+                    .map(|ids| ids.contains(&conversation.id))
+                    .unwrap_or(false)
+        })
         .take(5)
         .map(|person| {
             format!(
@@ -613,8 +625,7 @@ impl ChatAgent {
         self.persist_conversations().await;
         // Purge archives referencing the deleted conversation (memory,
         // emotions, blindspots, narrative events, orphaned persons) so the
-        // retrieval tools and the cross-conversation memory injection can no
-        // longer surface its content (Swift parity).
+        // retrieval tools cannot surface deleted content.
         self.archives
             .lock()
             .await
@@ -925,30 +936,51 @@ impl ChatAgent {
         }
         self.persist_conversations().await;
 
-        // Step 1: Pre-pipeline (guard + emotion/person extraction). Match the
-        // Swift client: skip this auxiliary call for the first exchange and
-        // very short inputs. There is no history to analyze yet, and paying
-        // for a second model request only delays the first visible answer.
-        let guard = if has_completed_turn && text.trim().chars().count() >= 5 {
-            let pre_context = self.pre_pipeline_context(conv_id).await;
-            self.pipeline
-                .run(conv_id, text, &mode, &lang, &pre_context, request_sent_at)
-                .await?
-        } else {
-            crate::pre_pipeline::GuardPanelResult::default()
-        };
+        // Step 1: Pre-pipeline (guard + emotion/person extraction). Run this
+        // even on the first and shortest turns: urgent messages can be only a
+        // few characters long, so skipping the safety pass is not acceptable.
+        let pre_context = self.pre_pipeline_context(conv_id).await;
+        let guard = self
+            .pipeline
+            .run(conv_id, text, &mode, &lang, &pre_context, request_sent_at)
+            .await?;
+
+        // Safety check must fail closed into an explicit confirmation rather
+        // than silently continuing with relationship analysis.
+        if guard.safety_uncertain {
+            let uncertainty_response = if lang.starts_with("zh") {
+                "我暂时无法可靠完成安全判断，所以先不做关系分析。如果你现在有自伤、伤人、暴力、胁迫或无法离开的风险，请先联系当地急救服务、可信任的人或最近的急诊。你现在是否处于安全环境？"
+            } else {
+                "I could not reliably complete the safety check, so I will pause relationship analysis for now. If there is any risk of self-harm, harm to others, violence, coercion, or being unable to leave, contact local emergency services, someone you trust, or the nearest emergency department. Are you currently in a safe place?"
+            };
+            callback(StreamEvent::Text(uncertainty_response.to_string()));
+            callback(StreamEvent::Done {
+                conv_id,
+                title: String::new(),
+            });
+            return Ok(());
+        }
 
         // Safety crisis check
         if guard.safety_crisis {
+            let immediate_help = if guard.crisis_hotline.trim().is_empty() {
+                if lang.starts_with("zh") {
+                    "当地急救服务、可信任的人或最近的急诊"
+                } else {
+                    "local emergency services, someone you trust, or the nearest emergency department"
+                }
+            } else {
+                guard.crisis_hotline.as_str()
+            };
             let crisis_response = if lang.starts_with("zh") {
                 format!(
                     "我注意到你正在经历一些非常困难的时刻。\n\n{}\n\n如果你需要立即帮助，请联系：{}",
-                    guard.crisis_detail, guard.crisis_hotline
+                    guard.crisis_detail, immediate_help
                 )
             } else {
                 format!(
                     "I notice you're going through a very difficult time.\n\n{}\n\nIf you need immediate help, please contact: {}",
-                    guard.crisis_detail, guard.crisis_hotline
+                    guard.crisis_detail, immediate_help
                 )
             };
 
@@ -961,8 +993,8 @@ impl ChatAgent {
         }
 
         // Store extracted emotion/person/blindspot archives. These records are
-        // later fed back into full chapter re-scans and cross-conversation
-        // memory search, as documented by the Swift implementation.
+        // fed back only to the current conversation; cross-conversation recall
+        // remains an explicit search_memory tool call.
         {
             let archives = self.archives.lock().await;
             for emotion in &guard.emotions {
@@ -985,7 +1017,10 @@ impl ChatAgent {
         };
         let temporal_archives = {
             let archives = self.archives.lock().await;
-            (archives.get_recent_emotions(5), archives.all_persons())
+            (
+                archives.get_recent_emotions_for_conversation(conv_id, 5),
+                archives.all_persons(),
+            )
         };
         let temporal = {
             let convs = self.conversations.read().await;
@@ -998,42 +1033,6 @@ impl ChatAgent {
                 &temporal_archives.1,
             )
         };
-        let cross_memory = {
-            let archives = self.archives.lock().await;
-            archives.search_memory(&[text.to_string()])
-        };
-        let cross_memory_context = if cross_memory.is_empty() {
-            String::new()
-        } else {
-            let heading = if lang.starts_with("zh") {
-                "\n\n[跨对话记忆 — 来自之前对话的相关洞察]"
-            } else {
-                "\n\n[Cross-conversation memory — relevant insights from previous conversations]"
-            };
-            let body = cross_memory
-                .iter()
-                .take(3)
-                .enumerate()
-                .map(|(index, entry)| {
-                    let span = match (entry.time_span_start, entry.time_span_end) {
-                        (Some(start), Some(end)) => {
-                            format!(" [{} → {}]", start.to_rfc3339(), end.to_rfc3339())
-                        }
-                        _ => String::new(),
-                    };
-                    format!(
-                        "{}. {}{}: {}",
-                        index + 1,
-                        entry.source_chapter_title,
-                        span,
-                        entry.content.chars().take(240).collect::<String>()
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            format!("{}\n{}", heading, body)
-        };
-
         let supervisor_hint = if guard.raw_warnings.is_empty() {
             String::new()
         } else {
@@ -1043,26 +1042,31 @@ impl ChatAgent {
             )
         };
 
-        let system_prompt = format!(
-            "{}\n\n{}\n\n## Context from Previous Conversations\n{}\n{}\n{}",
-            prompts::system_prompt(
-                if mode == ConversationMode::rational {
-                    "rational"
-                } else if mode == ConversationMode::warm {
-                    "warm"
-                } else {
-                    "balanced"
-                },
-                &lang
-            ),
-            temporal,
-            context,
-            cross_memory_context,
-            supervisor_hint,
+        // Keep the system prefix stable for DeepSeek's prefix cache. The
+        // per-turn context is appended to the current user message below;
+        // putting it before the transcript would invalidate the cache prefix
+        // on every request.
+        let system_prompt = prompts::system_prompt(
+            if mode == ConversationMode::rational {
+                "rational"
+            } else if mode == ConversationMode::warm {
+                "warm"
+            } else {
+                "balanced"
+            },
+            &lang,
+        );
+        let dynamic_context = format!(
+            "{}\n\n## Current conversation context\n{}\n{}",
+            temporal, context, supervisor_hint,
         );
 
         // Step 3: Main model loop with tool calls (up to 3 rounds)
-        let max_tool_rounds = 3;
+        // DeepSeek supports parallel function calls in one response. Keep a
+        // second round for dependent fetches, but cap the loop before tool
+        // calls can multiply reasoning and completion tokens.
+        // The loop below is inclusive, so 1 means at most two API rounds.
+        let max_tool_rounds = 1;
 
         for round in 0..=max_tool_rounds {
             if *self.cancel_flag.read().await {
@@ -1082,6 +1086,15 @@ impl ChatAgent {
                         .sum::<usize>();
                     messages.extend(windowed_conversation_messages(conv, global_offset));
                 }
+            }
+
+            if let Some(user_message) = messages
+                .iter_mut()
+                .rev()
+                .find(|message| message.role == ChatRole::user)
+            {
+                user_message.content.push_str("\n\n[Prism context]\n");
+                user_message.content.push_str(&dynamic_context);
             }
 
             let response_length = self.response_length.read().await.clone();
@@ -1254,7 +1267,7 @@ impl ChatAgent {
                             serde_json::from_str(tool_args_str).unwrap_or(Value::Null);
                         let conversation_snapshot = self.conversations.read().await.clone();
                         let archives_lock = self.archives.lock().await;
-                        let mut result = tools::execute_tool(
+                        let result = tools::execute_tool(
                             tool_name,
                             &args,
                             &archives_lock,
@@ -1264,25 +1277,6 @@ impl ChatAgent {
                         .await
                         .unwrap_or(serde_json::json!({"error": "Tool execution failed"}));
                         drop(archives_lock);
-
-                        // Swift performs a two-stage search for the two
-                        // semantic tools: local keyword/synonym pre-filter,
-                        // then a small Flash call to reorder the top 15. A
-                        // failed or malformed reranker response leaves the
-                        // deterministic local order untouched.
-                        if tool_name == "search_chapters" || tool_name == "search_memory" {
-                            if let Some(query) = args["query"].as_str() {
-                                result = self
-                                    .rerank_tool_result(
-                                        tool_name,
-                                        query,
-                                        args["count"].as_u64().unwrap_or(10) as usize,
-                                        result,
-                                        &lang,
-                                    )
-                                    .await;
-                            }
-                        }
 
                         let result_str = serde_json::to_string(&result).unwrap_or_default();
                         callback(StreamEvent::ToolResult(
@@ -1387,6 +1381,7 @@ impl ChatAgent {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn rerank_tool_result(
         &self,
         tool_name: &str,
@@ -1516,6 +1511,13 @@ impl ChatAgent {
         let known_persons = archives
             .all_persons()
             .into_iter()
+            .filter(|person| {
+                person
+                    .conversation_ids
+                    .as_ref()
+                    .map(|ids| ids.contains(&conv_id))
+                    .unwrap_or(false)
+            })
             .take(20)
             .map(|person| format!("{}({})", person.name, person.role))
             .collect::<Vec<_>>()
@@ -1523,11 +1525,17 @@ impl ChatAgent {
         let historical_blindspots = archives
             .recent_blindspots(20)
             .into_iter()
-            .map(|spot| format!("- [{}] {}: {}", spot.severity, spot.pattern, spot.evidence))
+            .filter(|spot| spot.conversation_id == conv_id)
+            .map(|spot| {
+                format!(
+                    "- [暂定-{}] {}: {}",
+                    spot.severity, spot.pattern, spot.evidence
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
         format!(
-            "{}\n\n已知人物：{}\n\n历史盲点记录：\n{}",
+            "{}\n\n当前对话人物：{}\n\n待验证的叙事模式假设（不是事实或人格标签）：\n{}",
             history,
             if known_persons.is_empty() {
                 "（无）"
@@ -1887,11 +1895,18 @@ impl ChatAgent {
 
     async fn build_archive_context(&self, conv_id: Uuid) -> String {
         let archives = self.archives.lock().await;
-        let emotions = archives.get_recent_emotions(5);
+        let emotions = archives.get_recent_emotions_for_conversation(conv_id, 5);
         let mut persons = archives
             .all_persons()
             .into_iter()
-            .filter(|person| person.mention_count > 0)
+            .filter(|person| {
+                person.mention_count > 0
+                    && person
+                        .conversation_ids
+                        .as_ref()
+                        .map(|ids| ids.contains(&conv_id))
+                        .unwrap_or(false)
+            })
             .collect::<Vec<_>>();
         persons.sort_by(|left, right| right.mention_count.cmp(&left.mention_count));
         persons.truncate(5);
@@ -1902,7 +1917,16 @@ impl ChatAgent {
                 "近期情绪轨迹: {}",
                 emotions
                     .iter()
-                    .map(|emotion| format!("{}({:.1})", emotion.emotion, emotion.intensity))
+                    .map(|emotion| {
+                        let confidence = emotion
+                            .confidence
+                            .map(|value| format!(",c={:.1}", value))
+                            .unwrap_or_default();
+                        format!(
+                            "{}({:.1}{})",
+                            emotion.emotion, emotion.intensity, confidence
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(" → ")
             ));
@@ -1922,14 +1946,14 @@ impl ChatAgent {
             .filter(|blindspot| blindspot.conversation_id == conv_id)
             .map(|blindspot| {
                 format!(
-                    "- [{}] {}: {}",
+                    "- [暂定-{}] {}: {}",
                     blindspot.severity, blindspot.pattern, blindspot.evidence
                 )
             })
             .collect::<Vec<_>>();
         if !relevant_blindspots.is_empty() {
             parts.push(format!(
-                "已检测到的叙事盲点:\n{}",
+                "待验证的叙事模式假设（不是事实或人格标签）:\n{}",
                 relevant_blindspots.join("\n")
             ));
         }

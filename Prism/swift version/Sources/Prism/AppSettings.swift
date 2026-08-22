@@ -66,6 +66,10 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Latest provider metadata fetched without invoking a model.
+    @Published private(set) var providerBalance: DeepSeekBalanceResponse? = nil
+    @Published private(set) var balanceUnavailable = false
+
     /// Only dataPath stays in UserDefaults — it's the bootstrap key.
     @Published var dataPath: String {
         didSet {
@@ -118,6 +122,26 @@ final class AppSettings: ObservableObject {
                       "agent.summaryIntervalMinutes", "ui.showReasoningPanel"] {
                 UserDefaults.standard.removeObject(forKey: k)
             }
+        }
+    }
+
+    /// Refresh the DeepSeek account balance in the background. The endpoint
+    /// returns account metadata only, so this does not consume model tokens.
+    func refreshProviderBalance() async {
+        let parameters = model.lowercased().contains("flash") ? flashParameters : self.parameters
+        let client = DeepSeekClient(
+            apiKey: apiKey,
+            baseURL: baseURL,
+            model: model,
+            parameters: parameters,
+            language: language
+        )
+        do {
+            providerBalance = try await client.fetchBalance()
+            balanceUnavailable = false
+        } catch {
+            providerBalance = nil
+            balanceUnavailable = true
         }
     }
 

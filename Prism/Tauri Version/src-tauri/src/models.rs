@@ -214,6 +214,8 @@ pub struct EmotionEntry {
     pub segment: String,
     pub emotion: String,
     pub intensity: f64,
+    /// Rough model confidence, never a clinical measurement.
+    pub confidence: Option<f64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -228,6 +230,8 @@ pub struct PersonRecord {
     pub mention_count: i32,
     pub emotional_arc: String,
     pub notes: Vec<String>,
+    /// Legacy records without a scope are hidden from cross-conversation use.
+    pub conversation_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

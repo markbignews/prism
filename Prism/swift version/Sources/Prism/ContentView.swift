@@ -1670,6 +1670,26 @@ struct MemoryPanelView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var usageStatsStore = UsageStatsStore.shared
 
+    private var currentPeople: [PersonRecord] {
+        guard let id = chatStore.selectedConversationID else { return [] }
+        return chatStore.personArchive.filter { $0.conversationIDs?.contains(id) == true }
+    }
+
+    private var currentEmotions: [EmotionEntry] {
+        guard let id = chatStore.selectedConversationID else { return [] }
+        return chatStore.emotionTimeline.filter { $0.conversationID == id }
+    }
+
+    private var currentBlindspots: [BlindspotRecord] {
+        guard let id = chatStore.selectedConversationID else { return [] }
+        return chatStore.blindspots.filter { $0.conversationID == id }
+    }
+
+    private var currentMemories: [MemoryEntry] {
+        guard let id = chatStore.selectedConversationID else { return [] }
+        return chatStore.memoryStore.filter { $0.sourceConversationID == id }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -1708,10 +1728,10 @@ struct MemoryPanelView: View {
                         }
                     }
 
-                    // 人物
-                    if !chatStore.personArchive.isEmpty {
+                    // 人物：只展示当前对话明确归属的人物档案。
+                    if !currentPeople.isEmpty {
                         MemorySection(title: L10n.text(.memoryPeople, settings.language), icon: "person.2.fill", color: .blue) {
-                            ForEach(chatStore.personArchive.sorted { $0.mentionCount > $1.mentionCount }) { person in
+                            ForEach(currentPeople.sorted { $0.mentionCount > $1.mentionCount }) { person in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(person.name).font(.headline)
@@ -1732,9 +1752,9 @@ struct MemoryPanelView: View {
                     }
 
                     // 情绪轨迹 — grouped by type, most recent intensity
-                    if !chatStore.emotionTimeline.isEmpty {
+                    if !currentEmotions.isEmpty {
                         MemorySection(title: L10n.text(.memoryEmotions, settings.language), icon: "waveform.path.ecg", color: .purple) {
-                            let grouped = groupEmotions(chatStore.emotionTimeline.suffix(20))
+                            let grouped = groupEmotions(currentEmotions.suffix(20))
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(grouped, id: \.emotion) { item in
@@ -1755,9 +1775,9 @@ struct MemoryPanelView: View {
                     }
 
                     // 盲点
-                    if !chatStore.blindspots.isEmpty {
+                    if !currentBlindspots.isEmpty {
                         MemorySection(title: L10n.text(.memoryBlindspots, settings.language), icon: "eye.slash.fill", color: .red) {
-                            ForEach(chatStore.blindspots.suffix(10).reversed()) { spot in
+                            ForEach(currentBlindspots.suffix(10).reversed()) { spot in
                                 VStack(alignment: .leading, spacing: 3) {
                                     HStack {
                                         Text(spot.pattern).font(.headline)
@@ -1776,9 +1796,9 @@ struct MemoryPanelView: View {
                     }
 
                     // 洞察
-                    if !chatStore.memoryStore.isEmpty {
+                    if !currentMemories.isEmpty {
                         MemorySection(title: L10n.text(.memoryInsights, settings.language), icon: "lightbulb.fill", color: .yellow) {
-                            let memories = chatStore.memoryStore.sorted { ($0.lastRecalledAt ?? $0.createdAt) > ($1.lastRecalledAt ?? $1.createdAt) }
+                            let memories = currentMemories.sorted { ($0.lastRecalledAt ?? $0.createdAt) > ($1.lastRecalledAt ?? $1.createdAt) }
                             ForEach(memories.prefix(20)) { memory in
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(memory.content).font(.callout).lineLimit(4)
@@ -1800,8 +1820,8 @@ struct MemoryPanelView: View {
                         }
                     }
 
-                    if chatStore.personArchive.isEmpty && chatStore.emotionTimeline.isEmpty
-                        && chatStore.blindspots.isEmpty && chatStore.memoryStore.isEmpty {
+                    if currentPeople.isEmpty && currentEmotions.isEmpty
+                        && currentBlindspots.isEmpty && currentMemories.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "brain.head.profile").font(.system(size: 32)).foregroundStyle(.tertiary)
                             Text(L10n.text(.memoryEmptyTitle, settings.language)).font(.headline).foregroundStyle(.secondary)
@@ -1815,7 +1835,12 @@ struct MemoryPanelView: View {
             }
         }
         .frame(minWidth: 480, idealWidth: 560, minHeight: 420, idealHeight: 600)
-        .onAppear { usageStatsStore.reload() }
+        .onAppear {
+            usageStatsStore.reload()
+            if settings.providerBalance == nil {
+                Task { await settings.refreshProviderBalance() }
+            }
+        }
     }
 }
 
@@ -1825,13 +1850,38 @@ private struct EmotionGroup { let emotion: String; let intensity: Double; let co
 
 private extension MemoryPanelView {
     var usageBlock: some View {
-        HStack(spacing: 8) {
-            usageMetric(L10n.text(.inputTokens, settings.language), tokenText(usageStatsStore.stats.inputTokens))
-            usageMetric(L10n.text(.outputTokens, settings.language), tokenText(usageStatsStore.stats.outputTokens))
-            usageMetric(
-                L10n.text(.cacheHitRate, settings.language),
-                usageStatsStore.stats.cacheHitRate.map { String(format: "%.1f%%", $0 * 100) } ?? "—"
-            )
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                usageMetric(L10n.text(.inputTokens, settings.language), tokenText(usageStatsStore.stats.inputTokens))
+                usageMetric(L10n.text(.outputTokens, settings.language), tokenText(usageStatsStore.stats.outputTokens))
+                usageMetric(
+                    L10n.text(.cacheHitRate, settings.language),
+                    usageStatsStore.stats.cacheHitRate.map { String(format: "%.1f%%", $0 * 100) } ?? "—"
+                )
+            }
+
+            if let providerBalance = settings.providerBalance, !providerBalance.balanceInfos.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text(.accountBalance, settings.language))
+                        .font(.caption.weight(.semibold))
+                    ForEach(providerBalance.balanceInfos) { info in
+                        HStack {
+                            Text(info.currency).font(.caption.monospaced())
+                            Spacer()
+                            Text("\(info.totalBalance)  ·  \(L10n.text(.grantedBalance, settings.language)): \(info.grantedBalance)  ·  \(L10n.text(.toppedUpBalance, settings.language)): \(info.toppedUpBalance)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary))
+            } else if settings.balanceUnavailable {
+                Text(L10n.text(.balanceUnavailable, settings.language))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

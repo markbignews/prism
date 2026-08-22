@@ -130,6 +130,7 @@ fn main() {
             prism::commands::query_memory,
             prism::commands::query_narrative_events,
             prism::commands::get_usage_stats,
+            prism::commands::get_user_balance,
             prism::commands::query_blindspots,
             prism::commands::get_chapters,
             prism::commands::get_chapter_messages,

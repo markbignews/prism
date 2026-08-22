@@ -214,6 +214,7 @@ pub struct EmotionEntry {
     pub segment: String,
     pub emotion: String,
     pub intensity: f64,
+    pub confidence: Option<f64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -228,6 +229,7 @@ pub struct PersonRecord {
     pub mention_count: i32,
     pub emotional_arc: String,
     pub notes: Vec<String>,
+    pub conversation_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

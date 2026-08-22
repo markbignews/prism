@@ -157,6 +157,9 @@ struct EmotionEntry: Identifiable, Codable, Equatable {
     var segment: String
     var emotion: String
     var intensity: Double
+    /// A rough model confidence, not a clinical measurement. Optional for
+    /// compatibility with archives created before confidence was recorded.
+    var confidence: Double? = nil
     var createdAt = Date()
 }
 
@@ -169,6 +172,9 @@ struct PersonRecord: Identifiable, Codable, Equatable {
     var mentionCount: Int = 1
     var emotionalArc: String = "" // "愤怒 → 释然"
     var notes: [String] = []       // per-conversation deltas
+    /// Legacy records without a scope remain hidden from cross-conversation
+    /// retrieval rather than being guessed into the current conversation.
+    var conversationIDs: [UUID]? = nil
 }
 
 // MARK: - Smart Search Results

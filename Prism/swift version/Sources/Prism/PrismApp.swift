@@ -19,6 +19,9 @@ struct PrismApp: App {
                 .frame(minWidth: 980, minHeight: 680)
                 .task {
                     chatStore.bootstrapIfNeeded(language: settings.language)
+                    if !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Task { await settings.refreshProviderBalance() }
+                    }
                     // Show onboarding on first launch (never seen) when no API key is set.
                     // Brief delay so the window is fully laid out first.
                     if !settings.onboardingCompleted

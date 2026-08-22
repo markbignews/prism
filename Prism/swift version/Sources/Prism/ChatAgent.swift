@@ -276,31 +276,15 @@ final class ChatAgent {
 
         let trimmed = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         var memoryContext = StoryMemory.relevantContext(for: trimmed, in: conversations[convIndex], language: settings.language)
-        let crossMemories = searchMemory(query: trimmed, limit: 3)
-        if !crossMemories.isEmpty {
-            let crossHeading = switch settings.language {
-            case .simplifiedChinese: "\n\n[跨对话记忆]"
-            case .traditionalChinese: "\n\n[跨對話記憶]"
-            case .english: "\n\n[Cross-conversation memory]"
-            }
-            let crossBody = crossMemories.enumerated().map { i, m in
-                let from = m.timeSpanStart ?? m.createdAt
-                let to = m.timeSpanEnd ?? from
-                return "\(i + 1). \(m.sourceChapterTitle) [\(from.ISO8601Format()) → \(to.ISO8601Format())]: \(String(m.content.prefix(200)))"
-            }.joined(separator: "\n")
-            let crossBlock = crossHeading + "\n" + crossBody
-            if let existing = memoryContext {
-                memoryContext = existing + crossBlock
-            } else {
-                memoryContext = crossBlock
-            }
-        }
         // Time is injected as a plain `[System time]` block in the system
         // prompt every API round (Tauri-compatible) — no time tool needed.
         memoryContext = (memoryContext ?? "")
             + "\n\n" + temporalContext(for: conversations[convIndex], now: requestSentAt, language: settings.language)
         errorMessage = nil
 
+        let mainParameters = settings.model.lowercased().contains("flash")
+            ? settings.flashParameters
+            : settings.parameters
         let assistantID = UUID()
         conversations[convIndex].messages.append(
             ChatMessage(id: assistantID, role: .assistant, content: "", reasoning: nil)
@@ -313,20 +297,20 @@ final class ChatAgent {
                 apiKey: settings.apiKey,
                 baseURL: settings.baseURL,
                 model: settings.model,
-                parameters: settings.parameters,
+                parameters: mainParameters,
                 language: settings.language,
                 mode: effectiveMode,
                 responseLength: settings.responseLength
             )
             let requestMessages = buildWindowedMessages(
                 for: convIndex,
-                includeReasoning: settings.parameters.thinkingEnabled
+                includeReasoning: mainParameters.thinkingEnabled
             )
             var roundMessages = requestMessages
             var pendingToolResults: [ToolResult] = []
             var finalResult = DeepSeekResult(content: "", reasoning: nil, toolCalls: [])
 
-            for _ in 0..<3 {
+            for _ in 0..<2 {
                 try Task.checkCancellation()
                 let result = try await client.stream(
                     messages: roundMessages,
@@ -359,7 +343,7 @@ final class ChatAgent {
                 }
                 roundMessages = buildWindowedMessages(
                     for: convIndex,
-                    includeReasoning: settings.parameters.thinkingEnabled
+                    includeReasoning: mainParameters.thinkingEnabled
                 )
             }
             if let messageIndex = conversations[convIndex].messages.lastIndex(where: { $0.id == assistantID }) {
@@ -446,11 +430,14 @@ final class ChatAgent {
         let emotionLines = emotionTimeline
             .filter { $0.conversationID == conversation.id }
             .suffix(5)
-            .map { "- \(dateText($0.createdAt)) \($0.emotion) intensity=\(String(format: "%.1f", $0.intensity))" }
+            .map { entry in
+                let confidence = entry.confidence.map { String(format: " confidence=%.1f", $0) } ?? ""
+                return "- \(dateText(entry.createdAt)) \(entry.emotion) intensity=\(String(format: "%.1f", entry.intensity))\(confidence)"
+            }
             .joined(separator: "\n")
 
         let personLines = personArchive
-            .filter { $0.mentionCount > 0 }
+            .filter { $0.mentionCount > 0 && $0.conversationIDs?.contains(conversation.id) == true }
             .sorted { $0.lastMentionedAt > $1.lastMentionedAt }
             .prefix(5)
             .map { person in
@@ -527,9 +514,12 @@ final class ChatAgent {
         }
 
         let conversation = conversations[index]
+        let mainParameters = settings.model.lowercased().contains("flash")
+            ? settings.flashParameters
+            : settings.parameters
         let effectiveMessages = buildWindowedMessages(
             for: index,
-            includeReasoning: settings.parameters.thinkingEnabled
+            includeReasoning: mainParameters.thinkingEnabled
         )
         let mode = conversation.mode ?? settings.conversationMode
 
@@ -551,11 +541,11 @@ final class ChatAgent {
             estimateMessageTokens($0, includeReasoning: false)
         } ?? 0
         let raw = conversation.messages.reduce(0) {
-            $0 + estimateMessageTokens($1, includeReasoning: settings.parameters.thinkingEnabled)
+            $0 + estimateMessageTokens($1, includeReasoning: mainParameters.thinkingEnabled)
         }
         let uncompressed = fixedTokens + chapterIndex + raw
         let estimated = fixedTokens + effectiveMessages.reduce(0) {
-            $0 + estimateMessageTokens($1, includeReasoning: settings.parameters.thinkingEnabled)
+            $0 + estimateMessageTokens($1, includeReasoning: mainParameters.thinkingEnabled)
         }
 
         let summaryInterval = max(0, settings.summaryDialogCount)
@@ -727,27 +717,10 @@ final class ChatAgent {
         PrismLog.log("send_message requested — conv_id=\(id.uuidString) text_len=\(trimmed.count)")
         let requestSentAt = Date()
 
-        // Build memory context: local StoryMemory + cross-conversation memories
+        // Build only current-conversation memory automatically. Cross-conversation
+        // memory remains an explicit search tool so old narratives do not bias
+        // every new turn without the user's request.
         var memoryContext = StoryMemory.relevantContext(for: trimmed, in: conversations[index], language: settings.language)
-        let crossMemories = searchMemory(query: trimmed, limit: 3)
-        if !crossMemories.isEmpty {
-            let crossHeading = switch settings.language {
-            case .simplifiedChinese: "\n\n[跨对话记忆 — 来自之前对话的相关洞察]"
-            case .traditionalChinese: "\n\n[跨對話記憶 — 來自之前對話的相關洞察]"
-            case .english: "\n\n[Cross-conversation memory — relevant insights from previous conversations]"
-            }
-            let crossBody = crossMemories.enumerated().map { i, m in
-                let from = m.timeSpanStart ?? m.createdAt
-                let to = m.timeSpanEnd ?? from
-                return "\(i + 1). \(m.sourceChapterTitle) [\(from.ISO8601Format()) → \(to.ISO8601Format())]: \(String(m.content.prefix(200)))"
-            }.joined(separator: "\n")
-            let crossBlock = crossHeading + "\n" + crossBody
-            if let existing = memoryContext {
-                memoryContext = existing + crossBlock
-            } else {
-                memoryContext = crossBlock
-            }
-        }
         // Capture the user's send time once and reuse it across the reply,
         // profile pre-pipeline, tool rounds, and later summaries.
         errorMessage = nil
@@ -759,9 +732,12 @@ final class ChatAgent {
         memoryContext = (memoryContext ?? "")
             + "\n\n" + temporalContext(for: conversations[index], now: requestSentAt, language: settings.language)
 
+        let mainParameters = settings.model.lowercased().contains("flash")
+            ? settings.flashParameters
+            : settings.parameters
         let requestMessages = buildWindowedMessages(
             for: index,
-            includeReasoning: settings.parameters.thinkingEnabled
+            includeReasoning: mainParameters.thinkingEnabled
         )
         let assistantID = UUID()
         conversations[index].messages.append(
@@ -793,8 +769,18 @@ final class ChatAgent {
             try Task.checkCancellation()
             let guardHint = buildGuardHint(from: preResult)
 
-            // ── Safety crisis — skip main model, return immediate safety response ──
-            if preResult.safetyCrisis {
+            // ── Safety gate — never continue silently after an unknown check ──
+            if preResult.safetyUncertain {
+                finalContent = buildSafetyUncertaintyResponse(language: settings.language)
+                finalReasoning = "⚠️ 安全检查未完成 — 已暂停关系分析。"
+
+                let words = finalContent.map { String($0) }
+                for i in stride(from: 0, to: words.count, by: 8) {
+                    let chunk = words[i..<min(i + 8, words.count)].joined()
+                    append(.content(chunk), to: assistantID, in: id)
+                    await Task.yield()
+                }
+            } else if preResult.safetyCrisis {
                 finalContent = buildSafetyResponse(
                     signals: preResult.safetySignals,
                     hint: preResult.safetyHint,
@@ -817,7 +803,7 @@ final class ChatAgent {
                 apiKey: settings.apiKey,
                 baseURL: settings.baseURL,
                 model: settings.model,
-                parameters: settings.parameters,
+                parameters: mainParameters,
                 language: settings.language,
                 mode: effectiveMode,
                 responseLength: settings.responseLength
@@ -825,7 +811,11 @@ final class ChatAgent {
 
             var roundMessages = requestMessages
             var pendingToolResults: [ToolResult] = []
-            let maxToolRounds = 4
+            // DeepSeek supports parallel function calls in one response.
+            // Two rounds cover retrieval followed by a dependent fetch while
+            // preventing an accidental tool/reasoning loop from multiplying
+            // completion tokens.
+            let maxToolRounds = 2
 
             // Tauri parity: on a brand-new conversation (no assistant reply yet),
             // do not expose retrieval tools on the first round — there is no
@@ -903,7 +893,7 @@ final class ChatAgent {
                 finalReasoning = result.reasoning
                 roundMessages = buildWindowedMessages(
                     for: index,
-                    includeReasoning: settings.parameters.thinkingEnabled
+                    includeReasoning: mainParameters.thinkingEnabled
                 )
             }  // end for _ in 0..<maxToolRounds
             }  // end else (non-safety path)
@@ -1173,14 +1163,17 @@ final class ChatAgent {
         let recentEmotions = emotionTimeline.filter { $0.conversationID == conv.id }.suffix(5)
         if !recentEmotions.isEmpty {
             let emotionSummary = recentEmotions
-                .map { "\($0.emotion)(\(String(format: "%.1f", $0.intensity)))" }
+                .map { entry in
+                    let confidence = entry.confidence.map { ",c=\(String(format: "%.1f", $0))" } ?? ""
+                    return "\(entry.emotion)(\(String(format: "%.1f", entry.intensity))\(confidence))"
+                }
                 .joined(separator: " → ")
             parts.append("近期情绪轨迹: \(emotionSummary)")
         }
 
         // Key persons mentioned
         let activePersons = personArchive
-            .filter { $0.mentionCount > 0 }
+            .filter { $0.mentionCount > 0 && $0.conversationIDs?.contains(conv.id) == true }
             .sorted { $0.mentionCount > $1.mentionCount }
             .prefix(5)
         if !activePersons.isEmpty {
@@ -1196,9 +1189,9 @@ final class ChatAgent {
             .suffix(5)
         if !activeBlindspots.isEmpty {
             let blindspotSummary = activeBlindspots
-                .map { "- [\($0.severity)] \($0.pattern): \($0.evidence)" }
+                .map { "- [暂定-\($0.severity)] \($0.pattern): \($0.evidence)" }
                 .joined(separator: "\n")
-            parts.append("已检测到的叙事盲点:\n\(blindspotSummary)")
+            parts.append("待验证的叙事模式假设（不是事实或人格标签）:\n\(blindspotSummary)")
         }
 
         guard !parts.isEmpty else { return "" }
@@ -1907,39 +1900,19 @@ final class ChatAgent {
         }
     }
 
-    /// Semantic search across chapters: keyword pre-filter + Flash rerank.
+    /// Search across chapters using the local ranked index. Calling Flash from
+    /// inside a retrieval tool adds a second model request to every search;
+    /// the main agent can still reason over the returned candidates itself.
     func searchChaptersSemantic(query: String, settings: AppSettings, limit: Int = 5) async -> [(chapter: StoryChapter, score: Int)] {
-        // Step 1: keyword search (fast, local)
         let keywordResults = searchChapters(query: query, limit: 15)
-        guard !keywordResults.isEmpty else { return [] }
-
-        // Step 2: Flash rerank
-        let chapters = keywordResults.map { $0.chapter }
-        let reranked = await rerankWithFlash(
-            query: query,
-            candidates: chapters,
-            titleOf: { $0.title },
-            summaryOf: { $0.summary },
-            settings: settings,
-            topK: limit
-        )
-        return reranked.map { ($0, 0) }
+        return Array(keywordResults.prefix(limit))
     }
 
-    /// Semantic search across memories: keyword pre-filter + Flash rerank.
+    /// Search long-term memory locally. Keep retrieval tools model-free so a
+    /// single user turn does not fan out into hidden reranker requests.
     func searchMemorySemantic(query: String, settings: AppSettings, limit: Int = 5) async -> [MemoryEntry] {
         let keywordResults = searchMemory(query: query, limit: 15)
-        guard !keywordResults.isEmpty else { return [] }
-
-        let reranked = await rerankWithFlash(
-            query: query,
-            candidates: keywordResults,
-            titleOf: { $0.sourceChapterTitle },
-            summaryOf: { $0.content },
-            settings: settings,
-            topK: limit
-        )
-        return reranked
+        return Array(keywordResults.prefix(limit))
     }
 
     // MARK: - Convenience: convert keyword results to JSON

@@ -14,7 +14,7 @@ pub fn tool_definitions() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: "track_person",
-            description: "Look up person records across conversations",
+            description: "Look up a person only within the current conversation",
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -76,7 +76,7 @@ pub fn tool_definitions() -> Vec<ToolDef> {
 fn narrative_timeline_tool() -> ToolDef {
     ToolDef {
         name: "manage_narrative_timeline",
-        description: "List or upsert events using the time stated in the user's story, never the chat send time. Use list before updating an earlier event. If the intended period is ambiguous, ask the user instead of calling upsert.",
+        description: "List or upsert events using the time stated in the user's story, never the chat send time. Use list before updating an earlier event. If the intended period is ambiguous, ask the user instead of calling upsert. Upsert also requires explicit user confirmation with confirmed=true.",
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -87,7 +87,8 @@ fn narrative_timeline_tool() -> ToolDef {
                 "startLabel": {"type": "string", "description": "User-stated start point or period, e.g. 高二期间 or 2024-03-12"},
                 "endLabel": {"type": "string", "description": "Optional user-stated end point"},
                 "timeKind": {"type": "string", "enum": ["period", "date", "mixed"]},
-                "sortIndex": {"type": "integer", "description": "Chronological order; use gaps such as 10, 20, 30"}
+                "sortIndex": {"type": "integer", "description": "Chronological order; use gaps such as 10, 20, 30"},
+                "confirmed": {"type": "boolean", "description": "Set true only when the user explicitly confirmed saving this event in the current message"}
             },
             "required": ["action"]
         }),
@@ -132,12 +133,13 @@ pub async fn execute_tool(
     match name {
         "track_person" => {
             let name = args["name"].as_str().unwrap_or("");
-            let person = archives.find_person(name);
+            let person = archives.find_person(name, current_conversation_id);
             Ok(serde_json::json!(person))
         }
         "emotion_timeline" => {
             let limit = args["count"].as_u64().unwrap_or(5).clamp(1, 50) as usize;
-            let emotions = archives.get_recent_emotions(limit);
+            let emotions =
+                archives.get_recent_emotions_for_conversation(current_conversation_id, limit);
             Ok(serde_json::json!({"entries": emotions}))
         }
         "search_chapters" => {
@@ -284,6 +286,62 @@ pub async fn execute_tool(
             }
             if action != "upsert" {
                 return Err("action must be list or upsert".to_string());
+            }
+
+            let confirmed = args["confirmed"].as_bool().unwrap_or(false);
+            let explicit_confirmation = conversations
+                .iter()
+                .find(|conversation| conversation.id == current_conversation_id)
+                .and_then(|conversation| {
+                    conversation
+                        .messages
+                        .iter()
+                        .rev()
+                        .find(|message| message.role == ChatRole::user)
+                })
+                .map(|message| {
+                    let value = message.content.to_lowercase();
+                    let negative = [
+                        "不要保存",
+                        "不保存",
+                        "别保存",
+                        "无需保存",
+                        "不用保存",
+                        "不要写入",
+                        "don't save",
+                        "do not save",
+                        "don't write",
+                        "do not write",
+                    ];
+                    let affirmative = [
+                        "确认保存",
+                        "确认写入",
+                        "可以保存",
+                        "请保存",
+                        "保存到时间轴",
+                        "写入时间轴",
+                        "记入时间轴",
+                        "确认",
+                        "confirm save",
+                        "yes, save",
+                        "save it",
+                        "save to timeline",
+                        "write to timeline",
+                        "please save",
+                    ];
+                    let looks_like_question =
+                        value.contains('吗') || value.contains('?') || value.contains('？');
+                    confirmed
+                        && !negative.iter().any(|phrase| value.contains(phrase))
+                        && !looks_like_question
+                        && affirmative.iter().any(|phrase| value.contains(phrase))
+                })
+                .unwrap_or(false);
+            if !explicit_confirmation {
+                return Ok(serde_json::json!({
+                    "pending_confirmation": true,
+                    "instruction": "Ask the user to confirm saving this event. Do not write it yet."
+                }));
             }
 
             let title = args["title"].as_str().unwrap_or("").trim();

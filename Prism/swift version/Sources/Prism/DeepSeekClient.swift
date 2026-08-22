@@ -1,5 +1,31 @@
 import Foundation
 
+struct DeepSeekBalanceInfo: Codable, Identifiable, Sendable {
+    let currency: String
+    let totalBalance: String
+    let grantedBalance: String
+    let toppedUpBalance: String
+
+    var id: String { currency }
+
+    enum CodingKeys: String, CodingKey {
+        case currency
+        case totalBalance = "total_balance"
+        case grantedBalance = "granted_balance"
+        case toppedUpBalance = "topped_up_balance"
+    }
+}
+
+struct DeepSeekBalanceResponse: Codable, Sendable {
+    let isAvailable: Bool
+    let balanceInfos: [DeepSeekBalanceInfo]
+
+    enum CodingKeys: String, CodingKey {
+        case isAvailable = "is_available"
+        case balanceInfos = "balance_infos"
+    }
+}
+
 private enum InstallationIdentity {
     private static let storageKey = "deepseek.userID"
 
@@ -46,23 +72,19 @@ struct DeepSeekClient {
             throw DeepSeekError.invalidBaseURL
         }
 
-        // Keep the system prefix stable for DeepSeek's prefix cache. Each
-        // persisted user message carries its own immutable sentAt marker
-        // below, so historical prefixes remain byte-for-byte reusable.
+        // Keep the system prefix stable for DeepSeek's prefix cache. Dynamic
+        // memory/supervisor context belongs on the current user turn; putting
+        // it in a system message before the transcript would invalidate the
+        // cache prefix on every request.
         let systemPrompt = AgentPrompt.system(language: language, mode: mode, responseLength: responseLength)
         var requestMessages = [APIMessage(role: "system", content: systemPrompt)]
-        if let hint = supervisorHint, !hint.isEmpty {
-            requestMessages.append(APIMessage(role: "system", content: "[监督者方向]\n\(hint)"))
-        }
-        if let memoryContext, !memoryContext.isEmpty {
-            requestMessages.append(APIMessage(role: "system", content: memoryContext))
-        }
         // Only the last assistant message may carry toolCalls, and only when we have
         // pending tool results that correspond to them.  Stale toolCalls from previous
         // turns (where tool messages were never persisted) must be stripped so the API
         // never sees a tool_calls message without matching tool messages after it.
         let tail = messages.suffix(500)
         let lastAssistantInTail = tail.lastIndex(where: { $0.role == .assistant })
+        let lastUserInTail = tail.lastIndex(where: { $0.role == .user })
         requestMessages += tail.enumerated().map { i, msg in
             let keepToolCalls = !toolResults.isEmpty && i == lastAssistantInTail
             // Tauri parity: round-trip reasoning_content for assistant history
@@ -70,14 +92,29 @@ struct DeepSeekClient {
             // DeepSeek API expects it when thinking is enabled). Only sent for
             // assistant messages when thinking mode is on.
             let reasoning: String?
-            if parameters.thinkingEnabled, msg.role == .assistant, let r = msg.reasoning, !r.isEmpty {
+            // DeepSeek only requires reasoning_content to be replayed for
+            // assistant messages that actually made a tool call. Omitting
+            // ordinary final-answer reasoning keeps later prompts smaller
+            // without disabling thinking for the current request.
+            if parameters.thinkingEnabled, msg.role == .assistant,
+               msg.toolCalls != nil, let r = msg.reasoning, !r.isEmpty {
                 reasoning = r
             } else {
                 reasoning = nil
             }
-            let content = msg.role == .user
+            var content = msg.role == .user
                 ? "[sentAt=\(AgentPrompt.transcriptTimestamp(msg.createdAt))]\n\(msg.content)"
                 : msg.content
+            if msg.role == .user, i == lastUserInTail {
+                var dynamicContext = ""
+                if let hint = supervisorHint, !hint.isEmpty {
+                    dynamicContext += "\n\n[监督者方向]\n\(hint)"
+                }
+                if let memoryContext, !memoryContext.isEmpty {
+                    dynamicContext += "\n\n\(memoryContext)"
+                }
+                content += dynamicContext
+            }
             return APIMessage(role: msg.role.rawValue, content: content,
                               reasoningContent: reasoning,
                               toolCalls: keepToolCalls ? msg.toolCalls : nil)
@@ -249,6 +286,43 @@ struct DeepSeekClient {
         }
         let body = String(data: data, encoding: .utf8) ?? ""
         throw DeepSeekError.api("API error (HTTP \(http.statusCode)): \(String(body.prefix(200)))")
+    }
+
+    /// Read the provider balance without invoking a model or consuming model
+    /// tokens. DeepSeek returns one entry per currency.
+    func fetchBalance() async throws -> DeepSeekBalanceResponse {
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DeepSeekError.missingAPIKey
+        }
+        guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/user/balance") else {
+            throw DeepSeekError.invalidBaseURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            throw DeepSeekError.api("Network error: \(error.localizedDescription)")
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw DeepSeekError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw DeepSeekError.api("Balance API error (HTTP \(http.statusCode)): \(String(body.prefix(200)))")
+        }
+        do {
+            return try JSONDecoder().decode(DeepSeekBalanceResponse.self, from: data)
+        } catch {
+            throw DeepSeekError.api("Invalid balance response: \(error.localizedDescription)")
+        }
     }
 
     private func summarizeRequest(systemPrompt: String, userContent: String, maxTokens: Int, timeout: Double) async throws -> String {

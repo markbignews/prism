@@ -112,6 +112,22 @@ impl Archives {
             .collect()
     }
 
+    pub fn get_recent_emotions_for_conversation(
+        &self,
+        conversation_id: Uuid,
+        limit: usize,
+    ) -> Vec<EmotionEntry> {
+        self.get_recent_emotions(200)
+            .into_iter()
+            .filter(|entry| entry.conversation_id == conversation_id)
+            .rev()
+            .take(limit)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
+    }
+
     // ─── Person Records ───
 
     pub fn all_persons(&self) -> Vec<PersonRecord> {
@@ -119,13 +135,19 @@ impl Archives {
         serde_json::from_value(Value::Array(archive_array(&v, "persons"))).unwrap_or_default()
     }
 
-    pub fn find_person(&self, name: &str) -> Option<PersonRecord> {
+    pub fn find_person(&self, name: &str, conversation_id: Uuid) -> Option<PersonRecord> {
         if name.trim().is_empty() {
             return None;
         }
         let name_lower = name.to_lowercase();
         self.all_persons()
             .into_iter()
+            .filter(|p| {
+                p.conversation_ids
+                    .as_ref()
+                    .map(|ids| ids.contains(&conversation_id))
+                    .unwrap_or(false)
+            })
             .find(|p| p.name.to_lowercase().contains(&name_lower))
     }
 
@@ -137,6 +159,23 @@ impl Archives {
             .iter_mut()
             .find(|p| p.name.eq_ignore_ascii_case(&person.name))
         {
+            // Legacy records have no conversation scope. Do not merge their
+            // old notes, role, or mention count into a new conversation: that
+            // would silently disclose cross-conversation personal data.
+            if existing.conversation_ids.is_none() {
+                existing.first_mentioned_at = person.first_mentioned_at;
+                existing.last_mentioned_at = person.last_mentioned_at;
+                existing.mention_count = person.mention_count.max(1);
+                existing.role = person.role.clone();
+                existing.emotional_arc = person.emotional_arc.clone();
+                existing.notes = person.notes.clone();
+                existing.conversation_ids = person.conversation_ids.clone();
+                self.write_json(
+                    "person_archive.json",
+                    &serde_json::to_value(persons).unwrap_or(Value::Array(Vec::new())),
+                );
+                return;
+            }
             existing.last_mentioned_at = person.last_mentioned_at;
             existing.mention_count += person.mention_count.max(1);
             if existing.role.is_empty() {
@@ -147,6 +186,17 @@ impl Archives {
             }
             existing.notes.extend(person.notes.iter().cloned());
             existing.notes.truncate(20);
+            let mut conversation_ids = existing.conversation_ids.clone().unwrap_or_default();
+            for conversation_id in person.conversation_ids.clone().unwrap_or_default() {
+                if !conversation_ids.contains(&conversation_id) {
+                    conversation_ids.push(conversation_id);
+                }
+            }
+            existing.conversation_ids = if conversation_ids.is_empty() {
+                None
+            } else {
+                Some(conversation_ids)
+            };
         } else {
             persons.push(person.clone());
         }
@@ -345,8 +395,8 @@ impl Archives {
                 && entry["conversationId"] != id_json
                 && entry["conversation_id"] != id_json
         });
-        // Person records are cross-conversation: keep only names that still
-        // appear in a remaining conversation's messages (Swift parity).
+        // Keep only person records that still have evidence in a remaining
+        // conversation; unscoped legacy records are removed conservatively.
         self.purge_array("person_archive.json", "persons", |entry| {
             let name = entry["name"].as_str().unwrap_or("").to_lowercase();
             !name.is_empty()

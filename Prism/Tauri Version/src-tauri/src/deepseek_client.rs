@@ -1,10 +1,32 @@
 use crate::models::*;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use tokio::sync::Mutex;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepSeekBalanceInfo {
+    pub currency: String,
+    #[serde(rename = "totalBalance", alias = "total_balance")]
+    pub total_balance: String,
+    #[serde(rename = "grantedBalance", alias = "granted_balance")]
+    pub granted_balance: String,
+    #[serde(rename = "toppedUpBalance", alias = "topped_up_balance")]
+    pub topped_up_balance: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepSeekBalanceResponse {
+    #[serde(rename = "isAvailable", alias = "is_available")]
+    pub is_available: bool,
+    #[serde(rename = "balanceInfos", alias = "balance_infos")]
+    pub balance_infos: Vec<DeepSeekBalanceInfo>,
+}
 
 /// Convert our persisted tool-call representation to the OpenAI-compatible
 /// message shape required by DeepSeek. In particular, every assistant tool
@@ -41,10 +63,13 @@ fn api_message(message: &ChatMessage) -> Value {
         api_message["tool_call_id"] = serde_json::json!(tool_call_id);
     }
     // DeepSeek thinking mode requires the model's private reasoning to be
-    // round-tripped on assistant messages, especially assistant tool-call
-    // messages. It is stored as `reasoning` in our local model, but the wire
-    // name is `reasoning_content`.
-    if role == "assistant" && (message.reasoning.is_some() || message.tool_calls.is_some()) {
+    // round-tripped on assistant tool-call messages. It is stored as
+    // `reasoning` in our local model, but the wire name is `reasoning_content`.
+    // DeepSeek requires reasoning_content on assistant tool-call turns, but
+    // does not require replaying the private chain for ordinary final answers.
+    // Omitting the latter keeps subsequent prompts smaller while thinking
+    // remains enabled for the current request.
+    if role == "assistant" && message.tool_calls.is_some() {
         api_message["reasoning_content"] =
             serde_json::json!(message.reasoning.clone().unwrap_or_default());
     }
@@ -169,6 +194,34 @@ impl DeepSeekClient {
 
     pub async fn api_key(&self) -> String {
         self.api_key.lock().await.clone()
+    }
+
+    /// Read account balance from DeepSeek's account endpoint. This is a
+    /// metadata request and does not invoke a model or consume completion
+    /// tokens.
+    pub async fn user_balance(&self) -> Result<DeepSeekBalanceResponse, String> {
+        let api_key = self.api_key.lock().await.clone();
+        if api_key.trim().is_empty() {
+            return Err("No API key configured".to_string());
+        }
+        let base_url = self.base_url.lock().await.clone();
+        let url = format!("{}/user/balance", base_url.trim_end_matches('/'));
+        let response = self
+            .http
+            .get(url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .send()
+            .await
+            .map_err(|error| format!("Balance request failed: {}", error))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| format!("Balance response failed: {}", error))?;
+        if !status.is_success() {
+            return Err(format!("Balance API error {}: {}", status, body));
+        }
+        serde_json::from_str(&body).map_err(|error| format!("Invalid balance response: {}", error))
     }
 
     pub async fn set_api_key(&self, key: String) {

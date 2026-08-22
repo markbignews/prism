@@ -14,6 +14,7 @@ pub struct GuardPanelResult {
     pub ingratiation: bool,
     pub action_hollow: bool,
     pub safety_crisis: bool,
+    pub safety_uncertain: bool,
     pub crisis_detail: String,
     pub crisis_hotline: String,
     pub emotions: Vec<EmotionEntry>,
@@ -80,13 +81,32 @@ impl PrePipeline {
         let user_msg = ChatMessage::new(ChatRole::user, user_content);
 
         let flash_model = self.client.flash_model().await;
-        let response = self
+        let mut result = GuardPanelResult::default();
+        let response = match self
             .client
             .complete_without_thinking(&flash_model, vec![system_msg, user_msg], 0.1, 0.8, 1024)
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                result.safety_uncertain = true;
+                result
+                    .raw_warnings
+                    .push(format!("safety_check_unavailable: {}", error));
+                return Ok(result);
+            }
+        };
 
-        let parsed = extract_json(&response).unwrap_or(Value::Null);
-        let mut result = GuardPanelResult::default();
+        let parsed = match extract_json(&response) {
+            Some(parsed) => parsed,
+            None => {
+                result.safety_uncertain = true;
+                result
+                    .raw_warnings
+                    .push("safety_check_invalid_json".to_string());
+                return Ok(result);
+            }
+        };
 
         if let Some(values) = parsed.get("emotions").and_then(Value::as_array) {
             for value in values {
@@ -104,6 +124,9 @@ impl PrePipeline {
                             .collect(),
                         emotion: emotion.to_string(),
                         intensity: intensity.clamp(0.0, 1.0),
+                        confidence: value["confidence"]
+                            .as_f64()
+                            .map(|value| value.clamp(0.0, 1.0)),
                         created_at: request_sent_at,
                     });
                 }
@@ -122,6 +145,7 @@ impl PrePipeline {
                         mention_count: 1,
                         emotional_arc: String::new(),
                         notes: vec![],
+                        conversation_ids: Some(vec![conversation_id]),
                     });
                 }
             }
@@ -196,6 +220,7 @@ impl PrePipeline {
             .unwrap_or(false);
         if safety_flag == Some("crisis") || safety_detected {
             result.safety_crisis = true;
+            result.safety_uncertain = false;
             result.crisis_detail = safety
                 .and_then(|value| {
                     value["suggest"]
@@ -222,12 +247,15 @@ impl PrePipeline {
                 );
             }
         } else if safety_flag == Some("ok") {
+            result.safety_uncertain = false;
             if let Ok(mut active) = self.active_crises.lock() {
                 active.remove(&conversation_id);
             }
             if let Ok(mut hints) = self.crisis_hints.lock() {
                 hints.remove(&conversation_id);
             }
+        } else {
+            result.safety_uncertain = true;
         }
 
         Ok(result)

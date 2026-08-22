@@ -213,6 +213,11 @@ enum L10n {
         case inputTokens
         case outputTokens
         case cacheHitRate
+        case accountBalance
+        case balanceUnavailable
+        case totalBalance
+        case grantedBalance
+        case toppedUpBalance
         case narrativeNoEvents
 
         // Actions
@@ -403,6 +408,11 @@ enum L10n {
         .inputTokens: "输入 Token",
         .outputTokens: "输出 Token",
         .cacheHitRate: "缓存命中率",
+        .accountBalance: "账户余额",
+        .balanceUnavailable: "余额暂不可用",
+        .totalBalance: "总余额",
+        .grantedBalance: "赠余额度",
+        .toppedUpBalance: "充值余额",
         .narrativeNoEvents: "尚未记录明确的经历时间节点。时间不清时，棱镜会先向你确认。",
         .copyCode: "复制代码",
     ]
@@ -588,6 +598,11 @@ enum L10n {
         .inputTokens: "輸入 Token",
         .outputTokens: "輸出 Token",
         .cacheHitRate: "快取命中率",
+        .accountBalance: "帳戶餘額",
+        .balanceUnavailable: "餘額暫不可用",
+        .totalBalance: "總餘額",
+        .grantedBalance: "贈送餘額",
+        .toppedUpBalance: "充值餘額",
         .narrativeNoEvents: "尚未記錄明確的經歷時間節點。時間不清時，稜鏡會先向你確認。",
         .copyCode: "複製代碼",
     ]
@@ -773,6 +788,11 @@ enum L10n {
         .inputTokens: "Input Tokens",
         .outputTokens: "Output Tokens",
         .cacheHitRate: "Cache Hit Rate",
+        .accountBalance: "Account Balance",
+        .balanceUnavailable: "Balance unavailable",
+        .totalBalance: "Total",
+        .grantedBalance: "Granted",
+        .toppedUpBalance: "Topped up",
         .narrativeNoEvents: "No clear story-time event has been recorded yet. Prism will ask when the timing is ambiguous.",
         .copyCode: "Copy Code",
     ]
