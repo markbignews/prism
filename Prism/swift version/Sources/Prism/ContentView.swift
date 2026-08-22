@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import AppKit
 
 // MARK: - Glass Background Modifier
 
@@ -153,6 +155,7 @@ struct ContentView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.openSettings) private var openSettings
     @State private var draft = ""
+    @State private var draftAttachments: [MessageAttachment] = []
     @State private var selectedMessageID: ChatMessage.ID?
     @State private var scrollToMessageID: ChatMessage.ID?
     @State private var selectedChapter: StoryChapter?
@@ -198,6 +201,7 @@ struct ContentView: View {
         } detail: {
             ChatView(
                 draft: $draft,
+                draftAttachments: $draftAttachments,
                 selectedMessageID: $selectedMessageID,
                 scrollToMessageID: $scrollToMessageID,
                 selectedChapter: $selectedChapter,
@@ -213,6 +217,7 @@ struct ContentView: View {
             if let newID {
                 UserDefaults.standard.set(newID.uuidString, forKey: "ui.lastConversationID")
             }
+            draftAttachments = []
         }
         .onReceive(NotificationCenter.default.publisher(for: .openMemoryPanel)) { _ in
             showMemoryPanel = true
@@ -646,6 +651,7 @@ struct ChatView: View {
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var settings: AppSettings
     @Binding var draft: String
+    @Binding var draftAttachments: [MessageAttachment]
     @Binding var selectedMessageID: ChatMessage.ID?
     @Binding var scrollToMessageID: ChatMessage.ID?
     @Binding var selectedChapter: StoryChapter?
@@ -690,23 +696,25 @@ struct ChatView: View {
 
                 ComposerView(
                     draft: $draft,
+                    attachments: $draftAttachments,
                     isSending: chatStore.isSending,
                     mode: chatStore.selectedConversation?.mode ?? settings.conversationMode,
                     contextUsage: chatStore.contextUsage(settings: settings),
                     language: settings.language,
                     onCycleMode: { cycleMode() },
                     onStop: { chatStore.cancelSend() },
-                    onSend: { text in
+                    onSend: { text, attachments in
                         // `ComposerView` passes an immutable snapshot so the
                         // empty-state → message-list transition cannot race a
                         // second read from the shared draft binding.
                         draft = ""
+                        draftAttachments = []
                         let task = Task {
                             if let msgID = editMessageID {
                                 editMessageID = nil
                                 await chatStore.editAndResend(userMessageID: msgID, newText: text, settings: settings)
                             } else {
-                                await chatStore.send(text, settings: settings)
+                                await chatStore.send(text, attachments: attachments, settings: settings)
                             }
                         }
                         chatStore.currentSendTask = task
@@ -1394,6 +1402,14 @@ struct MessageBubble: View {
                         .glassBackground(cornerRadius: 14, style: .secondary)
                     }
 
+                    if message.role == .user, !message.attachments.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(message.attachments) { attachment in
+                                AttachmentPreview(attachment: attachment, compact: true)
+                            }
+                        }
+                    }
+
                     if message.role == .assistant,
                        let calls = message.toolCalls, !calls.isEmpty,
                        message.content == "🔧 正在查询…" {
@@ -1567,6 +1583,41 @@ struct ThinkingIndicator: View {
     }
 }
 
+/// Shared attachment rendering for the composer and sent user messages.
+/// Images are kept in memory for the active conversation, so a thumbnail can
+/// be shown without creating a second copy on disk.
+struct AttachmentPreview: View {
+    let attachment: MessageAttachment
+    var compact = false
+
+    var body: some View {
+        if attachment.isImage, let image = NSImage(data: attachment.data) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: compact ? 48 : 58, height: compact ? 42 : 50)
+                .clipShape(RoundedRectangle(cornerRadius: compact ? 7 : 9, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: compact ? 7 : 9, style: .continuous)
+                        .stroke(.white.opacity(0.18), lineWidth: 0.5)
+                }
+                .help(attachment.fileName)
+        } else {
+            HStack(spacing: 5) {
+                Image(systemName: "doc.text")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(attachment.fileName)
+                    .font(.caption2)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.secondary.opacity(0.10), in: Capsule())
+        }
+    }
+}
+
 // MARK: - Composer with Dynamic Height + Liquid Glass (pure SwiftUI)
 
 /// Multi-line composer built entirely with SwiftUI.
@@ -1582,83 +1633,312 @@ struct ThinkingIndicator: View {
 /// confirmation keeps working); verify on first use.
 struct ComposerView: View {
     @Binding var draft: String
+    @Binding var attachments: [MessageAttachment]
     var isSending: Bool
     var mode: ConversationMode
     var contextUsage: ContextUsageSnapshot
     var language: AppLanguage
     var onCycleMode: () -> Void
     var onStop: () -> Void
-    var onSend: (String) -> Void
+    var onSend: (String, [MessageAttachment]) -> Void
 
     @FocusState private var isFocused: Bool
+    @State private var showFileImporter = false
+    @State private var attachmentError: String?
+    @State private var isDropTargeted = false
+
+    private let imageTypes = Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+    private let textTypes = Set([
+        "text/plain", "text/markdown", "text/csv", "text/html", "text/xml",
+        "text/css", "text/javascript", "application/json", "application/xml",
+        "application/javascript", "application/x-yaml", "text/yaml"
+    ])
 
     private var trimmed: String {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            TextField("", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(1...8)
-                .focused($isFocused)
-                .submitLabel(.send)
-                .onSubmit { submit() }
-                .onAppear {
-                    // Defer until the new-conversation view is attached to the
-                    // key window; immediate focus can be dropped on first load.
-                    DispatchQueue.main.async { isFocused = true }
-                }
-                .onKeyPress(keys: [.return]) { press in
-                    if press.modifiers.contains(.shift) {
-                        // Shift+Return → newline
-                        draft += "\n"
-                        return .handled
-                    }
-                    // Return → send
-                    submit()
-                    return .handled
-                }
-                .padding(.horizontal, 12)
-                .padding(.trailing, 178)
-                .padding(.vertical, 11)
-                .frame(minHeight: 54)
-                .glassBackground(cornerRadius: 20, style: .deep)
+        VStack(spacing: 4) {
+            if let attachmentError {
+                Text(attachmentError)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
-            HStack(spacing: 6) {
-                ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
-                ContextUsageButton(snapshot: contextUsage, language: language)
+            VStack(spacing: 0) {
+                if !attachments.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(attachments) { attachment in
+                                HStack(spacing: 5) {
+                                    AttachmentPreview(attachment: attachment)
+                                    Button {
+                                        attachments.removeAll { $0.id == attachment.id }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("删除附件")
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(.secondary.opacity(0.10), in: Capsule())
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 3)
+                    }
+                }
 
-                if isSending {
-                    Button(action: onStop) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.red)
+                ZStack(alignment: .trailing) {
+                    TextField("", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .lineLimit(1...8)
+                        .focused($isFocused)
+                        .submitLabel(.send)
+                        .onSubmit { submit() }
+                        .onAppear {
+                            // Defer until the new-conversation view is attached to the
+                            // key window; immediate focus can be dropped on first load.
+                            DispatchQueue.main.async { isFocused = true }
+                        }
+                        .onKeyPress(keys: [.return]) { press in
+                            if press.modifiers.contains(.shift) {
+                                // Shift+Return → newline
+                                draft += "\n"
+                                return .handled
+                            }
+                            // Return → send
+                            submit()
+                            return .handled
+                        }
+                        .padding(.leading, 50)
+                        .padding(.trailing, 178)
+                        .padding(.vertical, 11)
+                        .frame(minHeight: 54)
+
+                    HStack(spacing: 6) {
+                        Button { showFileImporter = true } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("添加附件")
+
+                        Spacer()
+
+                        ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
+                        ContextUsageButton(snapshot: contextUsage, language: language)
+
+                        if isSending {
+                            Button(action: onStop) {
+                                Image(systemName: "stop.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.red)
+                            }
+                            .buttonStyle(.plain)
+                            .keyboardShortcut(.escape, modifiers: [])
+                        } else {
+                            Button {
+                                submit()
+                            } label: {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(canSubmit ? .blue : .secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!canSubmit)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.escape, modifiers: [])
-                } else {
-                    Button {
-                        submit()
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(trimmed.isEmpty ? .secondary : .blue)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(trimmed.isEmpty)
+                    .padding(.horizontal, 12)
                 }
             }
-            .padding(.trailing, 12)
+            .glassBackground(cornerRadius: 20, style: .deep)
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
+            }
+            .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: handleDrop)
+        }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [.image, .text, .data],
+            allowsMultipleSelection: true
+        ) { result in
+            handleFileImport(result)
         }
         .frame(maxWidth: 720)
     }
 
+    private var canSubmit: Bool {
+        !trimmed.isEmpty || !attachments.isEmpty
+    }
+
     private func submit() {
         let text = trimmed
-        guard !text.isEmpty, !isSending else { return }
-        onSend(text)
+        guard (!text.isEmpty || !attachments.isEmpty), !isSending else { return }
+        onSend(text, attachments)
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        attachmentError = nil
+        switch result {
+        case .failure(let error):
+            attachmentError = "无法读取附件：\(error.localizedDescription)"
+        case .success(let urls):
+            importURLs(urls)
+        }
+    }
+
+    private func importURLs(_ urls: [URL]) {
+        for url in urls {
+                guard attachments.count < 5 else {
+                    attachmentError = "一次最多添加 5 个附件。"
+                    break
+                }
+                do {
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                    let values = try url.resourceValues(forKeys: [.contentTypeKey, .fileSizeKey])
+                    let type = values.contentType
+                    let mime = type?.preferredMIMEType
+                        ?? mimeType(for: url.pathExtension)
+                        ?? "application/octet-stream"
+                    let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+
+                    if imageTypes.contains(mime) {
+                        guard data.count <= 32 * 1024 * 1024 else {
+                            throw AttachmentError.tooLarge("图片不能超过 32 MB：\(url.lastPathComponent)")
+                        }
+                        attachments.append(MessageAttachment(
+                            fileName: url.lastPathComponent,
+                            mediaType: mime,
+                            kind: .image,
+                            data: data,
+                            textContent: nil
+                        ))
+                    } else if textTypes.contains(mime) || type?.conforms(to: .text) == true || isTextExtension(url.pathExtension) {
+                        guard data.count <= 2 * 1024 * 1024 else {
+                            throw AttachmentError.tooLarge("文本文件不能超过 2 MB：\(url.lastPathComponent)")
+                        }
+                        let text = String(decoding: data, as: UTF8.self)
+                        attachments.append(MessageAttachment(
+                            fileName: url.lastPathComponent,
+                            mediaType: mime == "application/octet-stream" ? "text/plain" : mime,
+                            kind: .text,
+                            data: data,
+                            textContent: text
+                        ))
+                    } else {
+                        throw AttachmentError.unsupported("暂不支持此文件类型：\(url.lastPathComponent)")
+                    }
+                } catch let error as AttachmentError {
+                    attachmentError = error.localizedDescription
+                } catch {
+                    attachmentError = "无法读取附件：\(url.lastPathComponent)"
+                }
+        }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        attachmentError = nil
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                    let url: URL?
+                    if let item = item as? URL {
+                        url = item
+                    } else if let data = item as? Data {
+                        url = URL(dataRepresentation: data, relativeTo: nil)
+                    } else {
+                        url = nil
+                    }
+                    Task { @MainActor in
+                        if let error {
+                            attachmentError = "无法读取拖入的附件：\(error.localizedDescription)"
+                        } else if let url {
+                            importURLs([url])
+                        } else {
+                            attachmentError = "无法读取拖入的附件。"
+                        }
+                    }
+                }
+            } else if let imageType = provider.registeredTypeIdentifiers.first(where: {
+                guard let type = UTType($0) else { return false }
+                return type.conforms(to: .image)
+            }) {
+                let imageName = provider.suggestedName ?? "拖入的图片"
+                let imageMime = mimeType(for: imageType) ?? "image/png"
+                provider.loadDataRepresentation(forTypeIdentifier: imageType) { data, error in
+                    let errorMessage = error?.localizedDescription ?? "未知错误"
+                    Task { @MainActor in
+                        if let data {
+                            importDroppedImage(data, mime: imageMime, name: imageName)
+                        } else {
+                            attachmentError = "无法读取拖入的图片：\(errorMessage)"
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private func importDroppedImage(_ data: Data, mime: String, name: String) {
+        guard attachments.count < 5 else {
+            attachmentError = "一次最多添加 5 个附件。"
+            return
+        }
+        guard data.count <= 32 * 1024 * 1024 else {
+            attachmentError = "图片不能超过 32 MB：\(name)"
+            return
+        }
+        attachments.append(MessageAttachment(
+            fileName: name,
+            mediaType: mime,
+            kind: .image,
+            data: data,
+            textContent: nil
+        ))
+    }
+
+    private func isTextExtension(_ ext: String) -> Bool {
+        ["txt", "md", "markdown", "csv", "json", "xml", "html", "htm", "css", "js", "jsx", "ts", "tsx", "py", "swift", "rs", "go", "java", "c", "h", "cpp", "cxx", "cs", "rb", "php", "sh", "yaml", "yml", "toml", "ini", "log", "sql"].contains(ext.lowercased())
+    }
+
+    private func mimeType(for ext: String) -> String? {
+        if let type = UTType(ext), let mime = type.preferredMIMEType {
+            return mime
+        }
+        return switch ext.lowercased() {
+        case "png": "image/png"
+        case "jpg", "jpeg": "image/jpeg"
+        case "gif": "image/gif"
+        case "webp": "image/webp"
+        case "txt", "md", "markdown", "log": "text/plain"
+        case "csv": "text/csv"
+        case "json": "application/json"
+        case "xml": "application/xml"
+        case "html", "htm": "text/html"
+        default: nil
+        }
+    }
+
+    private enum AttachmentError: LocalizedError {
+        case tooLarge(String)
+        case unsupported(String)
+        var errorDescription: String? {
+            switch self {
+            case .tooLarge(let message), .unsupported(let message): message
+            }
+        }
     }
 }
 

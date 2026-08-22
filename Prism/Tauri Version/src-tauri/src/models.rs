@@ -42,6 +42,23 @@ pub struct ToolResult {
     pub content: String,
 }
 
+/// Runtime attachment payload received from the composer. Image bytes are
+/// base64 encoded by the renderer; text files carry their decoded UTF-8 text.
+/// The payload is deliberately skipped when a conversation is persisted so
+/// large binary blobs never inflate the local transcript database.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatAttachment {
+    pub id: Uuid,
+    pub file_name: String,
+    pub media_type: String,
+    pub kind: String,
+    #[serde(default)]
+    pub data_base64: String,
+    #[serde(default)]
+    pub text_content: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
@@ -55,6 +72,8 @@ pub struct ChatMessage {
     pub created_at: DateTime<Utc>,
     #[serde(default)]
     pub suggestions: Vec<String>,
+    #[serde(skip)]
+    pub attachments: Vec<ChatAttachment>,
 }
 
 impl ChatMessage {
@@ -68,6 +87,7 @@ impl ChatMessage {
             tool_call_id: None,
             created_at: Utc::now(),
             suggestions: Vec::new(),
+            attachments: Vec::new(),
         }
     }
 }

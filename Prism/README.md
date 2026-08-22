@@ -69,6 +69,12 @@ Chapters, people, emotions, blindspots, and cross-conversation memories are stor
 
 The SwiftUI and Tauri clients share the same core behavior. The platform shells differ where they should: macOS uses native window and storage conventions, while Windows uses a native title bar, a per-user NSIS installer, and WebView2.
 
+### Add visual or text context when you need it
+
+The composer accepts attachments through the **+** button or by dragging files into the input area. JPEG, PNG, GIF, and WebP images are shown as thumbnails; common text and code files are read as text blocks. Attachments can be removed before sending, and the same preview remains visible in the sent user message. The current limit is five attachments per message, with a 32 MB limit per image and a 2 MB limit per text/code file.
+
+New installations use the experimental `deepseek-v4-flash-vision-exp` model by default so image input works through the configured DeepSeek-compatible endpoint. See DeepSeek's [Vision API guide](https://api-docs.deepseek.com/guides/vision) and [Files API documentation](https://api-docs.deepseek.com/guides/files_api) for the provider-side limits. PDF files are not sent directly: the current Files API accepts images only, so PDF extraction or page rendering is not yet part of Prism.
+
 ## Screenshots
 
 | Conversation | Cross-conversation memory | People and insights |
@@ -177,6 +183,7 @@ By default, Prism stores its data under:
 
 - Conversation history and indexes are plain local JSON files.
 - There is no built-in telemetry, analytics, or Prism account.
+- Attachments are kept in memory for the active request and are not written into `conversations.json`. When you send an attachment, its contents are transmitted to the configured API endpoint: images as image data and text/code files as text content.
 - Prism keeps local copies, but conversation content and user-profile data derived from it—including people, emotions, memories, blindspots, and narrative timeline records—are sent to DeepSeek through the API key and endpoint you configure whenever model-backed features run.
 - You can choose another storage directory; supported macOS workflows can optionally use iCloud Drive.
 - Deleting a conversation also removes its associated local archive entries in the Tauri clients.
@@ -185,7 +192,7 @@ You remain responsible for the API provider, endpoint, retention policy, and cre
 
 ## Data-use authorization and disclaimer
 
-By entering an API key and using model-backed features, you authorize Prism to transmit your conversation content and derived user-profile data to DeepSeek through the configured API endpoint. This may include messages, people, emotions, memories, blindspots, narrative timeline records, summaries, and search context.
+By entering an API key and using model-backed features, you authorize Prism to transmit your conversation content, attachments you choose to send, and derived user-profile data to DeepSeek through the configured API endpoint. This may include messages, image data, text/code file contents, people, emotions, memories, blindspots, narrative timeline records, summaries, and search context.
 
 If you replace the default base URL with another compatible provider, the same data is sent to that provider instead.
 

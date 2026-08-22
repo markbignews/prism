@@ -16,9 +16,34 @@ fn api_message(message: &ChatMessage) -> Value {
         ChatRole::system => "system",
         ChatRole::tool => "tool",
     };
+    let content = if message.attachments.is_empty() {
+        serde_json::json!(message.content)
+    } else {
+        let mut blocks = vec![serde_json::json!({
+            "type": "text",
+            "text": message.content,
+        })];
+        for attachment in &message.attachments {
+            if attachment.kind == "image" {
+                blocks.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", attachment.media_type, attachment.data_base64),
+                        "detail": "auto",
+                    }
+                }));
+            } else if attachment.kind == "text" {
+                blocks.push(serde_json::json!({
+                    "type": "text",
+                    "text": format!("\n\n[附件：{}]\n{}", attachment.file_name, attachment.text_content),
+                }));
+            }
+        }
+        serde_json::Value::Array(blocks)
+    };
     let mut api_message = serde_json::json!({
         "role": role,
-        "content": message.content,
+        "content": content,
     });
 
     if let Some(ref tool_calls) = message.tool_calls {

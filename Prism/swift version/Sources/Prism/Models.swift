@@ -6,6 +6,25 @@ enum ChatRole: String, Codable, CaseIterable {
     case system
 }
 
+/// An attachment selected in the composer. Binary data stays in memory for
+/// the active request and is intentionally omitted from persisted
+/// conversations; the transcript retains the file name in the user text.
+enum MessageAttachmentKind: String, Codable, Sendable {
+    case image
+    case text
+}
+
+struct MessageAttachment: Identifiable, Equatable, Sendable {
+    var id = UUID()
+    var fileName: String
+    var mediaType: String
+    var kind: MessageAttachmentKind
+    var data: Data
+    var textContent: String?
+
+    var isImage: Bool { kind == .image }
+}
+
 struct ChatMessage: Identifiable, Codable, Equatable {
     var id = UUID()
     var role: ChatRole
@@ -14,6 +33,13 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var toolCalls: [ToolCall]?
     var createdAt = Date()
     var suggestions: [String] = []
+    /// Runtime-only payloads for the current request. Attachment bytes are
+    /// never written to conversations.json.
+    var attachments: [MessageAttachment] = []
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, content, reasoning, toolCalls, createdAt, suggestions
+    }
 }
 
 struct Conversation: Identifiable, Codable, Equatable {

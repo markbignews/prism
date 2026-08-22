@@ -53,6 +53,25 @@ struct DeepSeekClient {
     var mode: ConversationMode = .balanced
     var responseLength: ResponseLength = .standard
 
+    private func contentValue(for message: ChatMessage, text: String) -> APIMessageContent {
+        guard message.role == .user, !message.attachments.isEmpty else {
+            return .text(text)
+        }
+
+        var blocks: [APIContentBlock] = [.text(text)]
+        for attachment in message.attachments {
+            switch attachment.kind {
+            case .image:
+                let encoded = attachment.data.base64EncodedString()
+                blocks.append(.image("data:\(attachment.mediaType);base64,\(encoded)"))
+            case .text:
+                let label = "\n\n[附件：\(attachment.fileName)]\n"
+                blocks.append(.text(label + (attachment.textContent ?? "")))
+            }
+        }
+        return .blocks(blocks)
+    }
+
     func stream(
         messages: [ChatMessage],
         memoryContext: String?,
@@ -77,7 +96,7 @@ struct DeepSeekClient {
         // it in a system message before the transcript would invalidate the
         // cache prefix on every request.
         let systemPrompt = AgentPrompt.system(language: language, mode: mode, responseLength: responseLength)
-        var requestMessages = [APIMessage(role: "system", content: systemPrompt)]
+        var requestMessages = [APIMessage(role: "system", content: .text(systemPrompt))]
         // Only the last assistant message may carry toolCalls, and only when we have
         // pending tool results that correspond to them.  Stale toolCalls from previous
         // turns (where tool messages were never persisted) must be stripped so the API
@@ -115,13 +134,13 @@ struct DeepSeekClient {
                 }
                 content += dynamicContext
             }
-            return APIMessage(role: msg.role.rawValue, content: content,
+            return APIMessage(role: msg.role.rawValue, content: contentValue(for: msg, text: content),
                               reasoningContent: reasoning,
                               toolCalls: keepToolCalls ? msg.toolCalls : nil)
         }
         // Inject tool results from previous round as role:"tool" messages
         for tr in toolResults {
-            requestMessages.append(APIMessage(role: "tool", content: tr.content, toolCallID: tr.toolCallID, name: tr.name))
+            requestMessages.append(APIMessage(role: "tool", content: .text(tr.content), toolCallID: tr.toolCallID, name: tr.name))
         }
 
         let modeTemp = switch mode {
@@ -338,8 +357,8 @@ struct DeepSeekClient {
         }
 
         let messages = [
-            APIMessage(role: "system", content: systemPrompt),
-            APIMessage(role: "user", content: userContent)
+            APIMessage(role: "system", content: .text(systemPrompt)),
+            APIMessage(role: "user", content: .text(userContent))
         ]
 
         let body = ChatRequest(
@@ -457,6 +476,54 @@ private struct ChatRequest: Encodable {
     }
 }
 
+/// DeepSeek's vision endpoint follows the OpenAI-compatible multimodal
+/// message shape: text-only messages remain strings, while user messages
+/// containing images use an array of text/image_url blocks.
+private enum APIMessageContent: Encodable {
+    case text(String)
+    case blocks([APIContentBlock])
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .text(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .blocks(let blocks):
+            var container = encoder.unkeyedContainer()
+            for block in blocks {
+                try container.encode(block)
+            }
+        }
+    }
+}
+
+private enum APIContentBlock: Encodable {
+    case text(String)
+    case image(String)
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .text(let value):
+            try container.encode("text", forKey: .type)
+            try container.encode(value, forKey: .text)
+        case .image(let dataURL):
+            try container.encode("image_url", forKey: .type)
+            try container.encode(APIImageURL(url: dataURL, detail: "auto"), forKey: .imageURL)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, text
+        case imageURL = "image_url"
+    }
+}
+
+private struct APIImageURL: Encodable {
+    let url: String
+    let detail: String
+}
+
 private struct StreamOptions: Encodable {
     var includeUsage: Bool
 
@@ -469,9 +536,9 @@ private struct ThinkingConfig: Encodable {
     var type: String
 }
 
-private struct APIMessage: Codable {
+private struct APIMessage: Encodable {
     var role: String
-    var content: String?
+    var content: APIMessageContent?
     var reasoningContent: String?
     var toolCalls: [ToolCall]?
     var toolCallID: String?

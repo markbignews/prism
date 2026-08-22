@@ -142,6 +142,7 @@ pub async fn send_message(
     state: State<'_, Arc<AppState>>,
     conv_id: String,
     text: String,
+    attachments: Option<Vec<ChatAttachment>>,
 ) -> Result<(), String> {
     log::info!(
         "send_message requested — conv_id={} text_len={}",
@@ -247,7 +248,10 @@ pub async fn send_message(
         })
     };
 
-    let result = state.agent.send_message(uid, &text, callback).await;
+    let result = state
+        .agent
+        .send_message(uid, &text, attachments.unwrap_or_default(), callback)
+        .await;
     match &result {
         Ok(()) => log::info!("send_message completed — conv_id={}", uid),
         Err(error) => log::error!("send_message failed — conv_id={} error={}", uid, error),

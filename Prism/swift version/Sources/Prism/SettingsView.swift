@@ -30,6 +30,7 @@ struct SettingsView: View {
                 Picker(L10n.text(.conversationModel, settings.language), selection: $settings.model) {
                     Text("DeepSeek V4 Pro").tag("deepseek-v4-pro")
                     Text("DeepSeek V4 Flash").tag("deepseek-v4-flash")
+                    Text("DeepSeek V4 Flash Vision（实验）").tag("deepseek-v4-flash-vision-exp")
                 }
             }
 

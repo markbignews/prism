@@ -32,6 +32,7 @@ var ICON_PATHS = {
   gear: '<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065Z"/><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   wrench: '<path d="M14.5 6.5 17 4a5 5 0 0 0-6.6 6.6L4 17a2.1 2.1 0 1 0 3 3l6.1-6.9A5 5 0 0 0 19 6.5l-3 3-2.2-.3-.3-2.2Z"/>',
   wand: '<path d="m15 4 5 5M13 6l5 5M4 20 17 7M3 13l2 2M7 3v3M4 4h3"/>'
 };
@@ -62,7 +63,7 @@ window.api = {
   setTitle: function(c, t) { return loggedInvoke('set_title', { convId: c.toString(), title: t }); },
   summarizeOnDeselect: function(c) { return loggedInvoke('summarize_deselect', { convId: c.toString() }); },
   fullReSummarize: function(c) { return loggedInvoke('re_summarize', { convId: c.toString() }); },
-  sendMessage: function(c, t) { return loggedInvoke('send_message', { convId: c.toString(), text: t }); },
+  sendMessage: function(c, t, a) { return loggedInvoke('send_message', { convId: c.toString(), text: t, attachments: a || [] }); },
   startDragging: function() { return loggedInvoke('start_window_dragging'); },
   cancelMessage: function() { return loggedInvoke('cancel_message'); },
   getSettings: function() { return loggedInvoke('get_settings'); },
@@ -108,6 +109,11 @@ const I18N = {
     cancel: 'Cancel',
     save: 'Save',
     typePlaceholder: 'Type your message...',
+    addAttachment: 'Add attachment',
+    removeAttachment: 'Remove attachment',
+    attachmentTooMany: 'You can add up to 5 attachments at a time.',
+    attachmentTooLarge: 'Images must be ≤32 MB and text files ≤2 MB.',
+    attachmentUnsupported: 'Only images (PNG, JPEG, GIF, WebP) and text/code files are supported.',
     aiDisclaimer: 'AI-generated content may contain errors. For reference only.',
     ready: 'Ready',
     thinking: 'Thinking...',
@@ -153,7 +159,7 @@ const I18N = {
     baseUrl: 'Base URL',
     models: 'Models',
     conversationModel: 'Conversation Model',
-    flashModelOption: 'V4 Flash (default)',
+    flashModelOption: 'V4 Flash Vision (experimental, default)',
     proModelOption: 'V4 Pro',
     flashModel: 'Flash Model',
     proModel: 'Pro Model',
@@ -218,6 +224,11 @@ const I18N = {
     cancel: '取消',
     save: '保存',
     typePlaceholder: '输入消息...',
+    addAttachment: '添加附件',
+    removeAttachment: '删除附件',
+    attachmentTooMany: '一次最多添加 5 个附件。',
+    attachmentTooLarge: '图片不能超过 32 MB，文本文件不能超过 2 MB。',
+    attachmentUnsupported: '目前支持图片（PNG、JPEG、GIF、WebP）和文本/代码文件。',
     aiDisclaimer: '对话内容由AI生成，有概率出错，仅供参考',
     ready: '就绪',
     thinking: '思考中...',
@@ -263,7 +274,7 @@ const I18N = {
     baseUrl: '基础 URL',
     models: '模型',
     conversationModel: '对话模型',
-    flashModelOption: 'V4 Flash（默认）',
+    flashModelOption: 'V4 Flash Vision（实验，默认）',
     proModelOption: 'V4 Pro',
     flashModel: 'Flash 模型',
     proModel: 'Pro 模型',
@@ -435,6 +446,7 @@ const S = {
   streamingMsgIdx: -1,
   streamingText: '',
   streamingReasoning: '',
+  draftAttachments: [],
   isStartingConversation: false,
   ctxConvId: null,
   apiKeySet: false,
@@ -536,6 +548,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('newChatBtn').onclick = newConv;
   document.getElementById('searchInput').oninput = filterConversations;
   document.getElementById('sendBtn').onclick = onSend;
+  document.getElementById('attachBtn').onclick = () => document.getElementById('attachmentInput').click();
+  document.getElementById('attachmentInput').onchange = chooseComposerAttachments;
+  installComposerDropZone();
   document.getElementById('msgInput').onkeydown = e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
   };
@@ -847,6 +862,8 @@ function renderSidebar() {
 
 async function selectConv(id) {
   if (S.isProcessing) return;
+  S.draftAttachments = [];
+  renderAttachmentStrip();
   L.i('UI', 'Selecting conversation', { id: id });
   if (S.activeId && S.activeId !== id) {
     const previousId = S.activeId;
@@ -896,6 +913,8 @@ async function selectConv(id) {
 
 async function newConv() {
   if (S.isProcessing) return;
+  S.draftAttachments = [];
+  renderAttachmentStrip();
   try {
     const id = await window.api.createConversation(S.mode);
     await loadConversations();
@@ -1192,6 +1211,10 @@ function createMsgEl(msg, index, isStreaming) {
     html += `<div class="msg-content">${md(content)}</div>`;
   }
 
+  if (isUser && Array.isArray(msg.attachments) && msg.attachments.length) {
+    html += messageAttachmentsMarkup(msg.attachments);
+  }
+
   // Tool call badge
   if (msg.toolCalls?.length) {
     html += `<div class="tool-badge">${iconSvg('wrench')}<span>${t('usingTool')}${msg.toolCalls.map(tc => tc.name || '').join(', ')}</span></div>`;
@@ -1309,13 +1332,112 @@ function retryMessage(index) {
   }).catch(e => setStatus(t('error') + ': ' + errMsg(e)));
 }
 
-function startMessageRequest(text) {
+const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const TEXT_MIME_TYPES = new Set([
+  'text/plain', 'text/markdown', 'text/csv', 'text/html', 'text/xml', 'text/css',
+  'text/javascript', 'application/json', 'application/xml', 'application/javascript',
+  'application/x-yaml', 'text/yaml'
+]);
+const TEXT_EXTENSIONS = new Set([
+  'txt','md','markdown','csv','json','xml','html','htm','css','js','jsx','ts','tsx',
+  'py','swift','rs','go','java','c','h','cpp','cxx','cs','rb','php','sh','yaml','yml',
+  'toml','ini','log','sql'
+]);
+
+function attachmentId() {
+  return (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : ('attachment-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+}
+function base64FromBuffer(buffer) {
+  const bytes = new Uint8Array(buffer); let binary = ''; const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  return btoa(binary);
+}
+function attachmentMime(file) {
+  if (file.type) return file.type.toLowerCase();
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const map = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', txt:'text/plain', md:'text/markdown', csv:'text/csv', json:'application/json', xml:'application/xml', html:'text/html', htm:'text/html', css:'text/css', js:'text/javascript', ts:'text/javascript', yaml:'text/yaml', yml:'text/yaml' };
+  return map[ext] || 'application/octet-stream';
+}
+async function readComposerAttachment(file) {
+  const mime = attachmentMime(file); const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const isImage = IMAGE_MIME_TYPES.has(mime); const isText = TEXT_MIME_TYPES.has(mime) || mime.startsWith('text/') || TEXT_EXTENSIONS.has(ext);
+  if (!isImage && !isText) throw new Error(t('attachmentUnsupported'));
+  if ((isImage && file.size > 32 * 1024 * 1024) || (isText && file.size > 2 * 1024 * 1024)) throw new Error(t('attachmentTooLarge'));
+  const buffer = await file.arrayBuffer();
+  return isImage
+    ? { id: attachmentId(), fileName: file.name, mediaType: mime, kind: 'image', dataBase64: base64FromBuffer(buffer), textContent: '' }
+    : { id: attachmentId(), fileName: file.name, mediaType: 'text/plain', kind: 'text', dataBase64: '', textContent: new TextDecoder('utf-8', { fatal: false }).decode(buffer) };
+}
+function renderAttachmentStrip() {
+  const strip = document.getElementById('attachmentStrip'); if (!strip) return;
+  strip.replaceChildren(); strip.hidden = S.draftAttachments.length === 0;
+  S.draftAttachments.forEach(attachment => {
+    const chip = document.createElement('div'); chip.className = 'attachment-chip';
+    if (attachment.kind === 'image' && attachment.dataBase64) {
+      chip.classList.add('image-preview');
+      const image = document.createElement('img'); image.className = 'attachment-thumb';
+      image.src = attachmentDataUrl(attachment); image.alt = attachment.fileName || 'image'; image.title = attachment.fileName || '';
+      chip.appendChild(image);
+    } else {
+      chip.innerHTML = iconSvg('archive', 'ui-icon') + '<span class="attachment-chip-name" title="' + esc(attachment.fileName) + '">' + esc(attachment.fileName) + '</span>';
+    }
+    const remove = document.createElement('button'); remove.className = 'attachment-chip-remove'; remove.type = 'button'; remove.title = t('removeAttachment'); remove.setAttribute('aria-label', t('removeAttachment')); remove.innerHTML = iconSvg('x');
+    remove.onclick = () => { S.draftAttachments = S.draftAttachments.filter(item => item.id !== attachment.id); renderAttachmentStrip(); updateSendBtn(); };
+    chip.appendChild(remove); strip.appendChild(chip);
+  });
+}
+async function chooseComposerAttachments(event) {
+  const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
+  await addComposerFiles(files);
+}
+
+async function addComposerFiles(files) {
+  if (S.draftAttachments.length + files.length > 5) showErrorBanner(t('attachmentTooMany'));
+  for (const file of files.slice(0, Math.max(0, 5 - S.draftAttachments.length))) {
+    try { S.draftAttachments.push(await readComposerAttachment(file)); } catch (error) { showErrorBanner(errMsg(error)); }
+  }
+  renderAttachmentStrip(); updateSendBtn();
+}
+
+function attachmentDataUrl(attachment) {
+  return `data:${attachment.mediaType || 'image/png'};base64,${attachment.dataBase64 || ''}`;
+}
+
+function messageAttachmentsMarkup(attachments) {
+  const items = attachments.map(attachment => {
+    if (attachment.kind === 'image' && attachment.dataBase64) {
+      return `<img class="msg-attachment-image" src="${esc(attachmentDataUrl(attachment))}" alt="${esc(attachment.fileName || 'image')}" title="${esc(attachment.fileName || '')}" loading="lazy">`;
+    }
+    return `<span class="msg-attachment-file">${iconSvg('archive')}<span>${esc(attachment.fileName || 'attachment')}</span></span>`;
+  }).join('');
+  return items ? `<div class="msg-attachments">${items}</div>` : '';
+}
+
+function installComposerDropZone() {
+  const composer = document.querySelector('.composer-box');
+  if (!composer) return;
+  ['dragenter', 'dragover'].forEach(type => composer.addEventListener(type, event => {
+    event.preventDefault(); event.stopPropagation(); composer.classList.add('drag-over');
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  }));
+  ['dragleave', 'dragend'].forEach(type => composer.addEventListener(type, event => {
+    event.preventDefault(); event.stopPropagation(); composer.classList.remove('drag-over');
+  }));
+  composer.addEventListener('drop', event => {
+    event.preventDefault(); event.stopPropagation(); composer.classList.remove('drag-over');
+    addComposerFiles(Array.from(event.dataTransfer?.files || []));
+  });
+}
+
+function startMessageRequest(text, attachments = []) {
   if (!S.activeId || S.isProcessing) return;
 
   S.streamingText = '';
   S.streamingReasoning = '';
 
-  const userMsg = { role: 'user', content: text, createdAt: new Date().toISOString() };
+  const userMsg = { role: 'user', content: text, attachments: attachments, createdAt: new Date().toISOString() };
   const asstMsg = { role: 'assistant', content: '', reasoning: '', createdAt: new Date().toISOString() };
   S.messages.push(userMsg);
   S.messages.push(asstMsg);
@@ -1330,7 +1452,7 @@ function startMessageRequest(text) {
   // The event stream normally clears processing on `done`. Keep the IPC
   // promise as a second completion fence so a dropped/missed final event can
   // never leave the composer stuck showing the red stop button.
-  window.api.sendMessage(S.activeId, text)
+  window.api.sendMessage(S.activeId, text, attachments)
     .then(() => {
       if (S.isProcessing) {
         L.w('UI', 'IPC completed without a final stream event; finishing locally');
@@ -1383,7 +1505,7 @@ function onSend() {
 
   const input = document.getElementById('msgInput');
   const text = input.value.trim();
-  if (!text) return;
+  if (!text && S.draftAttachments.length === 0) return;
 
   // ── API key check ─────────────────────────────────────
   if (!S.apiKeySet && !(S.settings && S.settings.apiKey)) {
@@ -1427,8 +1549,11 @@ function onSend() {
       clearErrorBanner();
       input.value = '';
       input.style.height = 'auto';
+      const attachments = S.draftAttachments.slice();
+      S.draftAttachments = [];
+      renderAttachmentStrip();
 
-      startMessageRequest(text);
+      startMessageRequest(text, attachments);
 
       const conv = S.conversations.find(c => c.id === S.activeId);
       if (conv) {
@@ -1488,7 +1613,7 @@ function updateSendBtn() {
       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-4 6h8v8H8V8z" />
     </svg>`;
   } else {
-    const hasText = input.value.trim().length > 0;
+    const hasText = input.value.trim().length > 0 || S.draftAttachments.length > 0;
     btn.className = 'send-btn' + (hasText ? '' : ' disabled');
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 5l5 5h-4v5h-2v-5H7l5-5z"/>
@@ -1785,7 +1910,7 @@ async function openSettings() {
         </select>
       </div>
       <div class="set-row-2">
-        <div class="set-field"><label>${t('flashModel')}</label><input type="text" id="sFlash" value="${esc(s.flashModel || 'deepseek-v4-flash')}"></div>
+        <div class="set-field"><label>${t('flashModel')}</label><input type="text" id="sFlash" value="${esc(s.flashModel || 'deepseek-v4-flash-vision-exp')}"></div>
         <div class="set-field"><label>${t('proModel')}</label><input type="text" id="sPro" value="${esc(s.proModel || 'deepseek-v4-pro')}"></div>
       </div>
     </div>

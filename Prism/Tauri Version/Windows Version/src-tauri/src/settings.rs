@@ -48,7 +48,7 @@ impl Default for Settings {
             api_key: String::new(),
             user_id: Self::load_or_create_user_id(),
             base_url: "https://api.deepseek.com".to_string(),
-            flash_model: "deepseek-v4-flash".to_string(),
+            flash_model: "deepseek-v4-flash-vision-exp".to_string(),
             pro_model: "deepseek-v4-pro".to_string(),
             conversation_model: default_conversation_model(),
             language: "en".to_string(),
@@ -67,7 +67,7 @@ impl Default for Settings {
             data_path: Self::default_data_path(),
             onboarding_completed: false,
             enable_logging: true,
-            model_defaults_version: 3,
+            model_defaults_version: 4,
         }
     }
 }
@@ -209,10 +209,10 @@ impl Settings {
         }
     }
 
-    /// Upgrade earlier factory presets so both official V4 models start with
-    /// thinking enabled and High reasoning effort.
+    /// Upgrade earlier factory presets so the default conversation model uses
+    /// DeepSeek V4 Flash Vision Exp while preserving custom model choices.
     fn migrate_model_defaults(&mut self) -> bool {
-        if self.model_defaults_version >= 3 {
+        if self.model_defaults_version >= 4 {
             return false;
         }
 
@@ -237,7 +237,10 @@ impl Settings {
         if self.pro_model == "deepseek-v4-pro" && self.pro_reasoning_effort == "max" {
             self.pro_reasoning_effort = "high".to_string();
         }
-        self.model_defaults_version = 3;
+        if self.flash_model == "deepseek-v4-flash" {
+            self.flash_model = "deepseek-v4-flash-vision-exp".to_string();
+        }
+        self.model_defaults_version = 4;
         true
     }
 

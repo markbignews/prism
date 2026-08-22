@@ -3,16 +3,17 @@ import Foundation
 @MainActor
 final class AppSettings: ObservableObject {
     private static let modelDefaultsV3Key = "deepseek.modelDefaultsV3Applied"
+    private static let modelDefaultsV4Key = "deepseek.modelDefaultsV4Applied"
     @Published var apiKey = "" {
         didSet { saveConfig() }
     }
     @Published var baseURL = "https://api.deepseek.com" {
         didSet { saveConfig() }
     }
-    @Published var model = "deepseek-v4-flash" {
+    @Published var model = "deepseek-v4-flash-vision-exp" {
         didSet { saveConfig() }
     }
-    @Published var flashModel = "deepseek-v4-flash" {
+    @Published var flashModel = "deepseek-v4-flash-vision-exp" {
         didSet { saveConfig() }
     }
     @Published var language: AppLanguage = .simplifiedChinese {
@@ -154,8 +155,8 @@ final class AppSettings: ObservableObject {
     private struct ConfigFile: Codable {
         var apiKey = ""
         var baseURL = "https://api.deepseek.com"
-        var model = "deepseek-v4-flash"
-        var flashModel = "deepseek-v4-flash"
+        var model = "deepseek-v4-flash-vision-exp"
+        var flashModel = "deepseek-v4-flash-vision-exp"
         var language = "zh-Hans"
         var parameters = ModelParameters()
         var flashParameters = ModelParameters()
@@ -196,6 +197,21 @@ final class AppSettings: ObservableObject {
             }
             UserDefaults.standard.set(true, forKey: Self.modelDefaultsV3Key)
         }
+        // DeepSeek's experimental V4 Flash Vision model is now the factory
+        // conversation model. Only migrate the old factory values; preserve
+        // a user's explicit custom model choice.
+        var migratedModelDefaults = false
+        if !UserDefaults.standard.bool(forKey: Self.modelDefaultsV4Key) {
+            if model == "deepseek-v4-flash" {
+                model = "deepseek-v4-flash-vision-exp"
+                migratedModelDefaults = true
+            }
+            if flashModel == "deepseek-v4-flash" {
+                flashModel = "deepseek-v4-flash-vision-exp"
+                migratedModelDefaults = true
+            }
+            UserDefaults.standard.set(true, forKey: Self.modelDefaultsV4Key)
+        }
         summaryDialogCount = config.summaryDialogCount
         contextWindow = config.contextWindow
         enableLogging = config.enableLogging
@@ -204,6 +220,7 @@ final class AppSettings: ObservableObject {
         conversationMode = ConversationMode(rawValue: config.conversationMode) ?? .balanced
         responseLength = ResponseLength(rawValue: config.responseLength) ?? .standard
         useiCloud = config.useiCloud
+        if migratedModelDefaults { saveConfig() }
     }
 
     // MARK: - Tauri settings.json Import
@@ -223,7 +240,10 @@ final class AppSettings: ObservableObject {
 
         self.baseURL = baseURL
         apiKey = json["apiKey"] as? String ?? json["api_key"] as? String ?? ""
-        let flash = json["flashModel"] as? String ?? json["flash_model"] as? String ?? "deepseek-v4-flash"
+        let importedFlash = json["flashModel"] as? String ?? json["flash_model"] as? String ?? "deepseek-v4-flash-vision-exp"
+        let flash = importedFlash == "deepseek-v4-flash"
+            ? "deepseek-v4-flash-vision-exp"
+            : importedFlash
         let pro = json["proModel"] as? String ?? json["pro_model"] as? String ?? "deepseek-v4-pro"
         flashModel = flash
         let conversationModel = json["conversationModel"] as? String ?? json["conversation_model"] as? String ?? "flash"
@@ -274,12 +294,13 @@ final class AppSettings: ObservableObject {
         // Reset UserDefaults
         UserDefaults.standard.removeObject(forKey: "storage.dataPath")
         UserDefaults.standard.removeObject(forKey: Self.modelDefaultsV3Key)
+        UserDefaults.standard.removeObject(forKey: Self.modelDefaultsV4Key)
 
         // Reset published properties to defaults (didSet will save new config)
         apiKey = ""
         baseURL = "https://api.deepseek.com"
-        model = "deepseek-v4-flash"
-        flashModel = "deepseek-v4-flash"
+        model = "deepseek-v4-flash-vision-exp"
+        flashModel = "deepseek-v4-flash-vision-exp"
         language = .simplifiedChinese
         parameters = ModelParameters()
         flashParameters = ModelParameters(

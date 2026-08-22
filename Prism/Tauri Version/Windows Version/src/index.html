@@ -796,11 +796,17 @@ body.win .sidebar > .drag-region {
   backdrop-filter:blur(30px);
   border:0.5px solid var(--border);
   box-shadow:var(--shadow-sm);
-  display:flex;align-items:flex-end;
+  display:flex;flex-direction:column;align-items:stretch;
+}
+.composer-box.drag-over{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent),var(--shadow-sm);
+  background:color-mix(in srgb,var(--accent) 6%,var(--bg-input));
 }
 .composer-box textarea{
   flex:1;border:none;outline:none;resize:none;
-  padding:9px 190px 9px 14px;font-family:var(--font);
+  width:100%;box-sizing:border-box;
+  padding:9px 190px 9px 52px;font-family:var(--font);
   font-size:13.5px;color:var(--text-primary);
   background:transparent;line-height:1.45;
   min-height:38px;max-height:200px;overflow-y:auto;
@@ -821,6 +827,54 @@ body.win .sidebar > .drag-region {
 .composer-actions{
   position:absolute;right:8px;bottom:6px;
   display:flex;align-items:center;gap:4px;z-index:4;
+}
+.attach-btn{
+  position:absolute;left:10px;bottom:8px;width:26px;height:26px;
+  border:0;background:none;color:var(--text-secondary);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;padding:0;z-index:5;
+  transition:color .12s,transform .12s;
+}
+.attach-btn:hover{color:var(--accent)}
+.attach-btn:active{transform:scale(.9)}
+.attach-btn svg{width:20px;height:20px}
+.attachment-strip{
+  width:100%;box-sizing:border-box;display:flex;gap:6px;align-items:center;
+  padding:9px 12px 2px;overflow-x:auto;white-space:nowrap;
+}
+.attachment-chip{
+  display:inline-flex;align-items:center;gap:5px;max-width:220px;
+  padding:5px 7px 5px 9px;border-radius:9px;
+  color:var(--text-secondary);background:rgba(128,128,128,.12);
+  font-size:11px;flex-shrink:0;
+}
+.attachment-chip.image-preview{
+  position:relative;max-width:none;padding:3px 22px 3px 3px;
+  overflow:hidden;
+}
+.attachment-thumb{
+  width:48px;height:42px;display:block;object-fit:cover;
+  border-radius:6px;background:rgba(128,128,128,.16);
+}
+.attachment-chip.image-preview .attachment-chip-remove{
+  position:absolute;top:2px;right:2px;width:16px;height:16px;
+  border-radius:50%;background:rgba(0,0,0,.45);color:#fff;
+}
+.attachment-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment-chip-remove{
+  width:16px;height:16px;border:0;background:none;padding:0;color:var(--text-tertiary);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+}
+.attachment-chip-remove:hover{color:var(--danger)}
+.msg-attachments{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.msg-attachment-image{
+  width:180px;max-width:100%;max-height:180px;object-fit:cover;
+  border-radius:10px;border:0.5px solid rgba(128,128,128,.2);
+  background:rgba(128,128,128,.10);
+}
+.msg-attachment-file{
+  display:inline-flex;align-items:center;gap:5px;padding:5px 8px;
+  border-radius:9px;background:rgba(128,128,128,.12);font-size:11px;
+  color:var(--text-secondary);max-width:240px;
 }
 .context-badge{
   height:26px;padding:0 7px;border-radius:13px;
@@ -1528,8 +1582,12 @@ body.win .sidebar > .drag-region {
     <div class="composer-wrap" id="composerWrap">
       <div id="errorBanner" class="error-banner" style="display:none"></div>
       <div class="composer-box">
+        <div class="attachment-strip" id="attachmentStrip" hidden></div>
         <textarea id="msgInput" rows="1" placeholder="Type your message..."></textarea>
         <div class="composer-actions">
+          <button type="button" class="attach-btn" id="attachBtn" aria-label="Add attachment" title="Add attachment">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
           <button type="button" class="context-badge" id="contextBadge" style="display:none" aria-expanded="false">--%</button>
           <button type="button" class="mode-badge" id="modeBadge" style="display:none">
             <span class="mode-dot balanced" id="modeDot"></span>
@@ -1541,6 +1599,7 @@ body.win .sidebar > .drag-region {
         </div>
         <div class="context-popover" id="contextPopover" hidden></div>
       </div>
+      <input type="file" id="attachmentInput" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,text/csv,application/json,application/xml,text/html,text/css,text/javascript,application/javascript,text/yaml,application/x-yaml,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.swift,.rs,.go,.java,.c,.h,.cpp,.cs,.rb,.php,.sh,.yaml,.yml,.toml,.ini,.log,.sql">
     </div>
 
   </main>

@@ -109,7 +109,9 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
         agent.contextUsage(for: selectedConversationID, settings: settings)
     }
 
-    func send(_ text: String, settings: AppSettings) async { await agent.send(text, settings: settings) }
+    func send(_ text: String, attachments: [MessageAttachment] = [], settings: AppSettings) async {
+        await agent.send(text, attachments: attachments, settings: settings)
+    }
     func regenerateAssistantMessage(in cid: UUID, messageID: UUID, settings: AppSettings) async { await agent.regenerateAssistantMessage(in: cid, messageID: messageID, settings: settings) }
     func editAndResend(userMessageID: UUID, newText: String, settings: AppSettings) async { await agent.editAndResend(userMessageID: userMessageID, newText: newText, settings: settings) }
     func summarizeOnDeselect(conversationID: UUID, settings: AppSettings) async { await agent.summarizeOnDeselect(conversationID: conversationID, settings: settings) }

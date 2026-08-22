@@ -866,6 +866,7 @@ impl ChatAgent {
         &self,
         conv_id: Uuid,
         text: &str,
+        attachments: Vec<ChatAttachment>,
         callback: StreamCallback,
     ) -> Result<(), String> {
         *self.is_sending.write().await = true;
@@ -873,7 +874,7 @@ impl ChatAgent {
         callback(StreamEvent::Processing(true));
 
         let result = self
-            .send_message_inner(conv_id, text, callback.clone())
+            .send_message_inner(conv_id, text, attachments, callback.clone())
             .await;
 
         *self.is_sending.write().await = false;
@@ -885,8 +886,14 @@ impl ChatAgent {
         &self,
         conv_id: Uuid,
         text: &str,
+        attachments: Vec<ChatAttachment>,
         callback: StreamCallback,
     ) -> Result<(), String> {
+        let effective_text = if text.trim().is_empty() && !attachments.is_empty() {
+            "请分析我上传的附件。"
+        } else {
+            text
+        };
         let (mode, lang, has_completed_turn) = {
             let convs = self.conversations.read().await;
             let conv = convs
@@ -907,7 +914,20 @@ impl ChatAgent {
         // and gives the current request a deterministic memory context even
         // when API summarization is delayed or unavailable.
         let request_sent_at = Utc::now();
-        let mut user_msg = ChatMessage::new(ChatRole::user, text.to_string());
+        let attachment_note = if attachments.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n\n{}",
+                attachments
+                    .iter()
+                    .map(|attachment| format!("[附件：{}]", attachment.file_name))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        };
+        let mut user_msg = ChatMessage::new(ChatRole::user, format!("{}{}", effective_text, attachment_note));
+        user_msg.attachments = attachments;
         user_msg.created_at = request_sent_at;
         let user_msg_id = user_msg.id;
         {
@@ -915,9 +935,9 @@ impl ChatAgent {
             if let Some(conv) = convs.iter_mut().find(|c| c.id == conv_id) {
                 let msg_id = user_msg.id;
                 conv.messages.push(user_msg);
-                StoryMemory::ingest(text, msg_id, conv);
+                StoryMemory::ingest(effective_text, msg_id, conv);
                 if conv.title == "新对话" || conv.title == "New Conversation" {
-                    let compact = text
+                    let compact = effective_text
                         .replace('\n', " ")
                         .split_whitespace()
                         .collect::<Vec<_>>()
@@ -941,7 +961,7 @@ impl ChatAgent {
         let pre_context = self.pre_pipeline_context(conv_id).await;
         let guard = self
             .pipeline
-            .run(conv_id, text, &mode, &lang, &pre_context, request_sent_at)
+            .run(conv_id, effective_text, &mode, &lang, &pre_context, request_sent_at)
             .await?;
 
         if guard.safety_uncertain {
@@ -1010,7 +1030,7 @@ impl ChatAgent {
             let convs = self.conversations.read().await;
             let conv = convs.iter().find(|c| c.id == conv_id).unwrap();
             let mut memory = self.story_memory.lock().await;
-            memory.build_context(conv, text, &lang)
+            memory.build_context(conv, effective_text, &lang)
         };
         let temporal_archives = {
             let archives = self.archives.lock().await;
@@ -1199,6 +1219,7 @@ impl ChatAgent {
                                 tool_call_id: None,
                                 created_at: chrono::Utc::now(),
                                 suggestions: Vec::new(),
+                                attachments: Vec::new(),
                             });
                             conv.completed_dialog_count += 1;
                             conv.updated_at = chrono::Utc::now();
@@ -1209,7 +1230,7 @@ impl ChatAgent {
                                 .count()
                                 == 1
                             {
-                                let title: String = text.chars().take(25).collect();
+                                let title: String = effective_text.chars().take(25).collect();
                                 conv.title = if title.len() > 22 {
                                     format!("{}...", &title[..22])
                                 } else {
@@ -1306,6 +1327,7 @@ impl ChatAgent {
                                 tool_call_id: None,
                                 created_at: chrono::Utc::now(),
                                 suggestions: Vec::new(),
+                                attachments: Vec::new(),
                             });
                             conv.messages.push(ChatMessage {
                                 id: Uuid::new_v4(),
@@ -1316,6 +1338,7 @@ impl ChatAgent {
                                 tool_call_id: Some(tool_id.clone()),
                                 created_at: chrono::Utc::now(),
                                 suggestions: Vec::new(),
+                                attachments: Vec::new(),
                             });
                         }
                     }

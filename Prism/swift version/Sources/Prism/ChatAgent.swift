@@ -708,27 +708,42 @@ final class ChatAgent {
         return conv.messages.filter { chapter.messageIDs.contains($0.id) }
     }
 
-    func send(_ text: String, settings: AppSettings) async {
+    func send(
+        _ text: String,
+        attachments: [MessageAttachment] = [],
+        settings: AppSettings
+    ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isSending else { return }
+        guard (!trimmed.isEmpty || !attachments.isEmpty), !isSending else { return }
+        let effectiveText = trimmed.isEmpty && !attachments.isEmpty
+            ? "请分析我上传的附件。"
+            : trimmed
         bootstrapIfNeeded(language: settings.language)
         guard let id = selectedConversationID,
               let index = conversations.firstIndex(where: { $0.id == id }) else { return }
-        PrismLog.log("send_message requested — conv_id=\(id.uuidString) text_len=\(trimmed.count)")
+        PrismLog.log("send_message requested — conv_id=\(id.uuidString) text_len=\(effectiveText.count)")
         let requestSentAt = Date()
 
         // Build only current-conversation memory automatically. Cross-conversation
         // memory remains an explicit search tool so old narratives do not bias
         // every new turn without the user's request.
-        var memoryContext = StoryMemory.relevantContext(for: trimmed, in: conversations[index], language: settings.language)
+        var memoryContext = StoryMemory.relevantContext(for: effectiveText, in: conversations[index], language: settings.language)
         // Capture the user's send time once and reuse it across the reply,
         // profile pre-pipeline, tool rounds, and later summaries.
         errorMessage = nil
-        let userMessage = ChatMessage(role: .user, content: trimmed, createdAt: requestSentAt)
+        let attachmentNote = attachments.isEmpty
+            ? ""
+            : "\n\n" + attachments.map { "[附件：\($0.fileName)]" }.joined(separator: "\n")
+        let userMessage = ChatMessage(
+            role: .user,
+            content: effectiveText + attachmentNote,
+            createdAt: requestSentAt,
+            attachments: attachments
+        )
         conversations[index].messages.append(userMessage)
-        StoryMemory.ingest(userText: trimmed, messageID: userMessage.id, conversation: &conversations[index])
+        StoryMemory.ingest(userText: effectiveText, messageID: userMessage.id, conversation: &conversations[index])
         conversations[index].updatedAt = requestSentAt
-        updateTitleIfNeeded(for: index, firstUserText: trimmed)
+        updateTitleIfNeeded(for: index, firstUserText: effectiveText)
         memoryContext = (memoryContext ?? "")
             + "\n\n" + temporalContext(for: conversations[index], now: requestSentAt, language: settings.language)
 

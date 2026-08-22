@@ -44,6 +44,19 @@ pub struct ToolResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ChatAttachment {
+    pub id: Uuid,
+    pub file_name: String,
+    pub media_type: String,
+    pub kind: String,
+    #[serde(default)]
+    pub data_base64: String,
+    #[serde(default)]
+    pub text_content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     pub id: Uuid,
     pub role: ChatRole,
@@ -55,6 +68,8 @@ pub struct ChatMessage {
     pub created_at: DateTime<Utc>,
     #[serde(default)]
     pub suggestions: Vec<String>,
+    #[serde(skip)]
+    pub attachments: Vec<ChatAttachment>,
 }
 
 impl ChatMessage {
@@ -68,6 +83,7 @@ impl ChatMessage {
             tool_call_id: None,
             created_at: Utc::now(),
             suggestions: Vec::new(),
+            attachments: Vec::new(),
         }
     }
 }
