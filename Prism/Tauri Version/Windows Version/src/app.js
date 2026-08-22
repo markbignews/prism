@@ -82,7 +82,7 @@ window.api = {
   getChapterMessages: function(c, i) { return loggedInvoke('get_chapter_messages', { convId: c.toString(), index: i }); },
   searchChapters: function(c, q) { return loggedInvoke('search_chapters', { convId: c.toString(), query: q }); },
   getPlatform: function() { return window.__TAURI_PLATFORM__().then(function(p) { return p === 'darwin' ? 'darwin' : 'win32'; }); },
-  getVersion: function() { return '1.0.0'; },
+  getVersion: function() { return '1.0.15'; },
   getLogs: function() { return Promise.resolve(window.PrismLog ? window.PrismLog.getBuffer() : []); },
   validateApiKey: function(key, baseUrl) { return loggedInvoke('validate_api_key', { apiKey: key, baseUrl: baseUrl || 'https://api.deepseek.com' }); }
 };
