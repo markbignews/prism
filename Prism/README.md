@@ -5,11 +5,11 @@
 <h1 align="center">Prism / 棱镜</h1>
 
 <p align="center">
-  A local-first workspace for understanding personal narratives, emotions, and recurring patterns.
+  A workspace for understanding personal narratives, emotions, and recurring patterns, with local data storage and remote model inference.
 </p>
 
 <p align="center">
-  <strong>Local-first narrative analysis workspace</strong><br>
+  <strong>Local data storage · Remote LLM inference</strong><br>
   SwiftUI + Tauri · macOS 15+ · Windows 11+
 </p>
 
@@ -29,7 +29,9 @@
 
 ## What is Prism?
 
-Prism is a **local-first narrative analysis tool** powered by a DeepSeek-compatible API. It helps you look back at what you have written, notice emotional movement, organize events by the time they actually happened, and examine patterns that are easy to miss in the moment.
+Prism is a **narrative analysis tool with local data storage and remote model inference**, powered by a DeepSeek-compatible API. It helps you look back at what you have written, notice emotional movement, organize events by the time they actually happened, and examine patterns that are easy to miss in the moment.
+
+Prism is not an offline model. Conversations, indexes, and analysis records are stored locally, while model-backed features send the required conversation context and relevant local retrieval results to the API endpoint you configure for each request.
 
 Prism is deliberately not designed as an always-on companion. It is an analytical workspace: it can challenge an interpretation, ask for missing facts, and surface a possible blind spot instead of simply agreeing with you.
 
@@ -226,6 +228,7 @@ The SwiftUI edition is built with Swift Package Manager and Apple frameworks. Th
 ## Important information
 
 - Prism requires access to a configured LLM endpoint; it is not an offline model.
+- Local storage does not mean local inference: each model-backed request may send the required context and retrieved records to the configured provider again.
 - Model output, classification, and retrieved context can be imperfect. Review important conclusions yourself.
 - Prism is not a medical or emergency product. If there is an immediate risk of harm, contact local emergency services or a qualified professional.
 
