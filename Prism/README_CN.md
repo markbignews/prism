@@ -73,7 +73,7 @@ SwiftUI 和 Tauri 客户端共享核心行为，同时保留必要的平台差�
 
 输入框支持点击 **+** 按钮或直接将文件拖入输入区域。JPEG、PNG、GIF 和 WebP 图片会显示为缩略图；常见文本和代码文件会作为文本块读取。发送前可以删除附件，发送后的用户消息中也会保留图片预览。当前每条消息最多添加 5 个附件，单张图片不超过 32 MB，单个文本/代码文件不超过 2 MB。
 
-当前打包版本为 `v1.0.15`。新安装默认使用 DeepSeek 官方称为 **DeepSeek-V4-Flash-Vision-Exp** 的实验性多模态视觉理解模型（API 模型 ID：`deepseek-v4-flash-vision-exp`），因此棱镜可以通过你配置的 DeepSeek 兼容端点识别和理解图片输入。可以参考 DeepSeek 的[官方更新日志](https://api-docs.deepseek.com/updates/)、[视觉 API 指南](https://api-docs.deepseek.com/guides/vision)和[Files API 文档](https://api-docs.deepseek.com/guides/files_api)了解服务端限制。PDF 不会被直接发送：当前 Files API 只接受图片，因此 PDF 文本提取或页面转图暂未集成到棱镜中。
+当前打包版本为 `v1.0.16`。新安装默认使用 DeepSeek 官方称为 **DeepSeek-V4-Flash-Vision-Exp** 的实验性多模态视觉理解模型（API 模型 ID：`deepseek-v4-flash-vision-exp`），因此棱镜可以通过你配置的 DeepSeek 兼容端点识别和理解图片输入。可以参考 DeepSeek 的[官方更新日志](https://api-docs.deepseek.com/updates/)、[视觉 API 指南](https://api-docs.deepseek.com/guides/vision)和[Files API 文档](https://api-docs.deepseek.com/guides/files_api)了解服务端限制。PDF 不会被直接发送：当前 Files API 只接受图片，因此 PDF 文本提取或页面转图暂未集成到棱镜中。
 
 ## 截图
 
