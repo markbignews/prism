@@ -197,7 +197,7 @@ final class AppSettings: ObservableObject {
             }
             UserDefaults.standard.set(true, forKey: Self.modelDefaultsV3Key)
         }
-        // DeepSeek's experimental V4 Flash Vision model is now the factory
+        // DeepSeek's experimental DeepSeek-V4-Flash-Vision-Exp model is now the factory
         // conversation model. Only migrate the old factory values; preserve
         // a user's explicit custom model choice.
         var migratedModelDefaults = false

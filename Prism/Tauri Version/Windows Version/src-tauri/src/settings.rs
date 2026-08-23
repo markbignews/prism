@@ -210,7 +210,7 @@ impl Settings {
     }
 
     /// Upgrade earlier factory presets so the default conversation model uses
-    /// DeepSeek V4 Flash Vision Exp while preserving custom model choices.
+    /// DeepSeek-V4-Flash-Vision-Exp while preserving custom model choices.
     fn migrate_model_defaults(&mut self) -> bool {
         if self.model_defaults_version >= 4 {
             return false;
@@ -237,6 +237,7 @@ impl Settings {
         if self.pro_model == "deepseek-v4-pro" && self.pro_reasoning_effort == "max" {
             self.pro_reasoning_effort = "high".to_string();
         }
+        // DeepSeek-V4-Flash-Vision-Exp is the new default conversation model.
         if self.flash_model == "deepseek-v4-flash" {
             self.flash_model = "deepseek-v4-flash-vision-exp".to_string();
         }

@@ -926,7 +926,10 @@ impl ChatAgent {
                     .join("\n")
             )
         };
-        let mut user_msg = ChatMessage::new(ChatRole::user, format!("{}{}", effective_text, attachment_note));
+        let mut user_msg = ChatMessage::new(
+            ChatRole::user,
+            format!("{}{}", effective_text, attachment_note),
+        );
         user_msg.attachments = attachments;
         user_msg.created_at = request_sent_at;
         let user_msg_id = user_msg.id;
@@ -961,7 +964,14 @@ impl ChatAgent {
         let pre_context = self.pre_pipeline_context(conv_id).await;
         let guard = self
             .pipeline
-            .run(conv_id, effective_text, &mode, &lang, &pre_context, request_sent_at)
+            .run(
+                conv_id,
+                effective_text,
+                &mode,
+                &lang,
+                &pre_context,
+                request_sent_at,
+            )
             .await?;
 
         if guard.safety_uncertain {
