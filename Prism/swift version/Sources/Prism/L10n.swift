@@ -23,6 +23,41 @@ enum L10n {
         }
     }
 
+    /// Localized labels for the controlled, behavior-level person pattern IDs.
+    /// Unknown IDs remain visible instead of being silently relabeled.
+    static func personPattern(_ pattern: String, _ language: AppLanguage) -> String {
+        let labels: [AppLanguage: [String: String]] = [
+            .simplifiedChinese: [
+                "control_autonomy": "控制或限制自主",
+                "communication_withdrawal": "回避沟通或冷处理",
+                "invalidates_feelings": "否定或无视感受",
+                "boundary_violation": "边界或同意被忽视",
+                "guilt_pressure": "愧疚施压",
+                "promise_action_mismatch": "承诺与行动不一致",
+                "threat_or_coercion": "威胁或胁迫行为"
+            ],
+            .traditionalChinese: [
+                "control_autonomy": "控制或限制自主",
+                "communication_withdrawal": "迴避溝通或冷處理",
+                "invalidates_feelings": "否定或忽視感受",
+                "boundary_violation": "邊界或同意被忽視",
+                "guilt_pressure": "愧疚施壓",
+                "promise_action_mismatch": "承諾與行動不一致",
+                "threat_or_coercion": "威脅或脅迫行為"
+            ],
+            .english: [
+                "control_autonomy": "Control or restrict autonomy",
+                "communication_withdrawal": "Communication withdrawal",
+                "invalidates_feelings": "Invalidates feelings",
+                "boundary_violation": "Boundary or consent violation",
+                "guilt_pressure": "Guilt-based pressure",
+                "promise_action_mismatch": "Promise–action mismatch",
+                "threat_or_coercion": "Threat or coercion"
+            ]
+        ]
+        return labels[language]?[pattern] ?? pattern
+    }
+
     enum Key: String {
         case newConversation
         case settings
@@ -157,12 +192,19 @@ enum L10n {
         case memoryEmptyTitle
         case memoryEmptyHint
         case memoryMentions
+        case memorySelf
+        case memoryAliases
         case memoryPersistent
         case memoryRecurring
         case memoryNew
         case memoryCounterQuestion
         case memoryRecall
         case memoryTimes
+        case memorySuspected
+        case memoryEvidence
+        case memorySingleObservation
+        case memoryRepeatedPattern
+        case memoryConfidence
 
         // Conversation mode
         case conversationMode
@@ -359,12 +401,19 @@ enum L10n {
         .memoryEmptyTitle: "暂无记忆数据",
         .memoryEmptyHint: "当对话中形成可复用的人物、情绪、盲点或叙事事件后，会在这里呈现。",
         .memoryMentions: "提及",
+        .memorySelf: "你",
+        .memoryAliases: "也称为",
         .memoryPersistent: "持续",
         .memoryRecurring: "反复",
         .memoryNew: "新发现",
         .memoryCounterQuestion: "反问",
         .memoryRecall: "回想",
         .memoryTimes: "次",
+        .memorySuspected: "疑似·待确认",
+        .memoryEvidence: "依据",
+        .memorySingleObservation: "单次观察",
+        .memoryRepeatedPattern: "重复模式",
+        .memoryConfidence: "依据强度",
         .jumpToSource: "跳转至原文",
         .copy: "复制",
         .findInPage: "在对话中查找",
@@ -549,12 +598,19 @@ enum L10n {
         .memoryEmptyTitle: "暫無記憶資料",
         .memoryEmptyHint: "當對話中形成可重用的人物、情緒、盲點或敘事事件後，會在這裡呈現。",
         .memoryMentions: "提及",
+        .memorySelf: "你",
+        .memoryAliases: "也稱為",
         .memoryPersistent: "持續",
         .memoryRecurring: "反覆",
         .memoryNew: "新發現",
         .memoryCounterQuestion: "反問",
         .memoryRecall: "回想",
         .memoryTimes: "次",
+        .memorySuspected: "疑似·待確認",
+        .memoryEvidence: "依據",
+        .memorySingleObservation: "單次觀察",
+        .memoryRepeatedPattern: "重複模式",
+        .memoryConfidence: "依據強度",
         .jumpToSource: "跳轉至原文",
         .copy: "複製",
         .findInPage: "在對話中搜尋",
@@ -739,12 +795,19 @@ enum L10n {
         .memoryEmptyTitle: "No Memory Data",
         .memoryEmptyHint: "Reusable people, emotions, blind spots, and narrative events appear here as they emerge from the conversation.",
         .memoryMentions: "mentioned",
+        .memorySelf: "You",
+        .memoryAliases: "Also called",
         .memoryPersistent: "persistent",
         .memoryRecurring: "recurring",
         .memoryNew: "new",
         .memoryCounterQuestion: "Ask",
         .memoryRecall: "recall",
         .memoryTimes: "×",
+        .memorySuspected: "Suspected · review",
+        .memoryEvidence: "Evidence",
+        .memorySingleObservation: "Single observation",
+        .memoryRepeatedPattern: "Repeated pattern",
+        .memoryConfidence: "Evidence strength",
         .jumpToSource: "Jump to Source",
         .copy: "Copy",
         .findInPage: "Find in Conversation",

@@ -1,5 +1,22 @@
 import Foundation
 
+struct PersonTraitFinding: Equatable {
+    var pattern: String
+    var evidence: String
+    var confidence: Double
+    var scope: String
+}
+
+struct PersonFinding: Equatable {
+    var name: String
+    var mention: String
+    var role: String
+    var traits: [PersonTraitFinding]
+    var matchedPersonID: UUID?
+    var matchConfidence: Double
+    var isSelf: Bool
+}
+
 // MARK: - Unified Pre‑Pipeline (extension of ChatStore)
 
 extension ChatAgent {
@@ -91,7 +108,7 @@ extension ChatAgent {
         var safetyResources: String = ""
         // Parsed archive data
         var emotions: [(segment: String, emotion: String, intensity: Double, confidence: Double?)] = []
-        var persons: [(name: String, role: String)] = []
+        var persons: [PersonFinding] = []
         var blindspotFindings: [(pattern: String, evidence: String, counterQuestion: String)] = []
     }
 
@@ -153,15 +170,25 @@ extension ChatAgent {
         不标注不明显的情绪。
 
         ═══════════════════════════════════════
-        三、persons（人物提取）
+        三、persons（人物与疑似行为模式提取）
         ═══════════════════════════════════════
-        提取用户消息中提及的真实人物。每项含 name / role(ex-partner/家人/朋友/同事/其他)，role 必须来自用户原话或明确上下文，不要自行推断。
+        提取用户消息中提及的真实人物。每项含 mention（当前称呼）/ name（规范名称）/ role(ex-partner/家人/朋友/同事/其他)，role 必须来自用户原话或明确上下文，不要自行推断。
         不输出泛化指代（如"他们""那些人"）。
 
-        注意别名解析：用户可能在不同时间用不同称呼指代同一人。
-        如果当前消息中的人物与「已知人物」列表中的某人是同一人（如"我男朋友"→"张伟"→"前任"、或"我妈"→"我母亲"→"妈妈"），
-        请使用已知人物的标准 name，不要新建条目。
-        不确定是否为同一人时，使用用户当前使用的称呼作为 name。
+        注意自然共指和别名解析：用户可能不会明确说“这是同一个人”，而是自然地从姓名切换到昵称、关系称呼、代词或新称呼。
+        结合最近对话中的行为、关系、时间和已知别名判断是否指向同一人。若确定指向已知人物，输出该人物的 person_id 和规范 name，并把当前称呼放入 mention；不要新建条目。
+        只有在匹配置信度至少 0.75 时才输出 person_id；不确定时 person_id=null、match_confidence<0.75，并使用当前称呼作为 name。不要为了减少条目而强行合并两个可能不同的人。
+        如果人物是用户本人（例如“我叫小王”“大家现在叫我小李”），speaker 输出 self；其他人物输出 other。
+
+        对每个人物，可选地提取当前对话中有具体证据支持的行为模式。只使用以下 pattern ID，不要创造人格、心理疾病或依恋类型标签：
+        - control_autonomy：控制或限制对方自主
+        - communication_withdrawal：回避沟通、冷处理或消失
+        - invalidates_feelings：贬低、否定或无视感受
+        - boundary_violation：无视明确表达的边界、同意或拒绝
+        - guilt_pressure：通过愧疚、威胁失望或施压来推动对方
+        - promise_action_mismatch：承诺与实际行动持续不一致
+        - threat_or_coercion：有明确的威胁、胁迫或强迫行为
+        只有当当前上下文包含可观察行为时才输出 traits；用户的结论、一次模糊的不适或单纯的性格猜测不算证据。每项 trait 必须含 pattern / evidence / confidence(0.0-1.0) / scope(single_event|repeated_pattern)。evidence 是简短的原话或具体行为概述，不要编造；confidence 是证据强度，不是概率或诊断分数。所有 traits 都只是 suspected，留给用户确认。没有足够证据时 traits 返回 []。
 
         ═══════════════════════════════════════
         输出格式 — 严格返回以下JSON，不要包含任何其他文字：
@@ -176,7 +203,7 @@ extension ChatAgent {
             "safety": {"flag":"ok|uncertain|crisis","signals":["..."],"suggest":"","resources":""}
           },
           "emotions": [{"segment":"...","emotion":"...","intensity":0.0,"confidence":0.0}],
-          "persons": [{"name":"...","role":"..."}]
+          "persons": [{"mention":"...","name":"...","role":"...","speaker":"other","person_id":null,"match_confidence":0.0,"traits":[{"pattern":"...","evidence":"...","confidence":0.0,"scope":"single_event"}]}]
         }
         如果某维度正常，flag 为 ok，hint 为空。只标记明确的模式，不猜测。emotions/persons 数组为空时返回 []。
         """
@@ -209,8 +236,12 @@ extension ChatAgent {
         // Build user content with context
         let knownPersons = personArchive
             .filter { $0.conversationIDs?.contains(conversationID) == true }
-            .map { "\($0.name)(\($0.role))" }
-            .joined(separator: ", ")
+            .map { person in
+                let aliases = person.aliases.isEmpty ? "（无别名）" : person.aliases.joined(separator: "、")
+                let speaker = person.isSelf ? "self" : "other"
+                return "- person_id=\(person.id.uuidString) canonical=\(person.name) aliases=[\(aliases)] speaker=\(speaker) role=\(person.role)"
+            }
+            .joined(separator: "\n")
         let currentBlindspots = blindspots.filter { $0.conversationID == conversationID }
         let blindspotsHistory = currentBlindspots.isEmpty
             ? "（无历史盲点记录）"
@@ -289,18 +320,51 @@ extension ChatAgent {
 
         // Merge persons (cap at 200 unique entries)
         for p in result.persons {
-            if let idx = personArchive.firstIndex(where: {
-                $0.name == p.name && $0.conversationIDs?.contains(conversationID) == true
-            }) {
+            let mention = p.mention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? p.name : p.mention
+            let incomingTraits = p.traits.map { finding in
+                PersonTraitRecord(
+                    pattern: finding.pattern,
+                    evidence: [finding.evidence],
+                    confidence: finding.confidence,
+                    scope: finding.scope,
+                    status: "suspected",
+                    occurrenceCount: 1,
+                    firstObservedAt: requestSentAt,
+                    lastObservedAt: requestSentAt
+                )
+            }
+            let resolvedIndex = personArchive.firstIndex { person in
+                guard person.conversationIDs?.contains(conversationID) == true,
+                      person.isSelf == p.isSelf else { return false }
+                if let matchedID = p.matchedPersonID,
+                   p.matchConfidence >= 0.75,
+                   person.id == matchedID {
+                    return true
+                }
+                let labels = [person.name] + person.aliases
+                return labels.contains { normalizedPersonLabel($0) == normalizedPersonLabel(p.name) }
+                    || labels.contains { normalizedPersonLabel($0) == normalizedPersonLabel(mention) }
+            }
+            if let idx = resolvedIndex {
                 personArchive[idx].lastMentionedAt = requestSentAt
                 personArchive[idx].mentionCount += 1
                 personArchive[idx].notes.append("\(conv.title): \(p.role)")
+                if !mention.isEmpty,
+                   normalizedPersonLabel(mention) != normalizedPersonLabel(personArchive[idx].name),
+                   !personArchive[idx].aliases.contains(where: { normalizedPersonLabel($0) == normalizedPersonLabel(mention) }) {
+                    personArchive[idx].aliases.append(mention)
+                    personArchive[idx].aliases = Array(personArchive[idx].aliases.suffix(12))
+                }
+                mergePersonTraits(&personArchive[idx].traits, incoming: incomingTraits)
             } else {
                 personArchive.append(PersonRecord(
                     name: p.name,
                     role: p.role,
                     firstMentionedAt: requestSentAt,
                     lastMentionedAt: requestSentAt,
+                    aliases: mention == p.name ? [] : [mention],
+                    isSelf: p.isSelf,
+                    traits: incomingTraits,
                     conversationIDs: [conversationID]
                 ))
             }
@@ -335,6 +399,34 @@ extension ChatAgent {
         }
 
         saveArchives()
+    }
+
+    private func normalizedPersonLabel(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Merge behavior-pattern observations without turning them into confirmed labels.
+    private func mergePersonTraits(_ existing: inout [PersonTraitRecord], incoming: [PersonTraitRecord]) {
+        for observation in incoming {
+            guard !observation.pattern.isEmpty, !observation.evidence.isEmpty else { continue }
+            if let index = existing.firstIndex(where: { $0.pattern == observation.pattern }) {
+                let previousCount = max(existing[index].occurrenceCount, 1)
+                let newCount = previousCount + 1
+                existing[index].confidence = ((existing[index].confidence * Double(previousCount)) + observation.confidence) / Double(newCount)
+                existing[index].occurrenceCount = newCount
+                existing[index].lastObservedAt = observation.lastObservedAt
+                existing[index].scope = newCount > 1 || observation.scope == "repeated_pattern" ? "repeated_pattern" : "single_event"
+                existing[index].status = "suspected"
+                for snippet in observation.evidence where !existing[index].evidence.contains(snippet) {
+                    existing[index].evidence.append(snippet)
+                }
+                existing[index].evidence = Array(existing[index].evidence.suffix(5))
+            } else {
+                existing.append(observation)
+            }
+        }
+        existing.sort { $0.lastObservedAt > $1.lastObservedAt }
+        existing = Array(existing.prefix(8))
     }
 
     // MARK: - Pre‑Pipeline JSON Parser
@@ -426,12 +518,51 @@ extension ChatAgent {
             }
         }
 
-        // ── Parse persons ──
+        // ── Parse persons and evidence-backed behavior patterns ──
         if let persons = obj["persons"] as? [[String: Any]] {
-            result.persons = persons.compactMap { p in
+            result.persons = persons.compactMap { p -> PersonFinding? in
                 guard let n = p["name"] as? String,
                       let r = p["role"] as? String else { return nil }
-                return (n, r)
+                let allowedPatterns: Set<String> = [
+                    "control_autonomy",
+                    "communication_withdrawal",
+                    "invalidates_feelings",
+                    "boundary_violation",
+                    "guilt_pressure",
+                    "promise_action_mismatch",
+                    "threat_or_coercion"
+                ]
+                let traits = (p["traits"] as? [[String: Any]] ?? []).compactMap { trait -> PersonTraitFinding? in
+                    guard let pattern = trait["pattern"] as? String,
+                          allowedPatterns.contains(pattern),
+                          let evidence = trait["evidence"] as? String,
+                          !evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                    let scope = (trait["scope"] as? String) == "repeated_pattern" ? "repeated_pattern" : "single_event"
+                    let confidence = min(max(trait["confidence"] as? Double ?? 0.0, 0.0), 1.0)
+                    return PersonTraitFinding(
+                        pattern: pattern,
+                        evidence: String(evidence.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240)),
+                        confidence: confidence,
+                        scope: scope
+                    )
+                }
+                let mention: String = {
+                    guard let raw = p["mention"] as? String else { return n }
+                    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? n : trimmed
+                }()
+                let matchedPersonID = (p["person_id"] as? String).flatMap(UUID.init(uuidString:))
+                let matchConfidence = min(max(p["match_confidence"] as? Double ?? 0.0, 0.0), 1.0)
+                let isSelf = (p["speaker"] as? String)?.lowercased() == "self"
+                return PersonFinding(
+                    name: n,
+                    mention: mention,
+                    role: r,
+                    traits: traits,
+                    matchedPersonID: matchedPersonID,
+                    matchConfidence: matchConfidence,
+                    isSelf: isSelf
+                )
             }
         }
 

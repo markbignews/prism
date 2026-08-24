@@ -441,7 +441,14 @@ final class ChatAgent {
             .sorted { $0.lastMentionedAt > $1.lastMentionedAt }
             .prefix(5)
             .map { person in
-                "- \(person.name) (\(person.role)): \(dateText(person.firstMentionedAt)) → \(dateText(person.lastMentionedAt)), mentions=\(person.mentionCount)"
+                let aliasSummary = person.aliases.isEmpty ? "" : "; aliases=\(person.aliases.joined(separator: ","))"
+                let speaker = person.isSelf ? "self" : "other"
+                let traitSummary = person.traits.prefix(3).map { trait in
+                    let evidence = trait.evidence.first ?? ""
+                    return "\(trait.pattern)[suspected,\(trait.scope),c=\(String(format: "%.1f", trait.confidence))]: \(evidence)"
+                }.joined(separator: " | ")
+                let suffix = traitSummary.isEmpty ? "" : "; suspected behavior patterns (not facts or diagnoses): \(traitSummary)"
+                return "- \(person.name) (\(person.role), speaker=\(speaker)): \(dateText(person.firstMentionedAt)) → \(dateText(person.lastMentionedAt)), mentions=\(person.mentionCount)\(aliasSummary)\(suffix)"
             }
             .joined(separator: "\n")
 
@@ -1193,7 +1200,15 @@ final class ChatAgent {
             .prefix(5)
         if !activePersons.isEmpty {
             let personSummary = activePersons
-                .map { "\($0.name)(\($0.role), 提及\($0.mentionCount)次)" }
+                .map { person in
+                    let aliasSummary = person.aliases.isEmpty ? "" : "; 别名：\(person.aliases.joined(separator: "、"))"
+                    let speaker = person.isSelf ? "用户本人" : "他人"
+                    let traitSummary = person.traits.prefix(3).map { trait in
+                        "\(trait.pattern)[疑似,c=\(String(format: "%.1f", trait.confidence))]"
+                    }.joined(separator: "、")
+                    let suffix = traitSummary.isEmpty ? "" : "; 疑似行为模式（待确认）：\(traitSummary)"
+                    return "\(person.name)(\(person.role), \(speaker), 提及\(person.mentionCount)次)\(aliasSummary)\(suffix)"
+                }
                 .joined(separator: ", ")
             parts.append("关键人物: \(personSummary)")
         }

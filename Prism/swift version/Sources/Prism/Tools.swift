@@ -176,7 +176,8 @@ enum ToolRegistry {
         }
         guard let conversationID = store.selectedConversationID,
               let person = archive.first(where: {
-                  $0.name.localizedCaseInsensitiveContains(name)
+                  ($0.name.localizedCaseInsensitiveContains(name)
+                      || $0.aliases.contains(where: { $0.localizedCaseInsensitiveContains(name) }))
                       && $0.conversationIDs?.contains(conversationID) == true
               }) else {
             return #"{"found":false,"name":"\#(name)"}"#

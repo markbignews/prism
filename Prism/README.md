@@ -63,6 +63,12 @@ An event is placed on the narrative timeline only when its date or period comes 
 
 The quality guard checks for explanation loops, emotional spirals, intent–action gaps, over-agreement, and missing concrete facts. Warnings are passed to the main model as structured guidance, so the response can stay grounded without replacing the model's judgment.
 
+### Mark tentative behavior patterns for people
+
+When the current conversation contains concrete behavior evidence, Prism can associate a person with patterns such as control or restricted autonomy, communication withdrawal, ignored boundaries, or guilt-based pressure. It stores the evidence snippet, evidence strength, and whether the observation is isolated or repeated. Every result is shown as **suspected · review**; Prism does not output personality, psychiatric, or attachment-style diagnoses.
+
+Person records also resolve natural changes in nicknames, relationship terms, short forms, and pronouns from context. High-confidence links are merged into the existing person and saved as aliases; uncertain links remain separate to avoid false merges. A record is marked as the user only when the conversation explicitly identifies the person as “I” or “myself.”
+
 ### Build memory on your device
 
 Chapters, people, emotions, blindspots, and cross-conversation memories are stored as local files. You can choose a custom data directory or enable iCloud Drive on supported macOS workflows.
@@ -186,7 +192,7 @@ By default, Prism stores its data under:
 - Conversation history and indexes are plain local JSON files.
 - There is no built-in telemetry, analytics, or Prism account.
 - Attachments are kept in memory for the active request and are not written into `conversations.json`. When you send an attachment, its contents are transmitted to the configured API endpoint: images as image data and text/code files as text content.
-- Prism keeps local copies, but conversation content and user-profile data derived from it—including people, emotions, memories, blindspots, and narrative timeline records—are sent to DeepSeek through the API key and endpoint you configure whenever model-backed features run.
+- Prism keeps local copies, but conversation content and user-profile data derived from it—including people, tentative behavior patterns, emotions, memories, blindspots, and narrative timeline records—are sent to DeepSeek through the API key and endpoint you configure whenever model-backed features run.
 - You can choose another storage directory; supported macOS workflows can optionally use iCloud Drive.
 - Deleting a conversation also removes its associated local archive entries in the Tauri clients.
 
@@ -194,7 +200,7 @@ You remain responsible for the API provider, endpoint, retention policy, and cre
 
 ## Data-use authorization and disclaimer
 
-By entering an API key and using model-backed features, you authorize Prism to transmit your conversation content, attachments you choose to send, and derived user-profile data to DeepSeek through the configured API endpoint. This may include messages, image data, text/code file contents, people, emotions, memories, blindspots, narrative timeline records, summaries, and search context.
+By entering an API key and using model-backed features, you authorize Prism to transmit your conversation content, attachments you choose to send, and derived user-profile data to DeepSeek through the configured API endpoint. This may include messages, image data, text/code file contents, people, tentative behavior patterns, emotions, memories, blindspots, narrative timeline records, summaries, and search context.
 
 If you replace the default base URL with another compatible provider, the same data is sent to that provider instead.
 

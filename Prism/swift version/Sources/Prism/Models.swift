@@ -189,6 +189,25 @@ struct EmotionEntry: Identifiable, Codable, Equatable {
     var createdAt = Date()
 }
 
+/// A tentative, evidence-backed behavior pattern associated with a person.
+/// This is deliberately not a personality or clinical diagnosis.
+struct PersonTraitRecord: Identifiable, Codable, Equatable {
+    var id = UUID()
+    /// Stable pattern ID, for example `control_autonomy` or `guilt_pressure`.
+    var pattern: String
+    /// Short evidence snippets grounded in the user's conversation.
+    var evidence: [String] = []
+    /// Rough evidence strength, not a probability or clinical score.
+    var confidence: Double = 0.0
+    /// `single_event` or `repeated_pattern`.
+    var scope: String = "single_event"
+    /// Always `suspected` until the user reviews it; no automatic confirmation.
+    var status: String = "suspected"
+    var occurrenceCount: Int = 1
+    var firstObservedAt: Date
+    var lastObservedAt: Date
+}
+
 struct PersonRecord: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
@@ -198,9 +217,65 @@ struct PersonRecord: Identifiable, Codable, Equatable {
     var mentionCount: Int = 1
     var emotionalArc: String = "" // "愤怒 → 释然"
     var notes: [String] = []       // per-conversation deltas
+    /// Natural-language names or relationship terms that resolved to `name`.
+    var aliases: [String] = []
+    /// Whether this record refers to the user rather than another person.
+    var isSelf: Bool = false
+    /// Tentative behavior patterns with evidence; never a personality diagnosis.
+    var traits: [PersonTraitRecord] = []
     /// Legacy records without a scope remain hidden from cross-conversation
     /// retrieval rather than being guessed into the current conversation.
     var conversationIDs: [UUID]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, role, firstMentionedAt, lastMentionedAt, mentionCount
+        case emotionalArc, notes, aliases, isSelf, traits, conversationIDs
+    }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        role: String,
+        firstMentionedAt: Date,
+        lastMentionedAt: Date,
+        mentionCount: Int = 1,
+        emotionalArc: String = "",
+        notes: [String] = [],
+        aliases: [String] = [],
+        isSelf: Bool = false,
+        traits: [PersonTraitRecord] = [],
+        conversationIDs: [UUID]? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.firstMentionedAt = firstMentionedAt
+        self.lastMentionedAt = lastMentionedAt
+        self.mentionCount = mentionCount
+        self.emotionalArc = emotionalArc
+        self.notes = notes
+        self.aliases = aliases
+        self.isSelf = isSelf
+        self.traits = traits
+        self.conversationIDs = conversationIDs
+    }
+
+    /// Decode old archives that predate person traits.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        role = try container.decode(String.self, forKey: .role)
+        firstMentionedAt = try container.decode(Date.self, forKey: .firstMentionedAt)
+        lastMentionedAt = try container.decode(Date.self, forKey: .lastMentionedAt)
+        mentionCount = try container.decodeIfPresent(Int.self, forKey: .mentionCount) ?? 1
+        emotionalArc = try container.decodeIfPresent(String.self, forKey: .emotionalArc) ?? ""
+        notes = try container.decodeIfPresent([String].self, forKey: .notes) ?? []
+        aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
+        isSelf = try container.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
+        traits = try container.decodeIfPresent([PersonTraitRecord].self, forKey: .traits) ?? []
+        conversationIDs = try container.decodeIfPresent([UUID].self, forKey: .conversationIDs)
+    }
 }
 
 // MARK: - Smart Search Results

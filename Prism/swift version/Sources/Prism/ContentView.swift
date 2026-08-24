@@ -2012,18 +2012,55 @@ struct MemoryPanelView: View {
                     if !currentPeople.isEmpty {
                         MemorySection(title: L10n.text(.memoryPeople, settings.language), icon: "person.2.fill", color: .blue) {
                             ForEach(currentPeople.sorted { $0.mentionCount > $1.mentionCount }) { person in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(person.name).font(.headline)
-                                        Text("\(person.role) · \(L10n.text(.memoryMentions, settings.language)) \(person.mentionCount) \(L10n.text(.memoryTimes, settings.language))")
-                                            .font(.caption).foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(person.name).font(.headline)
+                                            Text("\(person.isSelf ? L10n.text(.memorySelf, settings.language) : person.role) · \(L10n.text(.memoryMentions, settings.language)) \(person.mentionCount) \(L10n.text(.memoryTimes, settings.language))")
+                                                .font(.caption).foregroundStyle(.secondary)
+                                            if !person.aliases.isEmpty {
+                                                Text("\(L10n.text(.memoryAliases, settings.language))：\(person.aliases.joined(separator: "、"))")
+                                                    .font(.caption2).foregroundStyle(.tertiary)
+                                            }
+                                        }
+                                        Spacer()
+                                        if !person.emotionalArc.isEmpty {
+                                            Text(person.emotionalArc)
+                                                .font(.caption).foregroundStyle(.blue)
+                                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                                .background(Capsule().fill(.blue.opacity(0.1)))
+                                        }
                                     }
-                                    Spacer()
-                                    if !person.emotionalArc.isEmpty {
-                                        Text(person.emotionalArc)
-                                            .font(.caption).foregroundStyle(.blue)
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Capsule().fill(.blue.opacity(0.1)))
+
+                                    ForEach(person.traits) { trait in
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            HStack(spacing: 6) {
+                                                Text(L10n.personPattern(trait.pattern, settings.language))
+                                                    .font(.caption.weight(.medium))
+                                                    .foregroundStyle(.orange)
+                                                Text(L10n.text(.memorySuspected, settings.language))
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .padding(.horizontal, 5)
+                                                    .padding(.vertical, 1)
+                                                    .background(Capsule().fill(.orange.opacity(0.12)))
+                                                Spacer()
+                                                Text(trait.scope == "repeated_pattern" ? L10n.text(.memoryRepeatedPattern, settings.language) : L10n.text(.memorySingleObservation, settings.language))
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            ForEach(Array(trait.evidence.prefix(2).enumerated()), id: \.offset) { _, evidence in
+                                                Text("\(L10n.text(.memoryEvidence, settings.language))：\(evidence)")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            Text("\(L10n.text(.memoryConfidence, settings.language))：\(Int(trait.confidence * 100))% · \(trait.occurrenceCount)\(L10n.text(.memoryTimes, settings.language))")
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                        .padding(8)
+                                        .background(RoundedRectangle(cornerRadius: 8).fill(.orange.opacity(0.06)))
                                     }
                                 }
                                 .padding(.vertical, 4)

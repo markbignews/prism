@@ -18,9 +18,20 @@ pub struct GuardPanelResult {
     pub crisis_detail: String,
     pub crisis_hotline: String,
     pub emotions: Vec<EmotionEntry>,
-    pub persons: Vec<PersonRecord>,
+    pub persons: Vec<PersonFinding>,
     pub blindspots: Vec<BlindspotRecord>,
     pub raw_warnings: Vec<String>,
+}
+
+/// A person extracted from the current turn. The link fields are transient
+/// model output and are intentionally kept outside `PersonRecord` so they are
+/// never persisted as if they were facts.
+#[derive(Debug, Clone)]
+pub struct PersonFinding {
+    pub record: PersonRecord,
+    pub mention: String,
+    pub matched_person_id: Option<Uuid>,
+    pub match_confidence: f64,
 }
 
 pub struct PrePipeline {
@@ -136,16 +147,86 @@ impl PrePipeline {
         if let Some(values) = parsed.get("persons").and_then(Value::as_array) {
             for value in values {
                 if let (Some(name), Some(role)) = (value["name"].as_str(), value["role"].as_str()) {
-                    result.persons.push(PersonRecord {
-                        id: Uuid::new_v4(),
-                        name: name.to_string(),
-                        role: role.to_string(),
-                        first_mentioned_at: request_sent_at,
-                        last_mentioned_at: request_sent_at,
-                        mention_count: 1,
-                        emotional_arc: String::new(),
-                        notes: vec![],
-                        conversation_ids: Some(vec![conversation_id]),
+                    let mention = value["mention"].as_str().unwrap_or(name).trim().to_string();
+                    let match_confidence = value["match_confidence"]
+                        .as_f64()
+                        .unwrap_or(0.0)
+                        .clamp(0.0, 1.0);
+                    let matched_person_id = value["person_id"]
+                        .as_str()
+                        .and_then(|value| Uuid::parse_str(value).ok())
+                        .filter(|_| match_confidence >= 0.75);
+                    let is_self = value["speaker"].as_str() == Some("self");
+                    let aliases = if !mention.is_empty() && !mention.eq_ignore_ascii_case(name) {
+                        vec![mention.clone()]
+                    } else {
+                        Vec::new()
+                    };
+                    let traits = value["traits"]
+                        .as_array()
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(|trait_value| {
+                                    let pattern = trait_value["pattern"].as_str()?;
+                                    if !matches!(
+                                        pattern,
+                                        "control_autonomy"
+                                            | "communication_withdrawal"
+                                            | "invalidates_feelings"
+                                            | "boundary_violation"
+                                            | "guilt_pressure"
+                                            | "promise_action_mismatch"
+                                            | "threat_or_coercion"
+                                    ) {
+                                        return None;
+                                    }
+                                    let evidence = trait_value["evidence"].as_str()?.trim();
+                                    if evidence.is_empty() {
+                                        return None;
+                                    }
+                                    Some(PersonTraitRecord {
+                                        id: Uuid::new_v4(),
+                                        pattern: pattern.to_string(),
+                                        evidence: vec![evidence.chars().take(240).collect()],
+                                        confidence: trait_value["confidence"]
+                                            .as_f64()
+                                            .unwrap_or(0.0)
+                                            .clamp(0.0, 1.0),
+                                        scope: if trait_value["scope"].as_str()
+                                            == Some("repeated_pattern")
+                                        {
+                                            "repeated_pattern".to_string()
+                                        } else {
+                                            "single_event".to_string()
+                                        },
+                                        status: "suspected".to_string(),
+                                        occurrence_count: 1,
+                                        first_observed_at: request_sent_at,
+                                        last_observed_at: request_sent_at,
+                                    })
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    result.persons.push(PersonFinding {
+                        record: PersonRecord {
+                            id: Uuid::new_v4(),
+                            name: name.to_string(),
+                            role: role.to_string(),
+                            first_mentioned_at: request_sent_at,
+                            last_mentioned_at: request_sent_at,
+                            mention_count: 1,
+                            emotional_arc: String::new(),
+                            notes: vec![],
+                            traits,
+                            aliases,
+                            is_self,
+                            conversation_ids: Some(vec![conversation_id]),
+                        },
+                        mention,
+                        matched_person_id,
+                        match_confidence,
                     });
                 }
             }

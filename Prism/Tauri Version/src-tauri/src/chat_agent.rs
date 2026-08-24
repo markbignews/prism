@@ -472,13 +472,43 @@ fn temporal_context(
         })
         .take(5)
         .map(|person| {
+            let trait_summary = person
+                .traits
+                .iter()
+                .take(3)
+                .map(|trait_record| {
+                    let evidence = trait_record.evidence.first().cloned().unwrap_or_default();
+                    format!(
+                        "{}[suspected,{},c={:.1}]: {}",
+                        trait_record.pattern, trait_record.scope, trait_record.confidence, evidence
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let suffix = if trait_summary.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; suspected behavior patterns (not facts or diagnoses): {}",
+                    trait_summary
+                )
+            };
+            let alias_summary = if person.aliases.is_empty() {
+                String::new()
+            } else {
+                format!(", aliases={}", person.aliases.join("/"))
+            };
+            let speaker = if person.is_self { "self" } else { "other" };
             format!(
-                "- {} ({}): {} → {}, mentions={}",
+                "- {} ({}, speaker={}): {} → {}, mentions={}{}{}",
                 person.name,
                 person.role,
+                speaker,
                 temporal_stamp(person.first_mentioned_at),
                 temporal_stamp(person.last_mentioned_at),
-                person.mention_count
+                person.mention_count,
+                alias_summary,
+                suffix
             )
         })
         .collect::<Vec<_>>()
@@ -1031,7 +1061,12 @@ impl ChatAgent {
                 archives.add_emotion(emotion);
             }
             for person in &guard.persons {
-                archives.save_person(person);
+                archives.save_person_with_link(
+                    &person.record,
+                    person.matched_person_id,
+                    person.match_confidence,
+                    &person.mention,
+                );
             }
             for spot in &guard.blindspots {
                 archives.add_blindspot(spot);
@@ -1552,9 +1587,20 @@ impl ChatAgent {
                     .unwrap_or(false)
             })
             .take(20)
-            .map(|person| format!("{}({})", person.name, person.role))
+            .map(|person| {
+                let aliases = if person.aliases.is_empty() {
+                    "（无别名）".to_string()
+                } else {
+                    person.aliases.join("、")
+                };
+                let speaker = if person.is_self { "self" } else { "other" };
+                format!(
+                    "- person_id={} canonical={} aliases=[{}] speaker={} role={}",
+                    person.id, person.name, aliases, speaker, person.role
+                )
+            })
             .collect::<Vec<_>>()
-            .join(", ");
+            .join("\n");
         let historical_blindspots = archives
             .recent_blindspots(20)
             .into_iter()
@@ -1969,7 +2015,19 @@ impl ChatAgent {
                 "关键人物: {}",
                 persons
                     .iter()
-                    .map(|person| format!("{}({})", person.name, person.role))
+                    .map(|person| {
+                        let aliases = if person.aliases.is_empty() {
+                            String::new()
+                        } else {
+                            format!("; 别名：{}", person.aliases.join("、"))
+                        };
+                        let speaker = if person.is_self {
+                            "用户本人"
+                        } else {
+                            "他人"
+                        };
+                        format!("{}({}, {}{})", person.name, person.role, speaker, aliases)
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             ));

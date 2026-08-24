@@ -87,7 +87,7 @@ pub fn relationship_decision_rules(language: &str) -> &'static str {
 
 pub fn guard_panel_prompt() -> &'static str {
     r#"你是 Prism 的质量守护分析器。只返回严格 JSON，不要解释。
-分析最近对话和当前用户消息，识别现实感、情绪漩涡、叙事盲点、助手迎合、意图-行动差距和安全信号；同时提取 1-3 个明显情绪、人物和盲点。
+分析最近对话和当前用户消息，识别现实感、情绪漩涡、叙事盲点、助手迎合、意图-行动差距和安全信号；同时提取 1-3 个明显情绪、人物和盲点，并在有具体证据时标记人物的疑似行为模式。
 每条消息的 sentAt 是画像证据：用于判断昼夜时段、消息间隔、作息与情绪趋势。它不是用户所述事件的发生时间，除非用户明确这样说。
 安全信号包括自杀/自伤、严重暴力或虐待、精神错乱、未成年人受害和明确求助。明确危险标记 crisis，明确安全标记 ok，证据不足或输出不完整标记 uncertain；不得把 uncertain 当成 ok。
 输出格式：
@@ -101,9 +101,9 @@ pub fn guard_panel_prompt() -> &'static str {
     "safety": {"flag":"ok|uncertain|crisis","signals":[],"suggest":"","resources":""}
   },
   "emotions": [{"segment":"","emotion":"","intensity":0.0,"confidence":0.0}],
-  "persons": [{"name":"","role":""}]
+  "persons": [{"mention":"","name":"","role":"","speaker":"self|other","person_id":null,"match_confidence":0.0,"traits":[{"pattern":"control_autonomy","evidence":"","confidence":0.0,"scope":"single_event"}]}]
 }
-只标记明确模式；没有发现时使用 ok 和空数组。"#
+人物 role 必须来自原话或明确上下文，不要自行推断。speaker 只有在用户明确把该人物说成“我/自己”时才用 self，否则用 other。结合最近对话中的上下文、关系和称呼变化处理自然共指：用户可能突然改用昵称、关系称呼、代词或简称，不会显式说明“这是同一个人”。若当前称呼明确指向已知人物，复制该人物的 person_id 和规范 name，并将当前称呼作为 mention；只有匹配置信度至少 0.75 才填写 person_id。不确定时 person_id=null、match_confidence<0.75，并保留当前称呼，绝不要为了减少条目强行合并。traits 只能使用上面的行为模式 ID，不得输出人格、心理疾病或依恋类型标签。只有当前上下文存在可观察行为时才输出 traits；每项 evidence 必须是简短原话或具体行为概述，不要编造。confidence 是证据强度，不是概率或诊断分数；所有 traits 都是 suspected、待用户确认。没有足够证据时 traits 返回 []。只标记明确模式；没有发现时使用 ok 和空数组。"#
 }
 
 pub fn summarization_prompt(language: &str) -> &str {

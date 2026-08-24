@@ -241,6 +241,42 @@ pub struct EmotionEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct PersonTraitRecord {
+    pub id: Uuid,
+    /// Stable behavior-pattern ID, never a personality or clinical diagnosis.
+    pub pattern: String,
+    /// Short evidence snippets grounded in the conversation.
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    /// Rough evidence strength, not a probability or clinical score.
+    #[serde(default)]
+    pub confidence: f64,
+    /// `single_event` or `repeated_pattern`.
+    #[serde(default = "default_single_event")]
+    pub scope: String,
+    /// Always `suspected` until the user reviews it.
+    #[serde(default = "default_suspected")]
+    pub status: String,
+    #[serde(default = "default_one")]
+    pub occurrence_count: i32,
+    pub first_observed_at: DateTime<Utc>,
+    pub last_observed_at: DateTime<Utc>,
+}
+
+fn default_single_event() -> String {
+    "single_event".to_string()
+}
+
+fn default_suspected() -> String {
+    "suspected".to_string()
+}
+
+fn default_one() -> i32 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct PersonRecord {
     pub id: Uuid,
     pub name: String,
@@ -250,6 +286,17 @@ pub struct PersonRecord {
     pub mention_count: i32,
     pub emotional_arc: String,
     pub notes: Vec<String>,
+    /// Tentative behavior patterns with evidence; not personality diagnoses.
+    #[serde(default)]
+    pub traits: Vec<PersonTraitRecord>,
+    /// Other natural names or relationship terms used for this person in the
+    /// same conversation (for example a nickname or "他").
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    /// True only when the conversation explicitly identifies this person as
+    /// the user; this is not inferred from writing style or psychology.
+    #[serde(default)]
+    pub is_self: bool,
     /// Legacy records without a scope are hidden from cross-conversation use.
     pub conversation_ids: Option<Vec<Uuid>>,
 }

@@ -148,17 +148,70 @@ impl Archives {
                     .map(|ids| ids.contains(&conversation_id))
                     .unwrap_or(false)
             })
-            .find(|p| p.name.to_lowercase().contains(&name_lower))
+            .find(|p| {
+                p.name.to_lowercase().contains(&name_lower)
+                    || p.aliases
+                        .iter()
+                        .any(|alias| alias.to_lowercase().contains(&name_lower))
+            })
     }
 
     pub fn save_person(&self, person: &PersonRecord) {
+        self.save_person_with_link(person, None, 0.0, "");
+    }
+
+    /// Merge a current-turn person finding using an explicit model link when
+    /// confidence is high, otherwise fall back to canonical name/alias
+    /// matching within the same conversation only.
+    pub fn save_person_with_link(
+        &self,
+        person: &PersonRecord,
+        matched_person_id: Option<Uuid>,
+        match_confidence: f64,
+        mention: &str,
+    ) {
         let v = self.read_json("person_archive.json");
         let mut persons: Vec<PersonRecord> =
             serde_json::from_value(Value::Array(archive_array(&v, "persons"))).unwrap_or_default();
-        if let Some(existing) = persons
-            .iter_mut()
-            .find(|p| p.name.eq_ignore_ascii_case(&person.name))
-        {
+        let target_conversation_id = person
+            .conversation_ids
+            .as_ref()
+            .and_then(|ids| ids.first())
+            .copied();
+        let link_id = matched_person_id.filter(|_| match_confidence >= 0.75);
+        let mention = mention.trim();
+        let label_matches = |existing: &PersonRecord| {
+            let incoming = std::iter::once(person.name.as_str())
+                .chain(person.aliases.iter().map(String::as_str))
+                .chain(std::iter::once(mention))
+                .filter(|label| !label.trim().is_empty())
+                .map(|label| label.to_lowercase())
+                .collect::<Vec<_>>();
+            std::iter::once(existing.name.as_str())
+                .chain(existing.aliases.iter().map(String::as_str))
+                .any(|label| {
+                    incoming
+                        .iter()
+                        .any(|candidate| candidate == &label.to_lowercase())
+                })
+        };
+        if let Some(existing) = persons.iter_mut().find(|p| {
+            let same_conversation = target_conversation_id
+                .map(|conversation_id| {
+                    p.conversation_ids
+                        .as_ref()
+                        .map(|ids| ids.contains(&conversation_id))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(true);
+            let explicit_link = link_id == Some(p.id) && same_conversation;
+            let legacy_name_match =
+                p.conversation_ids.is_none() && p.name.eq_ignore_ascii_case(&person.name);
+            let label_match = same_conversation && label_matches(p);
+            (explicit_link || label_match || legacy_name_match) && p.is_self == person.is_self
+        }) {
+            // Keep person evidence scoped to the conversation that produced it.
+            // A repeated name in another conversation must become a separate record.
             // Legacy records have no conversation scope. Do not merge their
             // old notes, role, or mention count into a new conversation: that
             // would silently disclose cross-conversation personal data.
@@ -169,6 +222,10 @@ impl Archives {
                 existing.role = person.role.clone();
                 existing.emotional_arc = person.emotional_arc.clone();
                 existing.notes = person.notes.clone();
+                existing.traits = person.traits.clone();
+                existing.aliases = person.aliases.clone();
+                add_person_alias(&mut existing.aliases, mention, &existing.name);
+                existing.is_self = person.is_self;
                 existing.conversation_ids = person.conversation_ids.clone();
                 self.write_json(
                     "person_archive.json",
@@ -186,6 +243,13 @@ impl Archives {
             }
             existing.notes.extend(person.notes.iter().cloned());
             existing.notes.truncate(20);
+            for alias in &person.aliases {
+                add_person_alias(&mut existing.aliases, alias, &existing.name);
+            }
+            add_person_alias(&mut existing.aliases, mention, &existing.name);
+            existing.aliases.truncate(12);
+            existing.is_self = existing.is_self || person.is_self;
+            merge_person_traits(&mut existing.traits, &person.traits);
             let mut conversation_ids = existing.conversation_ids.clone().unwrap_or_default();
             for conversation_id in person.conversation_ids.clone().unwrap_or_default() {
                 if !conversation_ids.contains(&conversation_id) {
@@ -419,6 +483,56 @@ impl Archives {
             self.write_json(name, &Value::Array(kept));
         }
     }
+}
+
+fn add_person_alias(aliases: &mut Vec<String>, alias: &str, canonical: &str) {
+    let alias = alias.trim();
+    if alias.is_empty() || alias.eq_ignore_ascii_case(canonical) {
+        return;
+    }
+    if !aliases
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(alias))
+    {
+        aliases.push(alias.to_string());
+    }
+}
+
+fn merge_person_traits(existing: &mut Vec<PersonTraitRecord>, incoming: &[PersonTraitRecord]) {
+    for observation in incoming {
+        if observation.pattern.is_empty() || observation.evidence.is_empty() {
+            continue;
+        }
+        if let Some(current) = existing
+            .iter_mut()
+            .find(|trait_record| trait_record.pattern == observation.pattern)
+        {
+            let previous_count = current.occurrence_count.max(1);
+            let new_count = previous_count + observation.occurrence_count.max(1);
+            current.confidence = ((current.confidence * previous_count as f64)
+                + (observation.confidence * observation.occurrence_count.max(1) as f64))
+                / new_count as f64;
+            current.occurrence_count = new_count;
+            current.last_observed_at = observation.last_observed_at;
+            if new_count > 1 || observation.scope == "repeated_pattern" {
+                current.scope = "repeated_pattern".to_string();
+            }
+            current.status = "suspected".to_string();
+            for evidence in &observation.evidence {
+                if !current.evidence.contains(evidence) {
+                    current.evidence.push(evidence.clone());
+                }
+            }
+            if current.evidence.len() > 5 {
+                let keep_from = current.evidence.len() - 5;
+                current.evidence = current.evidence.split_off(keep_from);
+            }
+        } else {
+            existing.push(observation.clone());
+        }
+    }
+    existing.sort_by(|left, right| right.last_observed_at.cmp(&left.last_observed_at));
+    existing.truncate(8);
 }
 
 fn count_occurrences(text: &str, term: &str) -> i32 {

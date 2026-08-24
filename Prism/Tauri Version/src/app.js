@@ -148,6 +148,13 @@ const I18N = {
     insights: 'Insights',
     memoryInsights: 'Insights & Memory',
     mentions: 'mentions',
+    selfPerson: 'You',
+    aliases: 'Also called',
+    suspected: 'Suspected · review',
+    evidence: 'Evidence',
+    singleObservation: 'Single observation',
+    repeatedPattern: 'Repeated pattern',
+    evidenceStrength: 'Evidence strength',
     usingTool: 'Using tool: ',
     toolDone: 'Tool completed',
     error: 'Error',
@@ -268,6 +275,13 @@ const I18N = {
     insights: '洞察',
     memoryInsights: '洞察与记忆',
     mentions: '次提及',
+    selfPerson: '你',
+    aliases: '也称为',
+    suspected: '疑似·待确认',
+    evidence: '依据',
+    singleObservation: '单次观察',
+    repeatedPattern: '重复模式',
+    evidenceStrength: '依据强度',
     usingTool: '使用工具：',
     toolDone: '工具完成',
     error: '错误',
@@ -383,6 +397,13 @@ const I18N = {
     insights: '洞察',
     memoryInsights: '洞察與記憶',
     mentions: '次提及',
+    selfPerson: '你',
+    aliases: '也稱為',
+    suspected: '疑似·待確認',
+    evidence: '依據',
+    singleObservation: '單次觀察',
+    repeatedPattern: '重複模式',
+    evidenceStrength: '依據強度',
     usingTool: '使用工具：',
     toolDone: '工具完成',
     error: '錯誤',
@@ -493,6 +514,41 @@ function getLangKey(lang) {
 function t(key) {
   const lKey = getLangKey(S.lang);
   return I18N[lKey]?.[key] || I18N.en[key] || key;
+}
+
+const PERSON_PATTERN_LABELS = {
+  en: {
+    control_autonomy: 'Control or restrict autonomy',
+    communication_withdrawal: 'Communication withdrawal',
+    invalidates_feelings: 'Invalidates feelings',
+    boundary_violation: 'Boundary or consent violation',
+    guilt_pressure: 'Guilt-based pressure',
+    promise_action_mismatch: 'Promise–action mismatch',
+    threat_or_coercion: 'Threat or coercion',
+  },
+  zh: {
+    control_autonomy: '控制或限制自主',
+    communication_withdrawal: '回避沟通或冷处理',
+    invalidates_feelings: '否定或无视感受',
+    boundary_violation: '边界或同意被忽视',
+    guilt_pressure: '愧疚施压',
+    promise_action_mismatch: '承诺与行动不一致',
+    threat_or_coercion: '威胁或胁迫行为',
+  },
+  'zh-hant': {
+    control_autonomy: '控制或限制自主',
+    communication_withdrawal: '迴避溝通或冷處理',
+    invalidates_feelings: '否定或忽視感受',
+    boundary_violation: '邊界或同意被忽視',
+    guilt_pressure: '愧疚施壓',
+    promise_action_mismatch: '承諾與行動不一致',
+    threat_or_coercion: '威脅或脅迫行為',
+  },
+};
+
+function personPatternLabel(pattern) {
+  const lKey = getLangKey(S.lang);
+  return PERSON_PATTERN_LABELS[lKey]?.[pattern] || PERSON_PATTERN_LABELS.en[pattern] || pattern;
 }
 
 function setThinkingStatus(active) {
@@ -2941,10 +2997,18 @@ async function loadMemoryData() {
       persons.sort((a, b) => (b.mentionCount || 0) - (a.mentionCount || 0));
       persons.forEach(p => {
         const arc = p.emotionalArc || p.notes || '';
+        const traits = Array.isArray(p.traits) ? p.traits : [];
         html += `<div class="mem-person">
           <div>
             <div class="mem-person-name">${esc(p.name || '')}</div>
-            <div class="mem-person-info">${esc(p.role || '')} · ${p.mentionCount || 0} ${t('mentions')}</div>
+            <div class="mem-person-info">${esc(p.isSelf ? t('selfPerson') : (p.role || ''))} · ${p.mentionCount || 0} ${t('mentions')}</div>
+            ${Array.isArray(p.aliases) && p.aliases.length ? `<div class="mem-person-aliases">${esc(t('aliases'))}: ${esc(p.aliases.join('、'))}</div>` : ''}
+            ${traits.length ? `<div class="mem-person-traits">${traits.map(trait => {
+              const evidence = Array.isArray(trait.evidence) ? trait.evidence : (trait.evidence ? [trait.evidence] : []);
+              const scopeLabel = trait.scope === 'repeated_pattern' ? t('repeatedPattern') : t('singleObservation');
+              const confidence = Number.isFinite(Number(trait.confidence)) ? `${Math.round(Number(trait.confidence) * 100)}%` : '—';
+              return `<div class="mem-person-trait"><div class="mem-person-trait-hdr"><span class="mem-person-trait-label">${esc(personPatternLabel(trait.pattern || ''))}</span><span class="mem-person-trait-status">${t('suspected')}</span><span class="mem-person-trait-scope">${esc(scopeLabel)}</span></div>${evidence.slice(0, 2).map(item => `<div class="mem-person-trait-evidence">${esc(t('evidence'))}: ${esc(item)}</div>`).join('')}<div class="mem-person-trait-meta">${esc(t('evidenceStrength'))}: ${confidence} · ${trait.occurrenceCount || 1}×</div></div>`;
+            }).join('')}</div>` : ''}
           </div>
           ${arc ? `<div class="mem-person-arc" title="${esc(arc)}">${esc(arc)}</div>` : ''}
         </div>`;
