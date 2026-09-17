@@ -15,7 +15,7 @@ import SwiftUI
 /// 4. UI Tour — sidebar, chat, input, toolbar walkthrough
 /// 5. API Key Setup — guided DeepSeek API configuration
 /// 6. Conversation Mode — choose rational/balanced/warm
-/// 7. iCloud Storage — cloud sync or local storage
+/// 7. Local storage — choose a folder on this device
 /// 8. Data & Privacy — where everything is stored
 struct OnboardingView: View {
     @EnvironmentObject private var settings: AppSettings
@@ -25,7 +25,7 @@ struct OnboardingView: View {
     @State private var apiKeyInput = ""
     @State private var apiKeySaved = false
 
-    /// API key validation state (Tauri parity: onboarding validates the key
+    /// API key validation state (onboarding validates the key
     /// against the provider's /models endpoint before continuing).
     private enum ValidationState: Equatable {
         case idle
@@ -80,7 +80,7 @@ struct OnboardingView: View {
         case 3: uiTourPage
         case 4: apiKeyPage
         case 5: conversationModePage
-        case 6: iCloudPage
+        case 6: localStoragePage
         case 7: dataPage
         default: welcomePage
         }
@@ -483,7 +483,7 @@ extension OnboardingView {
                         saveAndAdvance()
                     }
 
-                // Online validation (Tauri parity) — non-blocking.
+                // Online validation — non-blocking.
                 HStack(spacing: 8) {
                     Button {
                         validateAPIKey()
@@ -565,7 +565,7 @@ extension OnboardingView {
     }
 
     /// Validate the entered key online. Failure does not block the flow —
-    /// the user can continue and fix it later in Settings (Tauri parity).
+    /// the user can continue and fix it later in Settings.
     private func validateAPIKey() {
         let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, validationState != .checking else { return }
@@ -726,29 +726,24 @@ extension OnboardingView {
     }
 }
 
-// MARK: - Page 7: iCloud Storage
+// MARK: - Page 7: Local Storage
 
 extension OnboardingView {
-    private var iCloudPage: some View {
+    private var localStoragePage: some View {
         VStack(spacing: 28) {
-            Image(systemName: "icloud.fill")
+            Image(systemName: "folder.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(.blue.gradient)
 
             VStack(spacing: 10) {
-                Text(L10n.text(.useiCloud, settings.language))
+                Text(L10n.text(.storage, settings.language))
                     .font(.title.weight(.semibold))
-                Text(L10n.text(.iCloudActive, settings.language))
+                Text(L10n.text(.dataPathHint, settings.language))
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
-
-            Toggle(L10n.text(.useiCloud, settings.language), isOn: $settings.useiCloud)
-                .toggleStyle(.switch)
-                .font(.headline)
-                .padding(.horizontal, 48)
 
             VStack(spacing: 6) {
                 HStack(spacing: 6) {
@@ -768,7 +763,7 @@ extension OnboardingView {
                         .fill(.quaternary.opacity(0.5))
                 )
 
-                if !settings.useiCloud {
+                Group {
                     Button(L10n.text(.choose, settings.language)) {
                         showFolderImporter = true
                     }

@@ -2,18 +2,16 @@ import Foundation
 
 @MainActor
 final class AppSettings: ObservableObject {
-    private static let modelDefaultsV3Key = "deepseek.modelDefaultsV3Applied"
-    private static let modelDefaultsV4Key = "deepseek.modelDefaultsV4Applied"
     @Published var apiKey = "" {
         didSet { saveConfig() }
     }
     @Published var baseURL = "https://api.deepseek.com" {
         didSet { saveConfig() }
     }
-    @Published var model = "deepseek-v4-flash-vision-exp" {
+    @Published var model = "deepseek-flash" {
         didSet { saveConfig() }
     }
-    @Published var flashModel = "deepseek-v4-flash-vision-exp" {
+    @Published var flashModel = "deepseek-flash" {
         didSet { saveConfig() }
     }
     @Published var language: AppLanguage = .simplifiedChinese {
@@ -30,13 +28,11 @@ final class AppSettings: ObservableObject {
     @Published var summaryDialogCount = 5 {
         didSet { saveConfig() }
     }
-    /// Context message window for the agent's history injection
-    /// (Tauri parity: `context_window`, default 60; 0 = keep everything).
+    /// Context message window for the agent's history injection; 0 keeps everything.
     @Published var contextWindow = 60 {
         didSet { saveConfig() }
     }
-    /// Write a prism.log file next to the data directory
-    /// (Tauri parity: `enable_logging`).
+    /// Write a prism.log file next to the data directory.
     @Published var enableLogging = true {
         didSet {
             saveConfig()
@@ -55,56 +51,45 @@ final class AppSettings: ObservableObject {
     @Published var responseLength: ResponseLength = .standard {
         didSet { saveConfig() }
     }
-    @Published var useiCloud = false {
-        didSet {
-            saveConfig()
-            if oldValue != useiCloud {
-                let target = useiCloud ? (iCloudPath ?? Self.localDefaultPath) : Self.localDefaultPath
-                if dataPath != target {
-                    dataPath = target
-                }
-            }
-        }
-    }
-
     /// Latest provider metadata fetched without invoking a model.
     @Published private(set) var providerBalance: DeepSeekBalanceResponse? = nil
     @Published private(set) var balanceUnavailable = false
 
+    @Published var storageError: String?
+    var canChangeStorage: () -> Bool = { true }
+
     /// Only dataPath stays in UserDefaults — it's the bootstrap key.
     @Published var dataPath: String {
         didSet {
-            UserDefaults.standard.set(dataPath, forKey: "storage.dataPath")
-            PrismLog.configure(dataPath: dataPath)
-            UsageStatsStore.shared.configure(dataPath: dataPath)
-            if oldValue != dataPath, !oldValue.isEmpty {
-                migrateData(from: oldValue, to: dataPath)
-            }
+            guard oldValue != dataPath else { return }
+            do {
+                guard canChangeStorage() else { throw SQLiteStore.Failure(message: "Wait for the active reply or summary before changing folders.") }
+                guard !dataPath.contains("/Library/Mobile Documents/") else { throw SQLiteStore.Failure(message: "Choose a local folder; iCloud storage has been removed.") }
+                if !oldValue.isEmpty { try migrateData(from: oldValue, to: dataPath) }
+                UserDefaults.standard.set(dataPath, forKey: "storage.dataPath")
+                PrismLog.configure(dataPath: dataPath)
+                UsageStatsStore.shared.configure(dataPath: dataPath)
+                storageError = nil
+                saveConfig()
+            } catch { dataPath = oldValue; storageError = error.localizedDescription }
         }
     }
 
-    // MARK: - iCloud
+    // MARK: - Local storage
 
     private static let localDefaultPath: String =
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/Prism").path
-
-    var iCloudPath: String? {
-        guard let url = FileManager.default.url(
-            forUbiquityContainerIdentifier: nil
-        ) else { return nil }
-        return url.appendingPathComponent("Documents/Prism", isDirectory: true).path
-    }
-
-    func checkiCloudAvailability() -> Bool {
-        iCloudPath != nil
-    }
 
     // MARK: - Init
 
     init() {
         let defaultDataPath = Self.localDefaultPath
         dataPath = UserDefaults.standard.string(forKey: "storage.dataPath") ?? defaultDataPath
+        do {
+            dataPath = try SQLiteStore.localRoot(URL(fileURLWithPath: dataPath)).path
+            UserDefaults.standard.set(dataPath, forKey: "storage.dataPath")
+        } catch { storageError = error.localizedDescription }
         PrismLog.configure(dataPath: dataPath)
         UsageStatsStore.shared.configure(dataPath: dataPath)
 
@@ -155,8 +140,8 @@ final class AppSettings: ObservableObject {
     private struct ConfigFile: Codable {
         var apiKey = ""
         var baseURL = "https://api.deepseek.com"
-        var model = "deepseek-v4-flash-vision-exp"
-        var flashModel = "deepseek-v4-flash-vision-exp"
+        var model = "deepseek-flash"
+        var flashModel = "deepseek-flash"
         var language = "zh-Hans"
         var parameters = ModelParameters()
         var flashParameters = ModelParameters()
@@ -167,16 +152,13 @@ final class AppSettings: ObservableObject {
         var onboardingCompleted = false
         var conversationMode = "balanced"
         var responseLength = "standard"
-        var useiCloud = false
     }
 
     private func loadConfig(legacyAPIKey: String = "") {
         guard let data = try? Data(contentsOf: configURL),
               let config = try? JSONDecoder().decode(ConfigFile.self, from: data) else {
-            // No config file yet — fall back to Tauri's settings.json when the
-            // data directory is shared across implementations (Tauri parity:
-            // Swift config.json is imported by the Tauri build, and vice versa).
-            if importTauriSettingsIfNeeded() { return }
+            // No config file yet — adopt an earlier Prism settings.json if present.
+            if importLegacySettingsIfNeeded() { return }
             // Otherwise use defaults, migrating legacy API key if present
             if !legacyAPIKey.isEmpty { apiKey = legacyAPIKey }
             return
@@ -188,30 +170,14 @@ final class AppSettings: ObservableObject {
         language = AppLanguage(rawValue: config.language) ?? .simplifiedChinese
         parameters = config.parameters
         flashParameters = config.flashParameters
-        if !UserDefaults.standard.bool(forKey: Self.modelDefaultsV3Key) {
-            if parameters.reasoningEffort == "max" {
-                parameters.reasoningEffort = "high"
-            }
-            if flashModel == "deepseek-v4-flash", flashParameters.reasoningEffort == "max" {
-                flashParameters.reasoningEffort = "high"
-            }
-            UserDefaults.standard.set(true, forKey: Self.modelDefaultsV3Key)
-        }
-        // DeepSeek's experimental DeepSeek-V4-Flash-Vision-Exp model is now the factory
-        // conversation model. Only migrate the old factory values; preserve
-        // a user's explicit custom model choice.
-        var migratedModelDefaults = false
-        if !UserDefaults.standard.bool(forKey: Self.modelDefaultsV4Key) {
-            if model == "deepseek-v4-flash" {
-                model = "deepseek-v4-flash-vision-exp"
-                migratedModelDefaults = true
-            }
-            if flashModel == "deepseek-v4-flash" {
-                flashModel = "deepseek-v4-flash-vision-exp"
-                migratedModelDefaults = true
-            }
-            UserDefaults.standard.set(true, forKey: Self.modelDefaultsV4Key)
-        }
+        // Prism intentionally maintains the two current conversation models.
+        // Retired aliases and past custom selections migrate to Flash.
+        let supportedModel = DeepSeekModels.supportedConversationModel(
+            DeepSeekModels.canonical(model, baseURL: baseURL)
+        )
+        let migratedModelDefaults = supportedModel != model || flashModel != DeepSeekModels.flash
+        model = supportedModel
+        flashModel = DeepSeekModels.flash
         summaryDialogCount = config.summaryDialogCount
         contextWindow = config.contextWindow
         enableLogging = config.enableLogging
@@ -219,18 +185,17 @@ final class AppSettings: ObservableObject {
         onboardingCompleted = config.onboardingCompleted
         conversationMode = ConversationMode(rawValue: config.conversationMode) ?? .balanced
         responseLength = ResponseLength(rawValue: config.responseLength) ?? .standard
-        useiCloud = config.useiCloud
+
         if migratedModelDefaults { saveConfig() }
     }
 
-    // MARK: - Tauri settings.json Import
+    // MARK: - Legacy settings.json Import
 
-    /// Tauri writes `settings.json` (camelCase) into the data directory.
-    /// When Prism Swift has no config.json yet, adopt the Tauri settings so
-    /// both implementations stay in sync when sharing a data folder.
-    private func importTauriSettingsIfNeeded() -> Bool {
-        let tauriURL = URL(fileURLWithPath: dataPath).appendingPathComponent("settings.json")
-        guard let data = try? Data(contentsOf: tauriURL),
+    /// Earlier Prism builds wrote camelCase `settings.json` into the data directory.
+    /// When config.json is absent, adopt those settings once for continuity.
+    private func importLegacySettingsIfNeeded() -> Bool {
+        let legacySettingsURL = URL(fileURLWithPath: dataPath).appendingPathComponent("settings.json")
+        guard let data = try? Data(contentsOf: legacySettingsURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return false
         }
@@ -240,14 +205,9 @@ final class AppSettings: ObservableObject {
 
         self.baseURL = baseURL
         apiKey = json["apiKey"] as? String ?? json["api_key"] as? String ?? ""
-        let importedFlash = json["flashModel"] as? String ?? json["flash_model"] as? String ?? "deepseek-v4-flash-vision-exp"
-        let flash = importedFlash == "deepseek-v4-flash"
-            ? "deepseek-v4-flash-vision-exp"
-            : importedFlash
-        let pro = json["proModel"] as? String ?? json["pro_model"] as? String ?? "deepseek-v4-pro"
-        flashModel = flash
+        flashModel = DeepSeekModels.flash
         let conversationModel = json["conversationModel"] as? String ?? json["conversation_model"] as? String ?? "flash"
-        model = conversationModel == "pro" ? pro : flash
+        model = conversationModel == "pro" ? DeepSeekModels.pro : DeepSeekModels.flash
 
         let lang = json["language"] as? String ?? "en"
         language = switch lang.lowercased() {
@@ -268,8 +228,8 @@ final class AppSettings: ObservableObject {
         flashParameters.thinkingEnabled = json["flashThinkingEnabled"] as? Bool ?? true
         flashParameters.reasoningEffort = json["flashReasoningEffort"] as? String ?? "high"
 
-        useiCloud = json["icloudSync"] as? Bool ?? json["iCloudSync"] as? Bool ?? false
-        print("[AppSettings] imported Tauri settings.json from \(dataPath)")
+
+        print("[AppSettings] imported legacy settings.json from \(dataPath)")
         return true
     }
 
@@ -280,27 +240,30 @@ final class AppSettings: ObservableObject {
     func resetAll() {
         let folder = URL(fileURLWithPath: dataPath)
 
-        // Delete conversations
-        try? FileManager.default.removeItem(at: folder.appendingPathComponent("conversations.json"))
-
-        // Delete archives
-        let archiveFolder = folder.appendingPathComponent("Data", isDirectory: true)
-        try? FileManager.default.removeItem(at: archiveFolder)
+        guard canChangeStorage() else { storageError = "Wait for the active operation before resetting."; return }
+        do { try SQLiteStore(root: folder).clear() }
+        catch { storageError = error.localizedDescription; return }
+        // Original JSON and migration backups are retained; the database's
+        // import markers prevent them from being re-imported after reset.
 
         // Delete config
         try? FileManager.default.removeItem(at: configURL)
         try? FileManager.default.removeItem(at: folder.appendingPathComponent("usage_stats.json"))
 
-        // Reset UserDefaults
+        // Reset UserDefaults, including per-conversation safety context and
+        // the installation identifier that would otherwise survive a reset.
         UserDefaults.standard.removeObject(forKey: "storage.dataPath")
-        UserDefaults.standard.removeObject(forKey: Self.modelDefaultsV3Key)
-        UserDefaults.standard.removeObject(forKey: Self.modelDefaultsV4Key)
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("safety.") {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        UserDefaults.standard.removeObject(forKey: "ui.lastConversationID")
+        UserDefaults.standard.removeObject(forKey: "deepseek.userID")
 
         // Reset published properties to defaults (didSet will save new config)
         apiKey = ""
         baseURL = "https://api.deepseek.com"
-        model = "deepseek-v4-flash-vision-exp"
-        flashModel = "deepseek-v4-flash-vision-exp"
+        model = "deepseek-flash"
+        flashModel = "deepseek-flash"
         language = .simplifiedChinese
         parameters = ModelParameters()
         flashParameters = ModelParameters(
@@ -313,57 +276,30 @@ final class AppSettings: ObservableObject {
         showReasoningPanel = true
         onboardingCompleted = false
         responseLength = .standard
-        useiCloud = false
+
     }
 
     // MARK: - Data Migration
 
     /// Copy all data files from the old storage path to the new one.
     /// Existing files at the destination are never overwritten.
-    func migrateData(from oldPath: String, to newPath: String) {
+    func migrateData(from oldPath: String, to newPath: String) throws {
         let fm = FileManager.default
-        let oldDir = URL(fileURLWithPath: oldPath)
-        let newDir = URL(fileURLWithPath: newPath)
-
-        guard fm.fileExists(atPath: oldDir.path) else {
-            print("[migrateData] old path does not exist: \(oldPath)")
-            return
+        let old = URL(fileURLWithPath: oldPath)
+        let target = URL(fileURLWithPath: newPath)
+        if fm.fileExists(atPath: target.appendingPathComponent("prism.sqlite3").path) {
+            throw SQLiteStore.Failure(message: "Destination already contains a database. Choose an empty local folder.")
         }
-
-        // Create destination directory
-        do {
-            try fm.createDirectory(at: newDir, withIntermediateDirectories: true)
-        } catch {
-            print("[migrateData] cannot create destination: \(error.localizedDescription)")
-            return
+        try fm.createDirectory(at: target, withIntermediateDirectories: true)
+        for name in ["conversations.json", "usage_stats.json", "Data"] {
+            let source = old.appendingPathComponent(name), destination = target.appendingPathComponent(name)
+            if fm.fileExists(atPath: source.path), !fm.fileExists(atPath: destination.path) { try fm.copyItem(at: source, to: destination) }
         }
-
-        // conversations.json
-        let oldConv = oldDir.appendingPathComponent("conversations.json")
-        let newConv = newDir.appendingPathComponent("conversations.json")
-        if fm.fileExists(atPath: oldConv.path), !fm.fileExists(atPath: newConv.path) {
-            do { try fm.copyItem(at: oldConv, to: newConv) }
-            catch { print("[migrateData] conversations.json copy failed: \(error.localizedDescription)") }
+        // Write the database last. A failed legacy-file copy therefore leaves
+        // the destination retryable instead of creating a partial database.
+        if fm.fileExists(atPath: old.appendingPathComponent("prism.sqlite3").path) {
+            try SQLiteStore(root: old).backup(to: target.appendingPathComponent("prism.sqlite3"))
         }
-
-        let oldUsage = oldDir.appendingPathComponent("usage_stats.json")
-        let newUsage = newDir.appendingPathComponent("usage_stats.json")
-        if fm.fileExists(atPath: oldUsage.path), !fm.fileExists(atPath: newUsage.path) {
-            try? fm.copyItem(at: oldUsage, to: newUsage)
-        }
-
-        // Data/ subdirectory (person_archive, emotion_timeline, blindspots)
-        let oldArchive = oldDir.appendingPathComponent("Data", isDirectory: true)
-        let newArchive = newDir.appendingPathComponent("Data", isDirectory: true)
-        if fm.fileExists(atPath: oldArchive.path), !fm.fileExists(atPath: newArchive.path) {
-            do { try fm.copyItem(at: oldArchive, to: newArchive) }
-            catch { print("[migrateData] Data/ copy failed: \(error.localizedDescription)") }
-        }
-
-        // Re-save config to the new path
-        saveConfig()
-
-        NotificationCenter.default.post(name: .prismDataPathChanged, object: nil)
     }
 
     private func saveConfig() {
@@ -371,7 +307,7 @@ final class AppSettings: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
-            print("[saveConfig] cannot create directory: \(error.localizedDescription)")
+            storageError = error.localizedDescription
             return
         }
 
@@ -389,14 +325,13 @@ final class AppSettings: ObservableObject {
             showReasoningPanel: showReasoningPanel,
             onboardingCompleted: onboardingCompleted,
             conversationMode: conversationMode.rawValue,
-            responseLength: responseLength.rawValue,
-            useiCloud: useiCloud
+            responseLength: responseLength.rawValue
         )
         do {
             let data = try JSONEncoder().encode(config)
             try data.write(to: configURL, options: .atomic)
         } catch {
-            print("[saveConfig] write failed: \(error.localizedDescription)")
+            storageError = error.localizedDescription
         }
     }
 }

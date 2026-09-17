@@ -222,15 +222,12 @@ enum L10n {
         case modeStandard
         case modeDetailed
         case aiLabelDisclaimer
+        case inferredDataHint
+        case removeInferredObservation
         case onboardingModeTitle
         case onboardingModeBody
 
-        // iCloud
-        case useiCloud
-        case iCloudActive
-        case iCloudUnavailable
-
-        // Context window & logging (Tauri parity)
+        // Context window & logging
         case contextWindow
         case contextWindowHint
         case enableLogging
@@ -238,14 +235,14 @@ enum L10n {
         case exportLogs
         case exportLogsHint
 
-        // API key validation (Tauri parity)
+        // API key validation
         case validate
         case validating
         case validationSuccess
         case validationFailed
         case validationFailedHint
 
-        // Memory panel — conversation timeline (Tauri parity)
+        // Memory panel — conversation timeline
         case memoryTimeline
         case memoryStarted
         case memoryFirstMessage
@@ -417,26 +414,25 @@ enum L10n {
         .jumpToSource: "跳转至原文",
         .copy: "复制",
         .findInPage: "在对话中查找",
-        .conversationMode: "对话模式",
+        .conversationMode: "回应方式",
         .conversationModel: "对话模型",
-        .conversationModeHint: "理性模式更冷静分析，温情模式更注重共情。",
+        .conversationModeHint: "只改变语气与组织方式，不改变事实判断、关系建议或安全引导。",
         .modeRational: "理性",
         .modeBalanced: "平衡",
         .modeWarm: "温情",
-        .modeRationalDesc: "冷静分析，聚焦事实和逻辑结构",
-        .modeBalancedDesc: "平衡共情与分析，适合大多数情况",
-        .modeWarmDesc: "温暖陪伴，注重理解和情感支持",
+        .modeRationalDesc: "用更直接、克制的语气表达同一结论",
+        .modeBalancedDesc: "用清晰、平和的语气表达同一结论",
+        .modeWarmDesc: "用更有共情的语气表达同一结论",
         .responseLength: "回复长度",
         .responseLengthHint: "标准模式平衡清晰度与效率，简洁模式更直接，详细模式展开更多分析。",
         .modeBrief: "简洁",
         .modeStandard: "标准",
         .modeDetailed: "详细",
-        .aiLabelDisclaimer: "对话内容由AI生成，有概率出错，仅供参考",
-        .onboardingModeTitle: "选择对话模式",
-        .onboardingModeBody: "棱镜提供三种对话模式，你可以随时在设置中切换：",
-        .useiCloud: "使用 iCloud 存储",
-        .iCloudActive: "数据存储在 iCloud Drive 中，所有设备自动同步",
-        .iCloudUnavailable: "当前未登录 iCloud 或 iCloud 不可用",
+        .aiLabelDisclaimer: "AI 内容可能出错；不是医疗或紧急服务",
+        .inferredDataHint: "这里的画像、人物特征、盲点和洞察均为模型的暂定观察。请以原始对话为准；不认同时可逐条移除。",
+        .removeInferredObservation: "移除这条暂定观察",
+        .onboardingModeTitle: "选择回应方式",
+        .onboardingModeBody: "三种方式共用同一套事实判断、关系建议和安全引导，只改变表达语气与组织：",
         .contextWindow: "自动上下文管理",
         .contextWindowHint: "55% 仅显示容量提醒且不改变发送内容，75% 才开始压缩，85% 加强保护；本地原始消息不会删除。",
         .enableLogging: "调试日志",
@@ -614,26 +610,25 @@ enum L10n {
         .jumpToSource: "跳轉至原文",
         .copy: "複製",
         .findInPage: "在對話中搜尋",
-        .conversationMode: "對話模式",
+        .conversationMode: "回應方式",
         .conversationModel: "對話模型",
-        .conversationModeHint: "理性模式更冷靜分析，溫情模式更注重共情。",
+        .conversationModeHint: "只改變語氣與組織方式，不改變事實判斷、關係建議或安全引導。",
         .modeRational: "理性",
         .modeBalanced: "平衡",
         .modeWarm: "溫情",
-        .modeRationalDesc: "冷靜分析，聚焦事實和邏輯結構",
-        .modeBalancedDesc: "平衡共情與分析，適合大多數情況",
-        .modeWarmDesc: "溫暖陪伴，注重理解和情感支持",
+        .modeRationalDesc: "用更直接、克制的語氣表達同一結論",
+        .modeBalancedDesc: "用清晰、平和的語氣表達同一結論",
+        .modeWarmDesc: "用更有共情的語氣表達同一結論",
         .responseLength: "回覆長度",
         .responseLengthHint: "標準模式平衡清晰度與效率，簡潔模式更直接，詳細模式展開更多分析。",
         .modeBrief: "簡潔",
         .modeStandard: "標準",
         .modeDetailed: "詳細",
-        .aiLabelDisclaimer: "對話內容由AI生成，有概率出錯，僅供參考",
-        .onboardingModeTitle: "選擇對話模式",
-        .onboardingModeBody: "稜鏡提供三種對話模式，你可以隨時在設定中切換：",
-        .useiCloud: "使用 iCloud 儲存",
-        .iCloudActive: "資料儲存在 iCloud Drive 中，所有裝置自動同步",
-        .iCloudUnavailable: "目前未登入 iCloud 或 iCloud 不可用",
+        .aiLabelDisclaimer: "AI 內容可能出錯；不是醫療或緊急服務",
+        .inferredDataHint: "這裡的畫像、人物特徵、盲點和洞察均為模型的暫定觀察。請以原始對話為準；不同意時可逐條移除。",
+        .removeInferredObservation: "移除這條暫定觀察",
+        .onboardingModeTitle: "選擇回應方式",
+        .onboardingModeBody: "三種方式共用同一套事實判斷、關係建議和安全引導，只改變表達語氣與組織：",
         .contextWindow: "自動上下文管理",
         .contextWindowHint: "55% 僅顯示容量提醒且不改變傳送內容，75% 才開始壓縮，85% 加強保護；本機原始訊息不會刪除。",
         .enableLogging: "調試日誌",
@@ -811,26 +806,25 @@ enum L10n {
         .jumpToSource: "Jump to Source",
         .copy: "Copy",
         .findInPage: "Find in Conversation",
-        .conversationMode: "Conversation Mode",
+        .conversationMode: "Response Style",
         .conversationModel: "Conversation Model",
-        .conversationModeHint: "Rational is more analytical. Warm is more empathetic.",
+        .conversationModeHint: "Changes wording and organization only, never facts, relationship guidance, or safety guidance.",
         .modeRational: "Rational",
         .modeBalanced: "Balanced",
         .modeWarm: "Warm",
-        .modeRationalDesc: "Analytical and logic-focused, minimal empathy",
-        .modeBalancedDesc: "Balanced empathy and analysis, suitable for most situations",
-        .modeWarmDesc: "Warm, empathetic analysis with emotional awareness",
+        .modeRationalDesc: "The same conclusion in a direct, restrained tone",
+        .modeBalancedDesc: "The same conclusion in a clear, even tone",
+        .modeWarmDesc: "The same conclusion in a more empathetic tone",
         .responseLength: "Response Length",
         .responseLengthHint: "Standard balances clarity with efficiency. Brief is more direct. Detailed provides thorough analysis.",
         .modeBrief: "Brief",
         .modeStandard: "Standard",
         .modeDetailed: "Detailed",
-        .aiLabelDisclaimer: "AI-generated content may contain errors. For reference only.",
-        .onboardingModeTitle: "Choose Conversation Mode",
-        .onboardingModeBody: "Prism offers three conversation modes. You can switch at any time in Settings:",
-        .useiCloud: "Use iCloud Storage",
-        .iCloudActive: "Data stored in iCloud Drive, synced across all devices",
-        .iCloudUnavailable: "iCloud not available or not signed in",
+        .aiLabelDisclaimer: "AI content may be wrong; not medical or emergency care",
+        .inferredDataHint: "Profiles, person traits, blind spots, and insights are tentative model observations. Check the source conversation and remove any item you do not accept.",
+        .removeInferredObservation: "Remove this tentative observation",
+        .onboardingModeTitle: "Choose a Response Style",
+        .onboardingModeBody: "All three styles share the same facts, relationship guidance, and safety guidance. Only wording and organization change:",
         .contextWindow: "Automatic Context Management",
         .contextWindowHint: "55% only shows a capacity notice and does not change the request. Compression starts at 75%, with stronger protection at 85%. Local messages are never deleted.",
         .enableLogging: "Debug Logging",

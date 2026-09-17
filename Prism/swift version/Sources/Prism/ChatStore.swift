@@ -24,6 +24,8 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     }
     var allChapters: [StoryChapter] { agent.allChapters }
     var personArchive: [PersonRecord] { agent.personArchive }
+    var personLinkProposals: [PersonLinkProposal] { agent.personLinkProposals }
+    var userProfileObservations: [UserProfileObservation] { agent.userProfileObservations }
     var emotionTimeline: [EmotionEntry] { agent.emotionTimeline }
     var blindspots: [BlindspotRecord] { agent.blindspots }
     var memoryStore: [MemoryEntry] { agent.memoryStore }
@@ -97,6 +99,36 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
 
     func cancelSend() {
         agent.cancelSend()
+        refreshAfterMutation()
+    }
+
+    func confirmPersonLinkProposal(id: UUID) {
+        agent.confirmPersonLinkProposal(id: id)
+        refreshAfterMutation()
+    }
+
+    func rejectPersonLinkProposal(id: UUID) {
+        agent.rejectPersonLinkProposal(id: id)
+        refreshAfterMutation()
+    }
+
+    func removeUserProfileObservation(id: UUID) {
+        agent.removeUserProfileObservation(id: id)
+        refreshAfterMutation()
+    }
+
+    func removePersonTrait(personID: UUID, traitID: UUID) {
+        agent.removePersonTrait(personID: personID, traitID: traitID)
+        refreshAfterMutation()
+    }
+
+    func removeBlindspot(id: UUID) {
+        agent.removeBlindspot(id: id)
+        refreshAfterMutation()
+    }
+
+    func removeMemoryEntry(id: UUID) {
+        agent.removeMemoryEntry(id: id)
         refreshAfterMutation()
     }
 

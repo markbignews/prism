@@ -1,11 +1,9 @@
 import Foundation
 
-/// Lightweight file logger (Tauri parity: `enable_logging` writes
-/// prism.log next to Prism's data directory; console mirror included).
+/// Lightweight file logger that writes prism.log next to Prism's data directory;
+/// console mirroring is included.
 ///
-/// The log file lives at `<dataPath>/prism.log` — the same location the
-/// Tauri build uses, so both implementations share one log when they
-/// share a data folder.
+/// The log file lives at `<dataPath>/prism.log`.
 ///
 /// All call sites are on the main actor (ChatAgent is @MainActor), so the
 /// whole type is main-actor isolated — no locks needed, Swift 6 safe.

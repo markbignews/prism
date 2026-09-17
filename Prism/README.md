@@ -10,14 +10,12 @@
 
 <p align="center">
   <strong>Local data storage · Remote LLM inference</strong><br>
-  SwiftUI + Tauri · macOS 15+ · Windows 11+
+  SwiftUI · macOS 15+ · Apple Silicon
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-active%20development-6f42c1" alt="Active development"/>
   <img src="https://img.shields.io/badge/macOS-SwiftUI-blue" alt="macOS SwiftUI"/>
-  <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2"/>
-  <img src="https://img.shields.io/badge/Windows-11%2B-0078D4" alt="Windows 11 or later"/>
 </p>
 
 <p align="center">
@@ -42,12 +40,10 @@ Prism is deliberately not designed as an always-on companion. It is an analytica
 Prism brings together:
 
 - A native SwiftUI client for Apple Silicon Macs
-- A Tauri client for macOS
-- A standalone Tauri project for Windows 11 and later
 - Emotion tracking, narrative timelines, chapters, people, memories, and blindspots
-- Three conversation modes: Rational, Balanced, and Warm
+- Three response styles: Rational, Balanced, and Warm; they share facts and safety boundaries and change presentation only
 - A local safety guard that can interrupt the normal model flow when a crisis signal is detected
-- Local JSON persistence with no built-in telemetry, analytics, or account system
+- Local SQLite persistence with no built-in telemetry, analytics, or account system
 
 ## Highlights
 
@@ -67,21 +63,25 @@ The quality guard checks for explanation loops, emotional spirals, intent–acti
 
 When the current conversation contains concrete behavior evidence, Prism can associate a person with patterns such as control or restricted autonomy, communication withdrawal, ignored boundaries, or guilt-based pressure. It stores the evidence snippet, evidence strength, and whether the observation is isolated or repeated. Every result is shown as **suspected · review**; Prism does not output personality, psychiatric, or attachment-style diagnoses.
 
-Person records also resolve natural changes in nicknames, relationship terms, short forms, and pronouns from context. High-confidence links are merged into the existing person and saved as aliases; uncertain links remain separate to avoid false merges. A record is marked as the user only when the conversation explicitly identifies the person as “I” or “myself.”
+Person records resolve natural changes in nicknames, relationship terms, short forms, and pronouns from context. Exact existing names or aliases can be joined across conversations; a model link needs strong evidence before it is joined automatically. A plausible but uncertain link shows an explicit clarification in the chat and Memory panel after analysis, with its evidence and **Same person** / **Keep separate** choices. A record is marked as the user only when the conversation explicitly identifies the person as “I” or “myself.”
 
 ### Build memory on your device
 
-Chapters, people, emotions, blindspots, and cross-conversation memories are stored as local files. You can choose a custom data directory or enable iCloud Drive on supported macOS workflows.
+Chapters, people, emotions, blindspots, and cross-conversation memories are stored in a local SQLite database. You can choose a local data directory.
 
-### Use the same product idea on three clients
+### Separate workers, narrow evidence
 
-The SwiftUI and Tauri clients share the same core behavior. The platform shells differ where they should: macOS uses native window and storage conventions, while Windows uses a native title bar, a per-user NSIS installer, and WebView2.
+Prism does not ask one analysis prompt to build chapters, resolve people, and infer a user profile at once. A small synchronous supervisor handles safety and reply-quality signals. After the visible reply, a people worker resolves aliases from user messages and the entity index. Only after a chapter is stored does a profile worker extract explicit preferences, goals, stable context, or communication preferences with supporting evidence. Chapter summaries use the transcript and earlier chapters only, so a tentative person or profile observation cannot rewrite the story summary.
+
+### A native macOS workspace
+
+Prism is a native SwiftUI application for Apple Silicon Macs. Its interface, local storage, and packaged application are maintained as one macOS implementation.
 
 ### Add visual or text context when you need it
 
-The composer accepts attachments through the **+** button or by dragging files into the input area. JPEG, PNG, GIF, and WebP images are shown as thumbnails; common text and code files are read as text blocks. Attachments can be removed before sending, and the same preview remains visible in the sent user message. The current limit is five attachments per message, with a 32 MB limit per image and a 2 MB limit per text/code file.
+The composer accepts attachments through the **+** button or by dragging files into the input area. JPEG, PNG, GIF, and WebP images are shown as thumbnails; common text and code files are read as text blocks. Each attachment shows its name, type, and size, and can be removed before sending. Up to five attachments are allowed per reply: 10 MB per image, 1 MB per text/code file, and 20 MB in total. Attachments are sent only with that reply and remain visible only for the active app session.
 
-The current packaged release is `v1.0.16`. New installations use DeepSeek's experimental **DeepSeek-V4-Flash-Vision-Exp** multimodal vision-understanding model by default (`deepseek-v4-flash-vision-exp` in the API), so Prism can recognize and understand image input through the configured DeepSeek-compatible endpoint. See DeepSeek's [official change log](https://api-docs.deepseek.com/updates/), [Vision API guide](https://api-docs.deepseek.com/guides/vision), and [Files API documentation](https://api-docs.deepseek.com/guides/files_api) for the provider-side limits. PDF files are not sent directly: the current Files API accepts images only, so PDF extraction or page rendering is not yet part of Prism.
+The current packaged release is `v1.0.16`. Updated source builds use **DeepSeek V4.1 Flash** with native vision by default (`deepseek-flash` in the API), so Prism can recognize and understand image input through the configured DeepSeek-compatible endpoint. See DeepSeek's [official change log](https://api-docs.deepseek.com/updates/), [Vision API guide](https://api-docs.deepseek.com/guides/vision), and [Files API documentation](https://api-docs.deepseek.com/guides/files_api) for the provider-side limits. PDF files are not sent directly: the current Files API accepts images only, so PDF extraction or page rendering is not yet part of Prism.
 
 ## Screenshots
 
@@ -92,28 +92,29 @@ The current packaged release is `v1.0.16`. New installations use DeepSeek's expe
 ## How a message is processed
 
 1. Prism stores the message locally and updates the current chapter.
-2. A lightweight Flash analysis checks emotion, people, blindspots, narrative context, and safety signals.
-3. If the message is safe to continue, the selected conversation mode guides the main streaming response.
-4. Local tools can retrieve chapters, memories, people, emotions, or narrative-time events when the response needs them.
-5. Summaries and indexes are updated locally so future conversations can find the relevant context.
+2. A lightweight Flash supervisor checks safety, response-quality signals, emotions, and blindspots.
+3. If the message is safe to continue, the main model uses one shared fact, relationship, and safety policy; the selected response style changes only wording and organization.
+4. After the reply, the people worker updates aliases and evidence without delaying the conversation.
+5. At the chapter boundary, the chapter worker summarizes the transcript; the profile worker then records only evidence-backed explicit user context.
+6. Local tools can retrieve chapters, memories, people, emotions, or narrative-time events when the response needs them.
 
 The safety path has priority over the normal response path. When a crisis signal is detected, Prism provides a localized safety response and does not ask the main model to continue the conversation as usual.
 
-## Conversation modes
+## Response styles
 
-| Mode | Intended experience |
+All three styles share the same fact assessment, relationship guidance, tool conditions, and safety guidance. When information is missing, each asks the same decisive clarification; only wording, empathy placement, and presentation order change.
+
+| Style | Presentation difference |
 | --- | --- |
-| **Rational Mirror** | Evidence-driven analysis, explicit assumptions, and stronger challenges to cognitive distortions |
-| **Balanced Mirror** *(default)* | Narrative analysis with measured empathy and practical challenge |
-| **Warm Mirror** | Gentler exploration and emotional validation while keeping the analysis grounded |
+| **Rational** | The same conclusion in a direct, restrained tone |
+| **Balanced** *(default)* | The same conclusion in a clear, even tone |
+| **Warm** | A brief acknowledgement of the experience, then the same conclusion in a more empathetic tone |
 
 ## Supported platforms
 
 | Client | Runtime | Highlights |
 | --- | --- | --- |
 | SwiftUI | macOS 15+, Apple Silicon | Native client; packaged app: `release/Prism-SwiftUI-macOS.app` |
-| Tauri macOS | macOS 12+ as configured | Shared HTML/CSS/JavaScript frontend with a Rust core; packaged app: `release/Prism-Tauri-macOS.app` |
-| Tauri Windows | Windows 11+ | Standalone Tauri project with an MSVC toolchain and NSIS current-user installer |
 
 ## Quick start
 
@@ -140,61 +141,25 @@ swift run -c release
 
 The packaged application, when present, is `release/Prism-SwiftUI-macOS.app`. Building with Swift Package Manager does not install the app into `/Applications`.
 
-### 3. Run or package the macOS Tauri client
-
-Requirements: Rust, Cargo, and Tauri CLI 2.
-
-~~~
-cd "Tauri Version"
-cargo tauri dev
-~~~
-
-To create a macOS app bundle:
-
-~~~
-cargo tauri build --bundles app
-~~~
-
-### 4. Build the Windows client
-
-Use a Windows 11 or later machine with:
-
-- Rust MSVC toolchain (`x86_64-pc-windows-msvc`)
-- Visual Studio Build Tools with “Desktop development with C++”
-- WebView2 Runtime
-- Tauri CLI 2
-
-In PowerShell:
-
-~~~
-cd "Tauri Version\Windows Version"
-cargo tauri build
-~~~
-
-The NSIS installer is written to `src-tauri\target\release\bundle\nsis`. The Windows project keeps its own platform configuration and does not depend on the macOS configuration file.
-
 ## Local data and privacy
 
 By default, Prism stores its data under:
 
 ~~~
 ~/Documents/Prism/
-├── conversations.json
+├── prism.sqlite3
 ├── config.json
-└── Data/
-    ├── person_archive.json
-    ├── emotion_timeline.json
-    ├── narrative_timeline.json
-    ├── blindspots.json
-    └── memory.json
+└── conversations.json.pre-sqlite.bak  # created during legacy import
 ~~~
 
-- Conversation history and indexes are plain local JSON files.
+- Conversation history and indexes are stored in a single local SQLite database with WAL journaling and stale-writer detection.
+- On first launch after this update, each imported legacy JSON file is copied to a neighbouring `.pre-sqlite.bak` file; the original JSON is left untouched.
 - There is no built-in telemetry, analytics, or Prism account.
-- Attachments are kept in memory for the active request and are not written into `conversations.json`. When you send an attachment, its contents are transmitted to the configured API endpoint: images as image data and text/code files as text content.
+- Attachments are kept in memory for the active request and are not written into the database. When you send an attachment, its contents are transmitted to the configured API endpoint: images as image data and text/code files as text content.
 - Prism keeps local copies, but conversation content and user-profile data derived from it—including people, tentative behavior patterns, emotions, memories, blindspots, and narrative timeline records—are sent to DeepSeek through the API key and endpoint you configure whenever model-backed features run.
-- You can choose another storage directory; supported macOS workflows can optionally use iCloud Drive.
-- Deleting a conversation also removes its associated local archive entries in the Tauri clients.
+- Person traits, blind spots, profiles, and insights are labelled as tentative model observations and show supporting evidence. You can remove an item from the Memory panel without deleting its source conversation.
+- You can choose another local storage directory. Built-in iCloud storage and sync have been removed; a legacy iCloud folder is copied into a local import folder without changing the original.
+- Deleting a conversation also removes its associated local archive entries.
 
 You remain responsible for the API provider, endpoint, retention policy, and credentials you choose. Prism does not control DeepSeek's processing, storage, retention, training, or deletion policies. Do not place secrets in screenshots, exported logs, or source-controlled files.
 
@@ -216,20 +181,13 @@ Prism/
 │   ├── Package.swift
 │   ├── Sources/Prism/
 │   └── Prism.app
-├── Tauri Version/                 # macOS Tauri client
-│   ├── src/
-│   ├── src-tauri/
-│   ├── macOS Version/Prism.app
-│   └── Windows Version/           # Standalone Windows 11+ project
 ├── assets/                        # Icon and screenshots
-├── release/                       # Packaged macOS applications
-│   ├── Prism-SwiftUI-macOS.app
-│   └── Prism-Tauri-macOS.app
+├── release/Prism-SwiftUI-macOS.app # Packaged macOS application
 ├── README.md
 └── README_CN.md
 ~~~
 
-The SwiftUI edition is built with Swift Package Manager and Apple frameworks. The Tauri editions use an HTML/CSS/JavaScript frontend and a Rust core. Their product behavior is kept aligned, while windowing, storage paths, and packaging remain platform-specific.
+Prism is built with Swift Package Manager and Apple frameworks.
 
 ## Important information
 
@@ -238,15 +196,32 @@ The SwiftUI edition is built with Swift Package Manager and Apple frameworks. Th
 - Model output, classification, and retrieved context can be imperfect. Review important conclusions yourself.
 - Prism is not a medical or emergency product. If there is an immediate risk of harm, contact local emergency services or a qualified professional.
 
+## Recent changes — 2026-09-12
+
+- Consolidated the project around the native SwiftUI macOS client and its release application.
+- Replaced the primary JSON store with local SQLite persistence for the SwiftUI client.
+- Legacy JSON is imported once with a neighbouring backup, and the original files are never overwritten or shortened during request-context preparation.
+- Removed built-in iCloud storage and sync. A legacy iCloud location is imported into a local folder while its original contents remain untouched.
+- Storage moves reject an existing database instead of overwriting it, and concurrent stale saves are surfaced as a conflict.
+- Derived memories now retain their source-message IDs and evidence status. Prompt rules require the model to preserve corrections, negation, uncertainty, and time scope; this improves traceability but does not make generated analysis infallible.
+
+## Tonight's changes — 2026-09-17
+
+- All three response styles now share one fact assessment, relationship guidance, tool policy, and safety guard. Rational, Balanced, and Warm change only wording, empathy placement, and organization, with consistent sampling parameters to reduce different judgments for the same facts.
+- Chapter summarization, people summarization, and user profiling now run as separate, connected workers: a supervisor handles safety and response-quality signals; the people worker resolves names, aliases, relationship terms, and evidence; the chapter worker reads only the transcript and prior chapters; the profile worker records only explicit, evidence-backed user context.
+- Uncertain person aliases are never merged silently. The candidate, evidence, and **Same person** / **Keep separate** decision remain visible; a person is marked as the user only when the conversation explicitly says “I” or “myself.”
+- Conversation models are limited to `deepseek-flash` and `deepseek-v4-pro`. Flash is the default with native image input; Pro remains text-only. Retired model IDs migrate to a supported model.
+- SQLite is now the single primary store. Legacy JSON imports keep neighbouring backups; writes use transactions and WAL with stale-writer detection, and changing the data directory never overwrites an existing database.
+- Attachment binaries are kept only for the current request. The message and file name remain in the local record, while reopening the app requires selecting the original file again. Attachment contents are sent only to the API endpoint configured by the user.
+
 ## Roadmap
 
-Prism's local data model and shared SwiftUI/Tauri behavior will continue to evolve through:
+Prism's local data model and native macOS experience will continue to evolve through:
 
 - More robust import and export workflows
 - Better backup and restore controls for local archives
-- Broader platform packaging and release automation
+- More reliable macOS packaging and release automation
 - More transparent inspection of retrieved evidence and model context
-- Continued parity work between the native and Tauri clients
 
 ## License
 
@@ -255,3 +230,14 @@ Prism is released under the [MIT License](LICENSE). Copyright holder: `markbigne
 ## Author
 
 Prism is created and maintained by [markbignews](https://github.com/markbignews).
+
+
+### DeepSeek API catalog — 2026-09-12
+
+- `deepseek-flash`: DeepSeek V4.1 Flash, the default; native image input.
+- `deepseek-v4-pro`: DeepSeek V4 Pro, retained as a text-only alternative. Prism shows this limit in the composer and prevents sending an image with Pro.
+- Prism keeps these two maintained conversation selections. Saved retired or custom conversation-model IDs migrate to Flash; saved official `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` IDs also migrate to `deepseek-flash`.
+- Chat Completions and the base URL remain unchanged. Thinking uses explicit enabled/disabled and low/high/max effort. Tool-enabled history retains assistant reasoning, including final answers. Older archives that already lost reasoning cannot be reconstructed.
+- The launch announcement planned Pro retirement on September 14, but the current API guide and pricing page explicitly retain Pro. No timed Pro remapping is implemented. No undocumented `deepseek-v4.1-flash` or future Pro ID is added.
+
+Sources checked: [API guide](https://api-docs.deepseek.com/), [model catalog](https://api-docs.deepseek.com/quick_start/pricing/), [thinking compatibility](https://api-docs.deepseek.com/guides/thinking_mode/), [September 10 announcement](https://deepseek.com/news/deepseek-v4-1-flash/).

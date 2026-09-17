@@ -71,7 +71,7 @@ enum ToolRegistry {
             if let settings {
                 let n = Int(args["count"] ?? "5") ?? 5
                 let chapters = await store.searchChaptersSemantic(query: args["query"] ?? "", settings: settings, limit: n)
-                result = await buildChapterResults(chapters: chapters.map(\.chapter), store: store)
+                result = buildChapterResults(chapters: chapters.map(\.chapter), store: store)
             } else {
                 result = searchChapters(query: args["query"] ?? "", store: store)
             }
@@ -290,7 +290,7 @@ enum ToolRegistry {
     }
 
     @MainActor private static func buildChapterResults(chapters: [StoryChapter], store: ChatAgent) -> String {
-        // Tauri parity: each result carries conversation context and the
+        // Each result carries conversation context and the
         // chapter's global 1-based index (across all conversations), so the
         // model can feed it straight back to fetch_chapter_messages.
         let allChapters = store.allChapters

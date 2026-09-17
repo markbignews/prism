@@ -14,6 +14,12 @@ import AppKit
 struct GlassBackground: ViewModifier {
     var cornerRadius: CGFloat = 8
     var style: GlassStyle = .regular
+    var shapeKind: ShapeKind = .rounded
+
+    enum ShapeKind {
+        case rounded
+        case capsule
+    }
 
     enum GlassStyle {
         /// Standard Liquid Glass — visible boundary, adapts to light/dark.
@@ -29,20 +35,20 @@ struct GlassBackground: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
             content
-                .glassEffect(glass, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .glassEffect(glass, in: backgroundShape)
         } else {
             content
-                .background(fallbackMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .background(fallbackMaterial, in: backgroundShape)
                 // Depth — glass sits above content
                 .shadow(color: .black.opacity(0.08), radius: 3, y: 1.5)
                 .overlay {
                     // Outer edge for boundary definition on any background
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    backgroundShape
                         .stroke(.primary.opacity(0.18), lineWidth: 0.5)
                 }
                 .overlay {
                     // Inner highlight: top-left edge catches ambient light
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    backgroundShape
                         .stroke(.white.opacity(0.20), lineWidth: 0.5)
                         .mask(
                             VStack(spacing: 0) {
@@ -54,6 +60,15 @@ struct GlassBackground: ViewModifier {
                             }
                         )
                 }
+        }
+    }
+
+    private var backgroundShape: AnyShape {
+        switch shapeKind {
+        case .rounded:
+            AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        case .capsule:
+            AnyShape(Capsule())
         }
     }
 
@@ -86,8 +101,12 @@ struct GlassBackground: ViewModifier {
 }
 
 extension View {
-    func glassBackground(cornerRadius: CGFloat = 8, style: GlassBackground.GlassStyle = .regular) -> some View {
-        modifier(GlassBackground(cornerRadius: cornerRadius, style: style))
+    func glassBackground(
+        cornerRadius: CGFloat = 8,
+        style: GlassBackground.GlassStyle = .regular,
+        shape: GlassBackground.ShapeKind = .rounded
+    ) -> some View {
+        modifier(GlassBackground(cornerRadius: cornerRadius, style: style, shapeKind: shape))
     }
 }
 
@@ -536,7 +555,7 @@ struct SidebarView: View {
             }
             .listStyle(.sidebar)
         }
-        .onChange(of: chatStore.lastSummaryStatus) { newStatus in
+        .onChange(of: chatStore.lastSummaryStatus) { _, newStatus in
             if !newStatus.isEmpty,
                !newStatus.hasPrefix("已生成"),
                !newStatus.hasPrefix("新增") {
@@ -673,6 +692,14 @@ struct ChatView: View {
         return userMsgs.isEmpty
     }
 
+    private var pendingPersonLinkProposal: PersonLinkProposal? {
+        guard let conversationID = chatStore.selectedConversationID else { return nil }
+        return chatStore.personLinkProposals
+            .filter { $0.conversationID == conversationID && $0.decision == "pending" }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first
+    }
+
     var body: some View {
         // ZStack lets messages render behind the input area so chat content
         // refracts through the Liquid Glass input box.
@@ -694,6 +721,21 @@ struct ChatView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
+                if let proposal = pendingPersonLinkProposal,
+                   let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
+                   let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
+                    PersonLinkConfirmationBanner(
+                        source: source,
+                        candidate: candidate,
+                        evidence: proposal.evidence,
+                        language: settings.language,
+                        confirm: { chatStore.confirmPersonLinkProposal(id: proposal.id) },
+                        reject: { chatStore.rejectPersonLinkProposal(id: proposal.id) }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+                }
+
                 ComposerView(
                     draft: $draft,
                     attachments: $draftAttachments,
@@ -701,6 +743,7 @@ struct ChatView: View {
                     mode: chatStore.selectedConversation?.mode ?? settings.conversationMode,
                     contextUsage: chatStore.contextUsage(settings: settings),
                     language: settings.language,
+                    selectedModel: settings.model,
                     onCycleMode: { cycleMode() },
                     onStop: { chatStore.cancelSend() },
                     onSend: { text, attachments in
@@ -725,8 +768,6 @@ struct ChatView: View {
             }
         }
         .navigationTitle(chatStore.selectedConversation?.title ?? "")
-        .navigationSubtitle(chatStore.selectedConversation?.messages.isEmpty == false
-            ? L10n.text(.aiLabelDisclaimer, settings.language) : "")
         .sheet(item: $selectedChapter) { chapter in
             ChapterDetailView(
                 chapter: chapter,
@@ -1414,7 +1455,7 @@ struct MessageBubble: View {
                        let calls = message.toolCalls, !calls.isEmpty,
                        message.content == "🔧 正在查询…" {
                         // Tool execution in progress — show live tool badges
-                        // (Tauri parity: wrench badge + tool name while tools run).
+                        // Show a wrench badge and tool name while tools run.
                         VStack(alignment: .leading, spacing: 7) {
                             ThinkingIndicator(language: settings.language)
                             HStack(spacing: 6) {
@@ -1620,10 +1661,15 @@ struct AttachmentPreview: View {
 
 // MARK: - Composer with Dynamic Height + Liquid Glass (pure SwiftUI)
 
+private enum ComposerMetrics {
+    static let actionDiameter: CGFloat = 28
+    static let expandedCornerRadius: CGFloat = actionDiameter / 2
+}
+
 /// Multi-line composer built entirely with SwiftUI.
 ///
 /// `TextField(axis: .vertical)` grows with wrapped text up to
-/// `lineLimit(1...8)` and scrolls internally beyond that. Return sends and
+/// `lineLimit(1...5)` and scrolls internally beyond that. Return sends and
 /// Shift+Return inserts a newline. Plain Return is observed through both
 /// `.onSubmit` and `.onKeyPress`: behavior differs slightly across macOS and
 /// input methods, so the two paths provide a reliable fallback for each other.
@@ -1638,6 +1684,7 @@ struct ComposerView: View {
     var mode: ConversationMode
     var contextUsage: ContextUsageSnapshot
     var language: AppLanguage
+    var selectedModel: String
     var onCycleMode: () -> Void
     var onStop: () -> Void
     var onSend: (String, [MessageAttachment]) -> Void
@@ -1653,6 +1700,31 @@ struct ComposerView: View {
         "text/css", "text/javascript", "application/json", "application/xml",
         "application/javascript", "application/x-yaml", "text/yaml"
     ])
+    private let maxAttachmentCount = 5
+    private let maxSingleImageBytes = 10 * 1024 * 1024
+    private let maxTextBytes = 1 * 1024 * 1024
+    private let maxTotalAttachmentBytes = 20 * 1024 * 1024
+
+    private var supportsImages: Bool { selectedModel == DeepSeekModels.flash }
+    private var hasUnsupportedImage: Bool {
+        !supportsImages && attachments.contains(where: { $0.kind == .image })
+    }
+    private var attachmentBytes: Int { attachments.reduce(0) { $0 + $1.data.count } }
+    private var addAttachmentText: String {
+        switch language {
+        case .english: "Add attachment"
+        case .traditionalChinese: "新增附件"
+        default: "添加附件"
+        }
+    }
+
+    private var inputPlaceholder: String {
+        switch language {
+        case .english: "Message…"
+        case .traditionalChinese: "輸入訊息…"
+        default: "输入消息…"
+        }
+    }
 
     private var trimmed: String {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1660,46 +1732,66 @@ struct ComposerView: View {
 
     var body: some View {
         VStack(spacing: 4) {
+            if !supportsImages {
+                Text(proImageUnavailableText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             if let attachmentError {
                 Text(attachmentError)
                     .font(.caption2)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if hasUnsupportedImage {
+                Text(proImageUnavailableText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if !attachments.isEmpty {
+                Text(attachmentRetentionText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: 720, alignment: .leading)
+                    .padding(.horizontal, 14)
+            }
 
             VStack(spacing: 0) {
                 if !attachments.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             ForEach(attachments) { attachment in
-                                HStack(spacing: 5) {
-                                    AttachmentPreview(attachment: attachment)
-                                    Button {
-                                        attachments.removeAll { $0.id == attachment.id }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("删除附件")
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(.secondary.opacity(0.10), in: Capsule())
+                                ComposerAttachmentChip(
+                                    attachment: attachment,
+                                    language: language,
+                                    remove: { attachments.removeAll { $0.id == attachment.id } }
+                                )
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
-                        .padding(.bottom, 3)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 2)
                 }
 
-                ZStack(alignment: .trailing) {
-                    TextField("", text: $draft, axis: .vertical)
+                HStack(alignment: .center, spacing: 8) {
+                    Button { showFileImporter = true } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(addAttachmentText)
+                    .help(addAttachmentText)
+
+                    TextField(inputPlaceholder, text: $draft, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.body)
-                        .lineLimit(1...8)
+                        .lineLimit(1...5)
                         .focused($isFocused)
                         .submitLabel(.send)
                         .onSubmit { submit() }
@@ -1718,58 +1810,56 @@ struct ComposerView: View {
                             submit()
                             return .handled
                         }
-                        .padding(.leading, 50)
-                        .padding(.trailing, 178)
-                        .padding(.vertical, 11)
-                        .frame(minHeight: 54)
+                        .padding(.vertical, 7)
+                        // Keep an empty composer to one line. A vertical
+                        // TextField otherwise reserves its full line-limit
+                        // height when an attachment row is present.
+                        .frame(maxWidth: .infinity, minHeight: 42, maxHeight: draft.isEmpty ? 42 : 140)
 
-                    HStack(spacing: 6) {
-                        Button { showFileImporter = true } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("添加附件")
+                    ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
+                    ContextUsageButton(snapshot: contextUsage, language: language)
 
-                        Spacer()
-
-                        ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
-                        ContextUsageButton(snapshot: contextUsage, language: language)
-
-                        if isSending {
-                            Button(action: onStop) {
-                                Image(systemName: "stop.circle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.red)
-                            }
-                            .buttonStyle(.plain)
-                            .keyboardShortcut(.escape, modifiers: [])
-                        } else {
-                            Button {
-                                submit()
-                            } label: {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(canSubmit ? .blue : .secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!canSubmit)
-                        }
+                    if isSending {
+                        ComposerActionButton(
+                            icon: "stop.fill",
+                            tint: .red,
+                            enabled: true,
+                            accessibilityLabel: stopText,
+                            action: onStop
+                        )
+                        .keyboardShortcut(.escape, modifiers: [])
+                    } else {
+                        ComposerActionButton(
+                            icon: "arrow.up",
+                            tint: .blue,
+                            enabled: canSubmit,
+                            accessibilityLabel: sendText,
+                            action: submit
+                        )
                     }
-                    .padding(.horizontal, 12)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
             }
-            .glassBackground(cornerRadius: 20, style: .deep)
+            .glassBackground(
+                cornerRadius: ComposerMetrics.expandedCornerRadius,
+                style: .deep,
+                shape: attachments.isEmpty ? .capsule : .rounded
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
+                if attachments.isEmpty {
+                    Capsule()
+                        .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
+                } else {
+                    RoundedRectangle(cornerRadius: ComposerMetrics.expandedCornerRadius, style: .continuous)
+                        .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
+                }
             }
             .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: handleDrop)
         }
         .fileImporter(
             isPresented: $showFileImporter,
-            allowedContentTypes: [.image, .text, .data],
+            allowedContentTypes: allowedAttachmentTypes,
             allowsMultipleSelection: true
         ) { result in
             handleFileImport(result)
@@ -1778,7 +1868,43 @@ struct ComposerView: View {
     }
 
     private var canSubmit: Bool {
-        !trimmed.isEmpty || !attachments.isEmpty
+        (!trimmed.isEmpty || !attachments.isEmpty) && !hasUnsupportedImage
+    }
+
+    private var allowedAttachmentTypes: [UTType] {
+        supportsImages ? [.image, .text, .data] : [.text, .data]
+    }
+
+    private var proImageUnavailableText: String {
+        switch language {
+        case .english: "DeepSeek V4 Pro does not support image uploads. Remove the image or switch to V4.1 Flash."
+        case .traditionalChinese: "DeepSeek V4 Pro 不支援上傳圖片。請移除圖片或切換至 V4.1 Flash。"
+        default: "DeepSeek V4 Pro 不支持上传图片。请移除图片或切换至 V4.1 Flash。"
+        }
+    }
+
+    private var attachmentRetentionText: String {
+        switch language {
+        case .english: "The message and file name stay in the chat. File contents are used for this request only; select the file again after reopening the app."
+        case .traditionalChinese: "訊息和檔名會保留；檔案內容僅用於本次傳送，重新開啟 App 後需要重新選取檔案。"
+        default: "消息和文件名会保留；文件内容仅用于本次发送，重新打开 App 后需要重新选择文件。"
+        }
+    }
+
+    private var sendText: String {
+        switch language {
+        case .english: return "Send"
+        case .traditionalChinese: return "傳送"
+        default: return "发送"
+        }
+    }
+
+    private var stopText: String {
+        switch language {
+        case .english: return "Stop generating"
+        case .traditionalChinese: return "停止生成"
+        default: return "停止生成"
+        }
     }
 
     private func submit() {
@@ -1799,51 +1925,52 @@ struct ComposerView: View {
 
     private func importURLs(_ urls: [URL]) {
         for url in urls {
-                guard attachments.count < 5 else {
-                    attachmentError = "一次最多添加 5 个附件。"
-                    break
-                }
-                do {
-                    let accessed = url.startAccessingSecurityScopedResource()
-                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                    let values = try url.resourceValues(forKeys: [.contentTypeKey, .fileSizeKey])
-                    let type = values.contentType
-                    let mime = type?.preferredMIMEType
-                        ?? mimeType(for: url.pathExtension)
-                        ?? "application/octet-stream"
-                    let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            guard attachments.count < maxAttachmentCount else {
+                attachmentError = "一次最多添加 \(maxAttachmentCount) 个附件。"
+                break
+            }
+            do {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let values = try url.resourceValues(forKeys: [.contentTypeKey, .fileSizeKey])
+                let type = values.contentType
+                let mime = type?.preferredMIMEType
+                    ?? mimeType(for: url.pathExtension)
+                    ?? "application/octet-stream"
+                let fileSize = values.fileSize ?? 0
+                let isImage = imageTypes.contains(mime)
+                let isText = textTypes.contains(mime) || type?.conforms(to: .text) == true || isTextExtension(url.pathExtension)
 
-                    if imageTypes.contains(mime) {
-                        guard data.count <= 32 * 1024 * 1024 else {
-                            throw AttachmentError.tooLarge("图片不能超过 32 MB：\(url.lastPathComponent)")
-                        }
-                        attachments.append(MessageAttachment(
-                            fileName: url.lastPathComponent,
-                            mediaType: mime,
-                            kind: .image,
-                            data: data,
-                            textContent: nil
-                        ))
-                    } else if textTypes.contains(mime) || type?.conforms(to: .text) == true || isTextExtension(url.pathExtension) {
-                        guard data.count <= 2 * 1024 * 1024 else {
-                            throw AttachmentError.tooLarge("文本文件不能超过 2 MB：\(url.lastPathComponent)")
-                        }
-                        let text = String(decoding: data, as: UTF8.self)
-                        attachments.append(MessageAttachment(
-                            fileName: url.lastPathComponent,
-                            mediaType: mime == "application/octet-stream" ? "text/plain" : mime,
-                            kind: .text,
-                            data: data,
-                            textContent: text
-                        ))
-                    } else {
-                        throw AttachmentError.unsupported("暂不支持此文件类型：\(url.lastPathComponent)")
-                    }
-                } catch let error as AttachmentError {
-                    attachmentError = error.localizedDescription
-                } catch {
-                    attachmentError = "无法读取附件：\(url.lastPathComponent)"
+                if isImage {
+                    guard supportsImages else { throw AttachmentError.unsupported(proImageUnavailableText) }
+                    try validateAttachmentSize(fileSize, maximum: maxSingleImageBytes, label: "图片", fileName: url.lastPathComponent)
+                } else if isText {
+                    try validateAttachmentSize(fileSize, maximum: maxTextBytes, label: "文本文件", fileName: url.lastPathComponent)
+                } else {
+                    throw AttachmentError.unsupported("暂不支持此文件类型：\(url.lastPathComponent)")
                 }
+                try validateTotalAttachmentSize(fileSize, fileName: url.lastPathComponent)
+
+                let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+                if isImage {
+                    try validateAttachmentSize(data.count, maximum: maxSingleImageBytes, label: "图片", fileName: url.lastPathComponent)
+                } else {
+                    try validateAttachmentSize(data.count, maximum: maxTextBytes, label: "文本文件", fileName: url.lastPathComponent)
+                }
+                try validateTotalAttachmentSize(data.count, fileName: url.lastPathComponent)
+
+                attachments.append(MessageAttachment(
+                    fileName: url.lastPathComponent,
+                    mediaType: isText && mime == "application/octet-stream" ? "text/plain" : mime,
+                    kind: isImage ? .image : .text,
+                    data: data,
+                    textContent: isText ? String(decoding: data, as: UTF8.self) : nil
+                ))
+            } catch let error as AttachmentError {
+                attachmentError = error.localizedDescription
+            } catch {
+                attachmentError = "无法读取附件：\(url.lastPathComponent)"
+            }
         }
     }
 
@@ -1892,21 +2019,44 @@ struct ComposerView: View {
     }
 
     private func importDroppedImage(_ data: Data, mime: String, name: String) {
-        guard attachments.count < 5 else {
-            attachmentError = "一次最多添加 5 个附件。"
+        guard supportsImages else {
+            attachmentError = proImageUnavailableText
             return
         }
-        guard data.count <= 32 * 1024 * 1024 else {
-            attachmentError = "图片不能超过 32 MB：\(name)"
+        guard attachments.count < maxAttachmentCount else {
+            attachmentError = "一次最多添加 \(maxAttachmentCount) 个附件。"
             return
         }
-        attachments.append(MessageAttachment(
-            fileName: name,
-            mediaType: mime,
-            kind: .image,
-            data: data,
-            textContent: nil
-        ))
+        do {
+            try validateAttachmentSize(data.count, maximum: maxSingleImageBytes, label: "图片", fileName: name)
+            try validateTotalAttachmentSize(data.count, fileName: name)
+            attachments.append(MessageAttachment(
+                fileName: name,
+                mediaType: mime,
+                kind: .image,
+                data: data,
+                textContent: nil
+            ))
+        } catch let error as AttachmentError {
+            attachmentError = error.localizedDescription
+        } catch {
+            attachmentError = "无法读取拖入的图片：\(name)"
+        }
+    }
+
+    private func validateAttachmentSize(_ bytes: Int, maximum: Int, label: String, fileName: String) throws {
+        guard bytes <= maximum else {
+            let limit = ByteCountFormatter.string(fromByteCount: Int64(maximum), countStyle: .file)
+            throw AttachmentError.tooLarge("\(label)不能超过 \(limit)：\(fileName)")
+        }
+    }
+
+    private func validateTotalAttachmentSize(_ incomingBytes: Int, fileName: String) throws {
+        guard attachmentBytes + incomingBytes <= maxTotalAttachmentBytes else {
+            let remaining = max(0, maxTotalAttachmentBytes - attachmentBytes)
+            let remainingText = ByteCountFormatter.string(fromByteCount: Int64(remaining), countStyle: .file)
+            throw AttachmentError.tooLarge("附件总大小最多 20 MB，剩余 \(remainingText)：\(fileName)")
+        }
     }
 
     private func isTextExtension(_ ext: String) -> Bool {
@@ -1942,6 +2092,134 @@ struct ComposerView: View {
     }
 }
 
+private struct ComposerAttachmentChip: View {
+    let attachment: MessageAttachment
+    let language: AppLanguage
+    let remove: () -> Void
+
+    private var metadata: String {
+        let size = ByteCountFormatter.string(fromByteCount: Int64(attachment.data.count), countStyle: .file)
+        let kind: String = attachment.kind == .image
+            ? (language == .english ? "Image" : "图片")
+            : (language == .english ? "Text" : "文本")
+        return "\(kind) · \(size)"
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            AttachmentPreview(attachment: attachment, compact: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.fileName)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text(metadata)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: 160, alignment: .leading)
+            Button(action: remove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(language == .english ? "Remove attachment" : language == .traditionalChinese ? "刪除附件" : "删除附件")
+        }
+        .padding(7)
+        .background(.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+    }
+}
+
+/// Compact circular action used by the composer. Keeping this as a plain
+/// button avoids the platform's adaptive prominent style changing the control
+/// geometry or adding an extra visual treatment inside the input capsule.
+private struct ComposerActionButton: View {
+    let icon: String
+    let tint: Color
+    let enabled: Bool
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(enabled ? 1 : 0.72))
+                .frame(width: ComposerMetrics.actionDiameter, height: ComposerMetrics.actionDiameter)
+                .background(
+                    Circle()
+                        .fill(tint.opacity(enabled ? 1 : 0.38))
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(accessibilityLabel)
+        .help(accessibilityLabel)
+    }
+}
+
+/// A small, explicit clarification request appears after the related analysis
+/// instead of silently changing a person's saved identity.
+private struct PersonLinkConfirmationBanner: View {
+    let source: PersonRecord
+    let candidate: PersonRecord
+    let evidence: String
+    let language: AppLanguage
+    let confirm: () -> Void
+    let reject: () -> Void
+
+    private var question: String {
+        switch language {
+        case .english: "Is \(source.name) the same person as \(candidate.name)?"
+        case .traditionalChinese: "「\(source.name)」和「\(candidate.name)」是同一人嗎？"
+        default: "“\(source.name)”和“\(candidate.name)”是同一个人吗？"
+        }
+    }
+
+    private var confirmText: String {
+        switch language {
+        case .english: "Same person"
+        case .traditionalChinese: "是同一人"
+        default: "是同一人"
+        }
+    }
+
+    private var rejectText: String {
+        switch language {
+        case .english: "Keep separate"
+        case .traditionalChinese: "分開保留"
+        default: "保留为不同的人"
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "person.badge.questionmark")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(question)
+                    .font(.caption.weight(.semibold))
+                Text(evidence)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                HStack(spacing: 7) {
+                    Button(confirmText, action: confirm)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    Button(rejectText, action: reject)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.orange.opacity(0.10)))
+    }
+}
+
 // MARK: - Memory Panel (standalone window)
 
 struct MemoryPanelView: View {
@@ -1953,6 +2231,17 @@ struct MemoryPanelView: View {
     private var currentPeople: [PersonRecord] {
         guard let id = chatStore.selectedConversationID else { return [] }
         return chatStore.personArchive.filter { $0.conversationIDs?.contains(id) == true }
+    }
+
+    private var currentPersonLinkProposals: [PersonLinkProposal] {
+        guard let id = chatStore.selectedConversationID else { return [] }
+        return chatStore.personLinkProposals
+            .filter { $0.conversationID == id && $0.decision == "pending" }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private var currentUserProfile: [UserProfileObservation] {
+        chatStore.userProfileObservations.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     private var currentEmotions: [EmotionEntry] {
@@ -1993,6 +2282,13 @@ struct MemoryPanelView: View {
                         usageBlock
                     }
 
+                    Text(L10n.text(.inferredDataHint, settings.language))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary))
+
                     // The narrative timeline follows when events happened in
                     // the user's story, not when messages were sent.
                     MemorySection(title: L10n.text(.memoryTimeline, settings.language), icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", color: .indigo) {
@@ -2005,6 +2301,78 @@ struct MemoryPanelView: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             timelineBlock(events: events)
+                        }
+                    }
+
+                    if !currentPersonLinkProposals.isEmpty {
+                        MemorySection(
+                            title: personLinkTitle,
+                            icon: "person.badge.questionmark",
+                            color: .orange
+                        ) {
+                            ForEach(currentPersonLinkProposals) { proposal in
+                                if let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
+                                   let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
+                                    VStack(alignment: .leading, spacing: 7) {
+                                        Text(personLinkQuestion(source: source, candidate: candidate))
+                                            .font(.callout.weight(.semibold))
+                                        Text(proposal.evidence)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(3)
+                                        Text(personLinkConfidence(proposal.confidence))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        HStack(spacing: 8) {
+                                            Button(personLinkConfirmText) {
+                                                chatStore.confirmPersonLinkProposal(id: proposal.id)
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            Button(personLinkRejectText) {
+                                                chatStore.rejectPersonLinkProposal(id: proposal.id)
+                                            }
+                                            .buttonStyle(.bordered)
+                                        }
+                                    }
+                                    .padding(10)
+                                    .background(RoundedRectangle(cornerRadius: 10).fill(.orange.opacity(0.08)))
+                                }
+                            }
+                        }
+                    }
+
+                    if !currentUserProfile.isEmpty {
+                        MemorySection(title: profileTitle, icon: "person.text.rectangle", color: .teal) {
+                            ForEach(currentUserProfile.prefix(16)) { observation in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text(profileCategory(observation.category))
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.teal)
+                                        Spacer()
+                                        Text("\(Int(observation.confidence * 100))%")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        Button {
+                                            chatStore.removeUserProfileObservation(id: observation.id)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.secondary)
+                                        .help(L10n.text(.removeInferredObservation, settings.language))
+                                        .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
+                                    }
+                                    Text(observation.statement)
+                                        .font(.callout)
+                                    Text(profileEvidenceLabel + "：" + observation.evidence)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                                .padding(8)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(.teal.opacity(0.06)))
+                            }
                         }
                     }
 
@@ -2045,10 +2413,19 @@ struct MemoryPanelView: View {
                                                     .padding(.vertical, 1)
                                                     .background(Capsule().fill(.orange.opacity(0.12)))
                                                 Spacer()
-                                                Text(trait.scope == "repeated_pattern" ? L10n.text(.memoryRepeatedPattern, settings.language) : L10n.text(.memorySingleObservation, settings.language))
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                            }
+                                                  Text(trait.scope == "repeated_pattern" ? L10n.text(.memoryRepeatedPattern, settings.language) : L10n.text(.memorySingleObservation, settings.language))
+                                                      .font(.caption2)
+                                                      .foregroundStyle(.secondary)
+                                                  Button {
+                                                      chatStore.removePersonTrait(personID: person.id, traitID: trait.id)
+                                                  } label: {
+                                                      Image(systemName: "xmark.circle.fill")
+                                                  }
+                                                  .buttonStyle(.plain)
+                                                  .foregroundStyle(.secondary)
+                                                  .help(L10n.text(.removeInferredObservation, settings.language))
+                                                  .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
+                                              }
                                             ForEach(Array(trait.evidence.prefix(2).enumerated()), id: \.offset) { _, evidence in
                                                 Text("\(L10n.text(.memoryEvidence, settings.language))：\(evidence)")
                                                     .font(.caption2)
@@ -2099,11 +2476,20 @@ struct MemoryPanelView: View {
                                     HStack {
                                         Text(spot.pattern).font(.headline)
                                         Spacer()
-                                        Text(spot.severity == "persistent" ? L10n.text(.memoryPersistent, settings.language) : spot.severity == "recurring" ? L10n.text(.memoryRecurring, settings.language) : L10n.text(.memoryNew, settings.language))
-                                            .font(.caption2).foregroundStyle(spot.severity == "persistent" ? .red : .secondary)
-                                            .padding(.horizontal, 6).padding(.vertical, 1)
-                                            .background(Capsule().fill(.quaternary))
-                                    }
+                                          Text(spot.severity == "persistent" ? L10n.text(.memoryPersistent, settings.language) : spot.severity == "recurring" ? L10n.text(.memoryRecurring, settings.language) : L10n.text(.memoryNew, settings.language))
+                                              .font(.caption2).foregroundStyle(spot.severity == "persistent" ? .red : .secondary)
+                                              .padding(.horizontal, 6).padding(.vertical, 1)
+                                              .background(Capsule().fill(.quaternary))
+                                          Button {
+                                              chatStore.removeBlindspot(id: spot.id)
+                                          } label: {
+                                              Image(systemName: "xmark.circle.fill")
+                                          }
+                                          .buttonStyle(.plain)
+                                          .foregroundStyle(.secondary)
+                                          .help(L10n.text(.removeInferredObservation, settings.language))
+                                          .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
+                                      }
                                     Text(spot.evidence).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                     Text("\(L10n.text(.memoryCounterQuestion, settings.language))：\(spot.counterQuestion)").font(.caption).foregroundStyle(.blue)
                                 }
@@ -2126,18 +2512,27 @@ struct MemoryPanelView: View {
                                                 .background(Capsule().fill(.quaternary))
                                         }
                                         Spacer()
-                                        if memory.recallCount > 0 {
-                                            Image(systemName: "arrow.triangle.2.circlepath").font(.caption2)
-                                            Text("\(memory.recallCount)").font(.caption2).foregroundStyle(.tertiary)
-                                        }
-                                    }
+                                          if memory.recallCount > 0 {
+                                              Image(systemName: "arrow.triangle.2.circlepath").font(.caption2)
+                                              Text("\(memory.recallCount)").font(.caption2).foregroundStyle(.tertiary)
+                                          }
+                                          Button {
+                                              chatStore.removeMemoryEntry(id: memory.id)
+                                          } label: {
+                                              Image(systemName: "xmark.circle.fill")
+                                          }
+                                          .buttonStyle(.plain)
+                                          .foregroundStyle(.secondary)
+                                          .help(L10n.text(.removeInferredObservation, settings.language))
+                                          .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
+                                      }
                                 }
                                 .padding(.vertical, 4)
                             }
                         }
                     }
 
-                    if currentPeople.isEmpty && currentEmotions.isEmpty
+                    if currentPersonLinkProposals.isEmpty && currentUserProfile.isEmpty && currentPeople.isEmpty && currentEmotions.isEmpty
                         && currentBlindspots.isEmpty && currentMemories.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "brain.head.profile").font(.system(size: 32)).foregroundStyle(.tertiary)
@@ -2166,6 +2561,80 @@ private struct EmotionGroup { let emotion: String; let intensity: Double; let co
 // MARK: - Memory Timeline Helpers
 
 private extension MemoryPanelView {
+    var profileTitle: String {
+        switch settings.language {
+        case .english: "User profile"
+        case .traditionalChinese: "使用者畫像"
+        default: "用户画像"
+        }
+    }
+
+    var profileEvidenceLabel: String {
+        switch settings.language {
+        case .english: "Evidence"
+        case .traditionalChinese: "依據"
+        default: "依据"
+        }
+    }
+
+    func profileCategory(_ category: String) -> String {
+        switch (category, settings.language) {
+        case ("stated_preference", .english): "Stated preference"
+        case ("stated_goal", .english): "Stated goal"
+        case ("stable_context", .english): "Stable context"
+        case ("communication_preference", .english): "Communication preference"
+        case ("stated_preference", .traditionalChinese): "明確偏好"
+        case ("stated_goal", .traditionalChinese): "明確目標"
+        case ("stable_context", .traditionalChinese): "穩定背景"
+        case ("communication_preference", .traditionalChinese): "溝通偏好"
+        case ("stated_preference", _): "明确偏好"
+        case ("stated_goal", _): "明确目标"
+        case ("stable_context", _): "稳定背景"
+        default: "沟通偏好"
+        }
+    }
+
+    var personLinkTitle: String {
+        switch settings.language {
+        case .english: "Confirm people"
+        case .traditionalChinese: "確認人物"
+        default: "确认人物"
+        }
+    }
+
+    var personLinkConfirmText: String {
+        switch settings.language {
+        case .english: "Same person"
+        case .traditionalChinese: "是同一人"
+        default: "是同一人"
+        }
+    }
+
+    var personLinkRejectText: String {
+        switch settings.language {
+        case .english: "Keep separate"
+        case .traditionalChinese: "分開保留"
+        default: "保留为不同的人"
+        }
+    }
+
+    func personLinkQuestion(source: PersonRecord, candidate: PersonRecord) -> String {
+        switch settings.language {
+        case .english: "Is \(source.name) the same person as \(candidate.name)?"
+        case .traditionalChinese: "「\(source.name)」和「\(candidate.name)」是同一人嗎？"
+        default: "“\(source.name)”和“\(candidate.name)”是同一个人吗？"
+        }
+    }
+
+    func personLinkConfidence(_ value: Double) -> String {
+        let percent = Int(value * 100)
+        switch settings.language {
+        case .english: return "Suggested match: \(percent)%"
+        case .traditionalChinese: return "建議比對：\(percent)%"
+        default: return "建议匹配：\(percent)%"
+        }
+    }
+
     var usageBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {

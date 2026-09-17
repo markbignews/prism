@@ -7,8 +7,8 @@ extension Notification.Name {
 
 @main
 struct PrismApp: App {
-    @StateObject private var chatStore = ChatStore()
     @StateObject private var settings = AppSettings()
+    @StateObject private var chatStore = ChatStore()
     @State private var showOnboarding = false
 
     var body: some Scene {
@@ -18,6 +18,10 @@ struct PrismApp: App {
                 .environmentObject(settings)
                 .frame(minWidth: 980, minHeight: 680)
                 .task {
+                    settings.canChangeStorage = { !chatStore.isSending && !chatStore.isSummarizing }
+                    // ChatStore is initialized before AppSettings. Reconcile it
+                    // with any storage path selected while settings were loaded.
+                    chatStore.reloadStorage(from: settings)
                     chatStore.bootstrapIfNeeded(language: settings.language)
                     if !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Task { await settings.refreshProviderBalance() }
@@ -28,6 +32,11 @@ struct PrismApp: App {
                         && settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         try? await Task.sleep(for: .milliseconds(400))
                         showOnboarding = true
+                    }
+                }
+                .onChange(of: settings.dataPath) { oldPath, newPath in
+                    if oldPath != newPath {
+                        chatStore.reloadStorage(from: settings)
                     }
                 }
                 .sheet(isPresented: $showOnboarding) {
@@ -52,6 +61,7 @@ struct PrismApp: App {
         Settings {
             SettingsView()
                 .environmentObject(settings)
+                .environmentObject(chatStore)
                 .frame(width: 520)
         }
     }

@@ -49,7 +49,7 @@ struct Conversation: Identifiable, Codable, Equatable {
     var updatedAt = Date()
     var messages: [ChatMessage] = []
     var chapters: [StoryChapter] = []
-    /// Per-conversation mode override (Tauri parity: `set_mode`). When nil,
+    /// Per-conversation mode override. When nil,
     /// the global setting `AppSettings.conversationMode` applies.
     var mode: ConversationMode?
     /// Kept for backward compatibility — no longer drives summarization logic.
@@ -117,7 +117,7 @@ enum ResponseLength: String, CaseIterable, Codable {
     case standard = "standard"
     case detailed = "detailed"
 
-    /// Tauri parity: response length drives the model's output token budget.
+    /// Response length drives the model's output token budget.
     var maxTokens: Int {
         switch self {
         case .brief: 1024
@@ -278,6 +278,40 @@ struct PersonRecord: Identifiable, Codable, Equatable {
     }
 }
 
+/// A possible alias relationship that is deliberately held for the user to
+/// decide. The analyzer may suggest it, but it never merges uncertain people.
+struct PersonLinkProposal: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var conversationID: UUID
+    /// The newly observed or currently local record.
+    var sourcePersonID: UUID
+    /// The existing record the source may refer to.
+    var candidatePersonID: UUID
+    /// Short, model-supplied context for the user to assess the suggestion.
+    var evidence: String
+    var confidence: Double
+    /// `pending` asks the user; `rejected` prevents the same pair from being
+    /// repeatedly suggested after the user chose to keep the records separate.
+    var decision: String = "pending"
+    var createdAt = Date()
+}
+
+/// A narrow, evidence-backed user-profile observation. It records only a
+/// stated preference, goal, or stable context; it is never a diagnosis.
+struct UserProfileObservation: Identifiable, Codable, Equatable {
+    var id = UUID()
+    /// `stated_preference`, `stated_goal`, `stable_context`, or
+    /// `communication_preference`.
+    var category: String
+    var statement: String
+    var evidence: String
+    var confidence: Double
+    var sourceConversationID: UUID
+    var sourceChapterID: UUID
+    var createdAt = Date()
+    var updatedAt = Date()
+}
+
 // MARK: - Smart Search Results
 
 struct SearchSnippet: Identifiable {
@@ -300,6 +334,8 @@ struct SearchResult: Identifiable {
 // MARK: - Cross‑Conversation Memory
 
 struct MemoryEntry: Identifiable, Codable, Equatable {
+    var sourceMessageIDs: [UUID]?
+    var evidenceStatus: String?
     var id = UUID()
     var content: String            // distilled insight / chapter summary
     var keywords: [String]

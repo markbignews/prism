@@ -36,7 +36,7 @@ struct TokenUsage: Codable, Equatable, Sendable {
     }
 }
 
-/// Cumulative, local-only model usage shared by the Swift and Tauri builds.
+/// Cumulative, local-only model usage.
 struct UsageStats: Codable, Equatable, Sendable {
     var inputTokens: Int64 = 0
     var outputTokens: Int64 = 0
@@ -75,8 +75,7 @@ final class UsageStatsStore: ObservableObject {
     }
 
     func record(_ usage: TokenUsage) {
-        // Reload before merging so calls made by the Tauri build in the same
-        // shared data directory aren't overwritten by a stale Swift snapshot.
+        // Reload before merging so another Prism window cannot overwrite a newer snapshot.
         reload()
         stats.add(usage)
         save()

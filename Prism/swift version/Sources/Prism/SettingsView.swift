@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            if let error = settings.storageError { Text(error).foregroundStyle(.red) }
             Section(L10n.text(.autoSummarization, settings.language)) {
                 Picker(L10n.text(.summaryInterval, settings.language), selection: $settings.summaryDialogCount) {
                     Text(L10n.text(.intervalOff, settings.language)).tag(0)
@@ -28,9 +29,8 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
 
                 Picker(L10n.text(.conversationModel, settings.language), selection: $settings.model) {
+                    Text("DeepSeek V4.1 Flash").tag("deepseek-flash")
                     Text("DeepSeek V4 Pro").tag("deepseek-v4-pro")
-                    Text("DeepSeek V4 Flash").tag("deepseek-v4-flash")
-                    Text("DeepSeek-V4-Flash-Vision-Exp（实验）").tag("deepseek-v4-flash-vision-exp")
                 }
             }
 
@@ -101,18 +101,17 @@ struct SettingsView: View {
                 Text(L10n.text(.loggingHint, settings.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Label {
+                    Text(L10n.text(.aiLabelDisclaimer, settings.language))
+                } icon: {
+                    Image(systemName: "info.circle")
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             }
 
             Section(L10n.text(.storage, settings.language)) {
-                Toggle(L10n.text(.useiCloud, settings.language), isOn: $settings.useiCloud)
-                    .toggleStyle(.switch)
-
-                if settings.useiCloud {
-                    Label(L10n.text(.iCloudActive, settings.language), systemImage: "icloud.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 HStack {
                     Text(L10n.text(.dataPath, settings.language))
                         .frame(width: 80, alignment: .leading)
@@ -125,7 +124,7 @@ struct SettingsView: View {
                     Button(L10n.text(.choose, settings.language)) {
                         showFolderImporter = true
                     }
-                    .disabled(settings.useiCloud)
+                    .disabled(chatStore.isSending || chatStore.isSummarizing)
                 }
 
                 Text(L10n.text(.dataPathHint, settings.language))
@@ -157,11 +156,8 @@ struct SettingsView: View {
         .padding(20)
         .fileImporter(isPresented: $showFolderImporter, allowedContentTypes: [.folder]) { result in
             guard case .success(let url) = result else { return }
-            let oldPath = settings.dataPath
+            guard !chatStore.isSending, !chatStore.isSummarizing else { return }
             settings.dataPath = url.path
-            if oldPath != url.path {
-                chatStore.reloadStorage(from: settings)
-            }
         }
         .alert(L10n.text(.resetTitle, settings.language), isPresented: $showResetAlert) {
             Button(L10n.text(.resetButton, settings.language), role: .destructive) {
@@ -213,6 +209,7 @@ struct ModelParameterSection: View {
                     get: { parameters.reasoningEffort },
                     set: { parameters.reasoningEffort = $0 }
                 )) {
+                    Text("Low").tag("low")
                     Text(L10n.text(.high, settings.language)).tag("high")
                     Text(L10n.text(.max, settings.language)).tag("max")
                 }

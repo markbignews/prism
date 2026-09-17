@@ -365,7 +365,7 @@ private struct InlineMarkdownText: View {
     }
 }
 
-// MARK: - Code Block with Copy Button (Tauri parity: copyCodeBlock)
+// MARK: - Code Block with Copy Button
 
 /// Monospaced code block with a hover-revealed copy button.
 private struct CodeBlockView: View {

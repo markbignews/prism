@@ -10,14 +10,12 @@
 
 <p align="center">
   <strong>本地数据存储 · 远程模型推理</strong><br>
-  SwiftUI + Tauri · macOS 15+ · Windows 11+
+  SwiftUI · macOS 15+ · Apple Silicon
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-active%20development-6f42c1" alt="Active development"/>
   <img src="https://img.shields.io/badge/macOS-SwiftUI-blue" alt="macOS SwiftUI"/>
-  <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2"/>
-  <img src="https://img.shields.io/badge/Windows-11%2B-0078D4" alt="Windows 11 或更高版本"/>
 </p>
 
 <p align="center">
@@ -42,12 +40,10 @@
 棱镜将以下能力整合在一起：
 
 - 面向 Apple Silicon Mac 的原生 SwiftUI 客户端
-- macOS Tauri 客户端
-- 面向 Windows 11 及更高版本的独立 Tauri 工程
 - 情绪追踪、叙事时间轴、章节、人物、记忆和盲点
-- 理性、平衡、温情三种对话模式
+- 理性、平衡、温情三种回应方式：共用同一事实判断与安全边界，只改变表达
 - 检测到危机信号时可以中断常规模型流程的本地安全守护
-- 本地 JSON 持久化，不内置遥测、分析或账号系统
+- 本地 SQLite 持久化，不内置遥测、分析或账号系统
 
 ## 核心亮点
 
@@ -67,21 +63,25 @@
 
 当当前对话中有具体行为证据时，棱镜可以把人物关联到“控制或限制自主”“回避沟通或冷处理”“边界被忽视”“愧疚施压”等行为模式，并同时保存证据片段、依据强度和单次/重复范围。所有结果都标为“疑似·待确认”，不输出人格、心理疾病或依恋类型诊断。
 
-人物归档会结合当前上下文处理自然出现的昵称、关系称呼、简称和代词变化：高置信度共指会归并到已有人物并记录为别名；证据不足时保留为独立称呼，避免误合并。只有用户明确把人物说成“我/自己”时才标记为用户本人。
+人物归档会结合当前上下文处理自然出现的昵称、关系称呼、简称和代词变化：完全相同的已有名称或别名可跨对话归并，模型也必须有充分证据才会自动归并；证据不足但存在合理候选时，会在归纳完成后的对话区和记忆面板显示依据，并由你选择“是同一人”或“保留为不同的人”。只有用户明确把人物说成“我/自己”时才标记为用户本人。
 
 ### 在设备上建立记忆
 
-章节、人物、情绪、盲点和跨对话记忆都会作为本地文件保存。你可以选择自定义数据目录，也可以在支持的 macOS 工作流中启用 iCloud Drive。
+章节、人物、情绪、盲点和跨对话记忆都会保存在本地 SQLite 数据库中。你可以选择本地数据目录。
 
-### 三个客户端共享同一产品思路
+### 分工明确，证据收窄
 
-SwiftUI 和 Tauri 客户端共享核心行为，同时保留必要的平台差异：macOS 使用原生窗口和存储约定，Windows 使用原生标题栏、当前用户 NSIS 安装包和 WebView2。
+棱镜不会让一个分析提示词同时生成章节、解析人物和推断用户画像。短小的同步监督器只处理安全与回答质量信号；可见回复完成后，人物 Worker 才根据用户消息和人物索引归并别名；章节落库后，画像 Worker 才提取有依据的明确偏好、目标、稳定背景或沟通偏好。章节归纳只读取原始对话和前序章节，暂定的人物或画像结果不会反向改写故事摘要。
+
+### 原生 macOS 工作空间
+
+棱镜是面向 Apple Silicon Mac 的原生 SwiftUI 应用。界面、本地存储与打包应用统一由这一套 macOS 实现维护。
 
 ### 需要时添加图片或文本上下文
 
-输入框支持点击 **+** 按钮或直接将文件拖入输入区域。JPEG、PNG、GIF 和 WebP 图片会显示为缩略图；常见文本和代码文件会作为文本块读取。发送前可以删除附件，发送后的用户消息中也会保留图片预览。当前每条消息最多添加 5 个附件，单张图片不超过 32 MB，单个文本/代码文件不超过 2 MB。
+输入框支持点击 **+** 按钮或直接将文件拖入输入区域。JPEG、PNG、GIF 和 WebP 图片会显示为缩略图；常见文本和代码文件会作为文本块读取。每个附件都会显示名称、类型和体积，发送前可以删除。每条回复最多添加 5 个附件：单张图片不超过 10 MB，单个文本/代码文件不超过 1 MB，合计不超过 20 MB。附件只随本次回复发送，并只在当前 App 会话中保留预览。
 
-当前打包版本为 `v1.0.16`。新安装默认使用 DeepSeek 官方称为 **DeepSeek-V4-Flash-Vision-Exp** 的实验性多模态视觉理解模型（API 模型 ID：`deepseek-v4-flash-vision-exp`），因此棱镜可以通过你配置的 DeepSeek 兼容端点识别和理解图片输入。可以参考 DeepSeek 的[官方更新日志](https://api-docs.deepseek.com/updates/)、[视觉 API 指南](https://api-docs.deepseek.com/guides/vision)和[Files API 文档](https://api-docs.deepseek.com/guides/files_api)了解服务端限制。PDF 不会被直接发送：当前 Files API 只接受图片，因此 PDF 文本提取或页面转图暂未集成到棱镜中。
+当前打包版本为 `v1.0.16`。更新后的源码构建默认使用原生支持视觉的 **DeepSeek V4.1 Flash**（API 模型 ID：`deepseek-flash`），因此棱镜可以通过你配置的 DeepSeek 兼容端点识别和理解图片输入。可以参考 DeepSeek 的[官方更新日志](https://api-docs.deepseek.com/updates/)、[视觉 API 指南](https://api-docs.deepseek.com/guides/vision)和[Files API 文档](https://api-docs.deepseek.com/guides/files_api)了解服务端限制。PDF 不会被直接发送：当前 Files API 只接受图片，因此 PDF 文本提取或页面转图暂未集成到棱镜中。
 
 ## 截图
 
@@ -92,28 +92,29 @@ SwiftUI 和 Tauri 客户端共享核心行为，同时保留必要的平台差�
 ## 一条消息如何被处理
 
 1. 棱镜在本地保存消息，并更新当前章节。
-2. 轻量 Flash 分析检查情绪、人物、盲点、叙事上下文和安全信号。
-3. 如果消息可以继续处理，所选对话模式会指导主模型流式生成回复。
-4. 当回复需要上下文时，本地工具可以检索章节、记忆、人物、情绪或叙事时间节点。
-5. 归纳和索引在本地更新，让后续对话可以找到相关内容。
+2. 轻量 Flash 监督器检查安全、回答质量、情绪和盲点。
+3. 如果消息可以继续处理，主模型按统一的事实、关系和安全规则生成回复；所选回应方式只调整表达语气与组织。
+4. 回复完成后，人物 Worker 更新别名和证据，不阻塞当前对话。
+5. 到达章节边界时，章节 Worker 归纳原始对话；画像 Worker 随后只记录有依据的明确用户信息。
+6. 当回复需要上下文时，本地工具可以检索章节、记忆、人物、情绪或叙事时间节点。
 
 安全路径优先于普通回复路径。检测到危机信号时，棱镜会提供本地化安全回应，不会让主模型按普通对话流程继续。
 
-## 对话模式
+## 回应方式
 
-| 模式 | 适合的体验 |
+三种回应方式共用同一套事实判断、关系建议、工具条件与安全引导。信息不足时也会提出同一个关键澄清问题；它们只改变措辞、共情句的位置和信息呈现顺序。
+
+| 回应方式 | 表达差异 |
 | --- | --- |
-| **理性之镜** | 基于证据分析，明确区分事实和假设，更强地挑战认知扭曲 |
-| **平衡之镜**（默认） | 在适度共情的同时进行叙事分析和实际追问 |
-| **温情之镜** | 更温和地探索和验证情绪，同时保持分析有依据 |
+| **理性** | 更直接、克制地表达同一结论 |
+| **平衡**（默认） | 更清晰、平和地表达同一结论 |
+| **温情** | 先简短承认体验，再以更有共情的语气表达同一结论 |
 
 ## 支持的平台
 
 | 客户端 | 运行环境 | 能力概览 |
 | --- | --- | --- |
 | SwiftUI | macOS 15+、Apple Silicon | 原生客户端；打包应用位于 `release/Prism-SwiftUI-macOS.app` |
-| Tauri macOS | 按配置支持 macOS 12+ | 共享 HTML/CSS/JavaScript 前端和 Rust 核心；打包应用位于 `release/Prism-Tauri-macOS.app` |
-| Tauri Windows | Windows 11+ | 独立 Tauri 工程，需要 MSVC 工具链和当前用户 NSIS 安装包 |
 
 ## 快速开始
 
@@ -140,61 +141,25 @@ swift run -c release
 
 如果目录中提供了打包应用，它位于 `release/Prism-SwiftUI-macOS.app`。使用 Swift Package Manager 构建不会把应用安装到 `/Applications`。
 
-### 3. 运行或打包 macOS Tauri 客户端
-
-要求：Rust、Cargo 和 Tauri CLI 2。
-
-~~~
-cd "Tauri Version"
-cargo tauri dev
-~~~
-
-创建 macOS 应用包：
-
-~~~
-cargo tauri build --bundles app
-~~~
-
-### 4. 构建 Windows 客户端
-
-请使用 Windows 11 或更高版本，并准备：
-
-- Rust MSVC 工具链（`x86_64-pc-windows-msvc`）
-- 安装“使用 C++ 的桌面开发”的 Visual Studio Build Tools
-- WebView2 Runtime
-- Tauri CLI 2
-
-在 PowerShell 中执行：
-
-~~~
-cd "Tauri Version\Windows Version"
-cargo tauri build
-~~~
-
-NSIS 安装包会写入 `src-tauri\target\release\bundle\nsis`。Windows 工程使用自己的平台配置，不依赖 macOS 配置文件。
-
 ## 本地数据与隐私
 
 棱镜默认把数据保存到：
 
 ~~~
 ~/Documents/Prism/
-├── conversations.json
+├── prism.sqlite3
 ├── config.json
-└── Data/
-    ├── person_archive.json
-    ├── emotion_timeline.json
-    ├── narrative_timeline.json
-    ├── blindspots.json
-    └── memory.json
+└── conversations.json.pre-sqlite.bak  # 旧数据首次导入时生成
 ~~~
 
-- 对话历史和索引是本地可读的 JSON 文件。
+- 对话历史和索引保存在一个本地 SQLite 数据库中，启用 WAL 日志和陈旧写入检测。
+- 本次更新后的首次启动会将每个已导入的旧 JSON 复制为相邻的 `.pre-sqlite.bak`；原 JSON 文件保持不变。
 - 没有内置遥测、分析或棱镜账号。
-- 附件只会在当前请求期间保留在内存中，不会写入 `conversations.json`。发送附件时，其内容会传输到你配置的 API 端点：图片作为图片数据，文本/代码文件作为文本内容。
+- 附件只会在当前请求期间保留在内存中，不会写入数据库。发送附件时，其内容会传输到你配置的 API 端点：图片作为图片数据，文本/代码文件作为文本内容。
 - 棱镜虽然在本地保留副本，但对话内容以及由此形成的用户画像数据（包括人物、疑似行为模式、情绪、记忆、盲点和叙事时间轴记录）会在模型功能运行时，通过你配置的 API Key 和端点上传到 DeepSeek。
-- 可以选择其他存储目录；支持的 macOS 工作流可以选择使用 iCloud Drive。
-- Tauri 客户端删除对话时，也会删除与之关联的本地归档记录。
+- 人物特征、盲点、画像和洞察都标注为暂定的模型观察，并显示证据。用户可在记忆面板逐条移除不接受的记录；移除不会删除原始对话。
+- 可以选择其他本地存储目录。内置 iCloud 存储与同步已移除；检测到旧 iCloud 目录时，应用会复制到本地导入目录，原目录不改动。
+- 删除对话时，也会删除与之关联的本地归档记录。
 
 你需要自行负责所选择的 API 提供商、端点、保留策略和凭据。棱镜无法控制 DeepSeek 对数据的处理、存储、保留、训练或删除政策。不要把密钥放进截图、导出日志或受版本控制的文件中。
 
@@ -216,20 +181,13 @@ Prism/
 │   ├── Package.swift
 │   ├── Sources/Prism/
 │   └── Prism.app
-├── Tauri Version/                 # macOS Tauri 客户端
-│   ├── src/
-│   ├── src-tauri/
-│   ├── macOS Version/Prism.app
-│   └── Windows Version/           # 独立 Windows 11+ 工程
 ├── assets/                        # 图标和截图
-├── release/                       # 打包的 macOS 应用
-│   ├── Prism-SwiftUI-macOS.app
-│   └── Prism-Tauri-macOS.app
+├── release/Prism-SwiftUI-macOS.app # 打包的 macOS 应用
 ├── README.md
 └── README_CN.md
 ~~~
 
-SwiftUI 版本使用 Swift Package Manager 和 Apple 框架构建。Tauri 版本使用 HTML/CSS/JavaScript 前端和 Rust 核心。各客户端保持产品行为一致，但窗口、存储路径和打包方式按平台分别处理。
+棱镜使用 Swift Package Manager 和 Apple 框架构建。
 
 ## 重要信息
 
@@ -238,15 +196,32 @@ SwiftUI 版本使用 Swift Package Manager 和 Apple 框架构建。Tauri 版本
 - 模型输出、分类结果和检索上下文可能不完美，请自行复核重要结论。
 - 棱镜不是医疗或急救产品。如果存在即时伤害风险，请联系当地急救服务或专业人员。
 
+## 近期更新 — 2026-09-12
+
+- 项目已收敛为原生 SwiftUI macOS 客户端及其正式应用包。
+- SwiftUI 客户端已统一使用本地 SQLite 主存储。
+- 首次导入旧 JSON 时会生成相邻备份；请求上下文裁剪不会再改写或截断原始对话。
+- 已移除内置 iCloud 存储与同步。发现旧 iCloud 目录时，会导入到本地目录，原目录保持不变。
+- 切换目录时若目标已有数据库会直接拒绝，避免覆盖；并发写入过期时会明确提示冲突。
+- 衍生记忆会记录来源消息 ID 和证据状态。提示规则要求保留更正、否定、不确定性与时间范围；这提高了可追溯性，但不能保证模型分析永远正确。
+
+## 今晚更新 — 2026-09-17
+
+- 三种回应方式现在共用同一套事实核验、关系建议、工具条件和安全守护；理性、平衡、温情只改变表达语气、共情位置和组织顺序，并使用一致的采样参数，减少同一事实因切换方式而出现不同判断。
+- 章节归纳、人物归纳和用户画像已经拆成相互衔接的 Worker：监督器先处理安全与回答质量信号；人物 Worker 处理名称、别名、关系称呼和证据；章节 Worker 只读取原始对话与既有章节；画像 Worker 只记录有明确证据的用户信息。
+- 不确定的人物别名不会静默合并。系统会保留候选、依据和“同一人/分开”决定；只有用户明确说“我”或“自己”时才归为用户本人。
+- 对话模型收敛为 `deepseek-flash` 与 `deepseek-v4-pro`：Flash 为默认模型并支持原生图片输入，Pro 保留为纯文本模型；旧模型 ID 会迁移到受支持的模型。
+- SQLite 作为唯一主存储后，导入旧 JSON 会保留相邻备份；写入使用事务和 WAL，并检测陈旧写入，切换数据目录时不会覆盖已有数据库。
+- 附件二进制只在当前请求期间保留；消息和文件名会写入本地记录，重新打开 App 后需要重新选择原文件。附件内容只会发送到用户配置的 API 端点。
+
 ## 后续方向
 
-棱镜的本地数据模型以及 SwiftUI/Tauri 之间的共享行为会继续完善，后续将集中在：
+棱镜的本地数据模型和原生 macOS 使用体验会继续完善，后续将集中在：
 
 - 更可靠的导入和导出流程
 - 更完善的本地归档备份与恢复控制
-- 更广泛的平台打包和自动化流程
+- 更可靠的 macOS 打包和发布流程
 - 更透明地展示检索证据和模型上下文
-- 继续完善原生客户端与 Tauri 客户端之间的功能一致性
 
 ## 许可证
 
@@ -255,3 +230,14 @@ SwiftUI 版本使用 Swift Package Manager 和 Apple 框架构建。Tauri 版本
 ## 作者
 
 棱镜由 [markbignews](https://github.com/markbignews) 创建和维护。
+
+
+### DeepSeek API catalog — 2026-09-12
+
+- `deepseek-flash`：DeepSeek V4.1 Flash，默认模型；原生图片输入。
+- `deepseek-v4-pro`：DeepSeek V4 Pro，保留为纯文本模型。输入区会明确提示此限制，并阻止带图片的 Pro 请求。
+- Prism 只保留这两个受维护的对话模型。已保存的退役或自定义对话模型 ID 会迁移到 Flash；官方的 `deepseek-v4-flash` 与 `deepseek-v4-flash-vision-exp` 也会迁移到 `deepseek-flash`。
+- Chat Completions and the base URL remain unchanged. Thinking uses explicit enabled/disabled and low/high/max effort. Tool-enabled history retains assistant reasoning, including final answers. Older archives that already lost reasoning cannot be reconstructed.
+- The launch announcement planned Pro retirement on September 14, but the current API guide and pricing page explicitly retain Pro. No timed Pro remapping is implemented. No undocumented `deepseek-v4.1-flash` or future Pro ID is added.
+
+Sources checked: [API guide](https://api-docs.deepseek.com/), [model catalog](https://api-docs.deepseek.com/quick_start/pricing/), [thinking compatibility](https://api-docs.deepseek.com/guides/thinking_mode/), [September 10 announcement](https://deepseek.com/news/deepseek-v4-1-flash/).

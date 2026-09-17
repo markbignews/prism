@@ -11,8 +11,10 @@ let package = Package(
         .executable(name: "Prism", targets: ["Prism"]),
     ],
     targets: [
+        .systemLibrary(name: "CSQLite", path: "Sources/CSQLite"),
         .executableTarget(
             name: "Prism",
+            dependencies: ["CSQLite"],
             path: "Sources/Prism",
             linkerSettings: [
                 // 打包要求：最低 macOS 15、最高 27（以 27 SDK 链接）。

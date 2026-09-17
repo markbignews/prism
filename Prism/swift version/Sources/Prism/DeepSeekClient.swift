@@ -44,6 +44,25 @@ private enum InstallationIdentity {
     }()
 }
 
+enum DeepSeekModels {
+    static let flash = "deepseek-flash"
+    static let pro = "deepseek-v4-pro"
+
+    static func canonical(_ model: String, baseURL: String) -> String {
+        guard URL(string: baseURL)?.host?.lowercased() == "api.deepseek.com" else { return model }
+        switch model {
+        case "deepseek-v4-flash", "deepseek-v4-flash-vision-exp": return flash
+        default: return model
+        }
+    }
+
+    /// Prism exposes only the two maintained conversation models. Saved custom
+    /// and retired selections fall back to Flash, which is the default.
+    static func supportedConversationModel(_ model: String) -> String {
+        model.trimmingCharacters(in: .whitespacesAndNewlines) == pro ? pro : flash
+    }
+}
+
 struct DeepSeekClient {
     var apiKey: String
     var baseURL: String
@@ -53,8 +72,8 @@ struct DeepSeekClient {
     var mode: ConversationMode = .balanced
     var responseLength: ResponseLength = .standard
 
-    private func contentValue(for message: ChatMessage, text: String) -> APIMessageContent {
-        guard message.role == .user, !message.attachments.isEmpty else {
+    private func contentValue(for message: ChatMessage, text: String, includeAttachments: Bool) -> APIMessageContent {
+        guard includeAttachments, message.role == .user, !message.attachments.isEmpty else {
             return .text(text)
         }
 
@@ -83,9 +102,14 @@ struct DeepSeekClient {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DeepSeekError.missingAPIKey
         }
-        let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelName = DeepSeekModels.canonical(model.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: baseURL)
         guard !modelName.isEmpty else {
             throw DeepSeekError.invalidModel
+        }
+        let latestUserMessage = messages.last(where: { $0.role == .user })
+        if modelName == DeepSeekModels.pro,
+           latestUserMessage?.attachments.contains(where: { $0.kind == .image }) == true {
+            throw DeepSeekError.api("DeepSeek V4 Pro 不支持图片输入，请切换到 DeepSeek V4.1 Flash 后重试。")
         }
         guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/chat/completions") else {
             throw DeepSeekError.invalidBaseURL
@@ -101,26 +125,17 @@ struct DeepSeekClient {
         // pending tool results that correspond to them.  Stale toolCalls from previous
         // turns (where tool messages were never persisted) must be stripped so the API
         // never sees a tool_calls message without matching tool messages after it.
-        let tail = messages.suffix(500)
+        // `buildWindowedMessages` already makes the token-aware context choice.
+        // A second, message-count cap silently discarded early dialogue first.
+        let tail = messages
         let lastAssistantInTail = tail.lastIndex(where: { $0.role == .assistant })
         let lastUserInTail = tail.lastIndex(where: { $0.role == .user })
         requestMessages += tail.enumerated().map { i, msg in
             let keepToolCalls = !toolResults.isEmpty && i == lastAssistantInTail
-            // Tauri parity: round-trip reasoning_content for assistant history
-            // so multi-turn thinking keeps the model's own prior chain (the
-            // DeepSeek API expects it when thinking is enabled). Only sent for
-            // assistant messages when thinking mode is on.
-            let reasoning: String?
-            // DeepSeek only requires reasoning_content to be replayed for
-            // assistant messages that actually made a tool call. Omitting
-            // ordinary final-answer reasoning keeps later prompts smaller
-            // without disabling thinking for the current request.
-            if parameters.thinkingEnabled, msg.role == .assistant,
-               msg.toolCalls != nil, let r = msg.reasoning, !r.isEmpty {
-                reasoning = r
-            } else {
-                reasoning = nil
-            }
+            // Tool-enabled thinking requires reasoning from every assistant turn,
+            // including final answers. Legacy records may have no saved reasoning.
+            let reasoning: String? = parameters.thinkingEnabled && tools?.isEmpty == false && msg.role == .assistant
+                ? (msg.reasoning ?? "") : nil
             var content = msg.role == .user
                 ? "[sentAt=\(AgentPrompt.transcriptTimestamp(msg.createdAt))]\n\(msg.content)"
                 : msg.content
@@ -134,7 +149,7 @@ struct DeepSeekClient {
                 }
                 content += dynamicContext
             }
-            return APIMessage(role: msg.role.rawValue, content: contentValue(for: msg, text: content),
+            return APIMessage(role: msg.role.rawValue, content: contentValue(for: msg, text: content, includeAttachments: i == lastUserInTail),
                               reasoningContent: reasoning,
                               toolCalls: keepToolCalls ? msg.toolCalls : nil)
         }
@@ -143,26 +158,21 @@ struct DeepSeekClient {
             requestMessages.append(APIMessage(role: "tool", content: .text(tr.content), toolCallID: tr.toolCallID, name: tr.name))
         }
 
-        let modeTemp = switch mode {
-        case .rational: 0.1
-        case .balanced: 0.35
-        case .warm: 0.6
-        }
-        let modeTopP = switch mode {
-        case .rational: 0.8
-        case .balanced: 0.9
-        case .warm: 0.95
-        }
+        // Response style must never change the model's sampling distribution.
+        // A single conservative configuration reduces divergence when a user
+        // asks the same question in Rational, Balanced, or Warm.
+        let stableTemperature = 0.2
+        let stableTopP = 0.95
 
         let body = ChatRequest(
             model: modelName,
             userID: InstallationIdentity.userID,
             messages: requestMessages,
-            temperature: modeTemp,
-            topP: modeTopP,
+            temperature: parameters.thinkingEnabled ? nil : stableTemperature,
+            topP: stableTopP,
             maxTokens: responseLength.maxTokens,
-            presencePenalty: 0,
-            frequencyPenalty: 0,
+            presencePenalty: nil,
+            frequencyPenalty: nil,
             thinking: ThinkingConfig(type: parameters.thinkingEnabled ? "enabled" : "disabled"),
             reasoningEffort: parameters.thinkingEnabled ? parameters.reasoningEffort : nil,
             stream: true,
@@ -272,7 +282,7 @@ struct DeepSeekClient {
     }
 
     /// Validate an API key against the provider's `/models` endpoint
-    /// (Tauri parity: `validate_api_key`). Returns normally on success,
+    /// Returns normally on success,
     /// throws on invalid key, network failure, or provider error.
     func validateAPIKey(apiKey: String, baseURL: String) async throws {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -348,7 +358,7 @@ struct DeepSeekClient {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DeepSeekError.missingAPIKey
         }
-        let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelName = DeepSeekModels.canonical(model.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: baseURL)
         guard !modelName.isEmpty else {
             throw DeepSeekError.invalidModel
         }
@@ -366,10 +376,10 @@ struct DeepSeekClient {
             userID: InstallationIdentity.userID,
             messages: messages,
             temperature: 0.3,
-            topP: 0.9,
+            topP: 1.0,
             maxTokens: maxTokens,
-            presencePenalty: 0,
-            frequencyPenalty: 0,
+            presencePenalty: nil,
+            frequencyPenalty: nil,
             thinking: ThinkingConfig(type: "disabled"),
             reasoningEffort: nil,
             stream: false,
@@ -450,11 +460,11 @@ private struct ChatRequest: Encodable {
     var model: String
     var userID: String
     var messages: [APIMessage]
-    var temperature: Double
+    var temperature: Double?
     var topP: Double
     var maxTokens: Int
-    var presencePenalty: Double
-    var frequencyPenalty: Double
+    var presencePenalty: Double?
+    var frequencyPenalty: Double?
     var thinking: ThinkingConfig?
     var reasoningEffort: String?
     var stream: Bool

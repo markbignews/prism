@@ -1,22 +1,5 @@
 import Foundation
 
-struct PersonTraitFinding: Equatable {
-    var pattern: String
-    var evidence: String
-    var confidence: Double
-    var scope: String
-}
-
-struct PersonFinding: Equatable {
-    var name: String
-    var mention: String
-    var role: String
-    var traits: [PersonTraitFinding]
-    var matchedPersonID: UUID?
-    var matchConfidence: Double
-    var isSelf: Bool
-}
-
 // MARK: - Unified Pre‑Pipeline (extension of ChatStore)
 
 extension ChatAgent {
@@ -92,6 +75,20 @@ extension ChatAgent {
         UserDefaults.standard.removeObject(forKey: "safety.hint.\(conversationID.uuidString)")
     }
 
+    /// A deliberately narrow fallback for an unavailable auxiliary analysis.
+    /// It preserves the safety gate for direct, urgent language without
+    /// turning an ordinary Flash outage into a refusal to answer every turn.
+    private func hasLocalSafetySignal(_ text: String) -> Bool {
+        let normalized = text.lowercased()
+        let directSignals = [
+            "自杀", "自殺", "想死", "不想活", "结束生命", "結束生命", "割腕", "自残", "自殘", "伤害自己", "傷害自己",
+            "杀了他", "殺了他", "杀人", "殺人", "伤害别人", "傷害別人", "我要打死", "我要殺",
+            "被囚禁", "被控制不能走", "无法离开", "無法離開", "救救我",
+            "suicide", "kill myself", "end my life", "self harm", "hurt myself", "kill him", "kill her", "hurt someone", "can't leave", "being held"
+        ]
+        return directSignals.contains { normalized.contains($0) }
+    }
+
     // MARK: - Unified Pre‑Pipeline (runs BEFORE main model, 1 Flash call)
 
     /// Result of the unified pre‑pipeline Flash call.
@@ -103,17 +100,19 @@ extension ChatAgent {
         // Safety crisis — separate from normal guard hints, triggers immediate override
         var safetyCrisis: Bool = false
         var safetyUncertain: Bool = false
+        /// The auxiliary Flash analysis did not produce a complete JSON result.
+        /// Normal turns may continue after a deterministic local safety check.
+        var analysisUnavailable: Bool = false
         var safetySignals: [String] = []
         var safetyHint: String = ""
         var safetyResources: String = ""
-        // Parsed archive data
+        // Parsed supervisor observations
         var emotions: [(segment: String, emotion: String, intensity: Double, confidence: Double?)] = []
-        var persons: [PersonFinding] = []
         var blindspotFindings: [(pattern: String, evidence: String, counterQuestion: String)] = []
     }
 
     /// System prompt for the unified pre‑pipeline Flash call.
-    /// Covers guard detection, emotion labeling, person extraction, and blindspot scanning
+    /// Covers safety, response-quality guard detection, emotion labeling, and blindspot scanning.
     /// in a single pass.
     var prePipelineSystemPrompt: String {
         """
@@ -170,27 +169,6 @@ extension ChatAgent {
         不标注不明显的情绪。
 
         ═══════════════════════════════════════
-        三、persons（人物与疑似行为模式提取）
-        ═══════════════════════════════════════
-        提取用户消息中提及的真实人物。每项含 mention（当前称呼）/ name（规范名称）/ role(ex-partner/家人/朋友/同事/其他)，role 必须来自用户原话或明确上下文，不要自行推断。
-        不输出泛化指代（如"他们""那些人"）。
-
-        注意自然共指和别名解析：用户可能不会明确说“这是同一个人”，而是自然地从姓名切换到昵称、关系称呼、代词或新称呼。
-        结合最近对话中的行为、关系、时间和已知别名判断是否指向同一人。若确定指向已知人物，输出该人物的 person_id 和规范 name，并把当前称呼放入 mention；不要新建条目。
-        只有在匹配置信度至少 0.75 时才输出 person_id；不确定时 person_id=null、match_confidence<0.75，并使用当前称呼作为 name。不要为了减少条目而强行合并两个可能不同的人。
-        如果人物是用户本人（例如“我叫小王”“大家现在叫我小李”），speaker 输出 self；其他人物输出 other。
-
-        对每个人物，可选地提取当前对话中有具体证据支持的行为模式。只使用以下 pattern ID，不要创造人格、心理疾病或依恋类型标签：
-        - control_autonomy：控制或限制对方自主
-        - communication_withdrawal：回避沟通、冷处理或消失
-        - invalidates_feelings：贬低、否定或无视感受
-        - boundary_violation：无视明确表达的边界、同意或拒绝
-        - guilt_pressure：通过愧疚、威胁失望或施压来推动对方
-        - promise_action_mismatch：承诺与实际行动持续不一致
-        - threat_or_coercion：有明确的威胁、胁迫或强迫行为
-        只有当当前上下文包含可观察行为时才输出 traits；用户的结论、一次模糊的不适或单纯的性格猜测不算证据。每项 trait 必须含 pattern / evidence / confidence(0.0-1.0) / scope(single_event|repeated_pattern)。evidence 是简短的原话或具体行为概述，不要编造；confidence 是证据强度，不是概率或诊断分数。所有 traits 都只是 suspected，留给用户确认。没有足够证据时 traits 返回 []。
-
-        ═══════════════════════════════════════
         输出格式 — 严格返回以下JSON，不要包含任何其他文字：
         ═══════════════════════════════════════
         {
@@ -202,14 +180,14 @@ extension ChatAgent {
             "action_hollow": {"flag":"ok|warning","matched_count":0,"persistent_count":0,"hint":""},
             "safety": {"flag":"ok|uncertain|crisis","signals":["..."],"suggest":"","resources":""}
           },
-          "emotions": [{"segment":"...","emotion":"...","intensity":0.0,"confidence":0.0}],
-          "persons": [{"mention":"...","name":"...","role":"...","speaker":"other","person_id":null,"match_confidence":0.0,"traits":[{"pattern":"...","evidence":"...","confidence":0.0,"scope":"single_event"}]}]
+          "emotions": [{"segment":"...","emotion":"...","intensity":0.0,"confidence":0.0}]
         }
-        如果某维度正常，flag 为 ok，hint 为空。只标记明确的模式，不猜测。emotions/persons 数组为空时返回 []。
+        如果某维度正常，flag 为 ok，hint 为空。只标记明确的模式，不猜测。emotions 数组为空时返回 []。
         """
     }
 
-    /// Run the unified pre‑pipeline: one Flash API call covering guard + emotion + person + blindspots.
+    /// Run the synchronous supervisor: one small Flash call for safety, reply
+    /// quality, emotions, and blindspots. People are analyzed separately.
     func runPrePipeline(for conversationID: UUID, requestSentAt: Date, settings: AppSettings) async -> PrePipelineResult {
         var result = PrePipelineResult()
         result.safetyUncertain = true
@@ -233,15 +211,8 @@ extension ChatAgent {
             return result
         }
 
-        // Build user content with context
-        let knownPersons = personArchive
-            .filter { $0.conversationIDs?.contains(conversationID) == true }
-            .map { person in
-                let aliases = person.aliases.isEmpty ? "（无别名）" : person.aliases.joined(separator: "、")
-                let speaker = person.isSelf ? "self" : "other"
-                return "- person_id=\(person.id.uuidString) canonical=\(person.name) aliases=[\(aliases)] speaker=\(speaker) role=\(person.role)"
-            }
-            .joined(separator: "\n")
+        // Build supervisor context without entity records. Person resolution is
+        // intentionally a separate background pipeline.
         let currentBlindspots = blindspots.filter { $0.conversationID == conversationID }
         let blindspotsHistory = currentBlindspots.isEmpty
             ? "（无历史盲点记录）"
@@ -262,8 +233,6 @@ extension ChatAgent {
         最近对话：
         \(conversationText)
 
-        已知人物：\(knownPersons.isEmpty ? "（无）" : knownPersons)
-
         历史盲点记录（用于 action_hollow 比对和 blindspots 严重程度判断）：
         \(blindspotsHistory)
         \(safetyContext)
@@ -281,11 +250,13 @@ extension ChatAgent {
             let raw = try await client.summarize(systemPrompt: prePipelineSystemPrompt, userContent: userContent)
             result.rawJSON = raw
             if !parsePrePipelineJSON(raw, into: &result, conversationID: conversationID) {
-                result.safetyUncertain = true
+                result.analysisUnavailable = true
+                result.safetyUncertain = hasLocalSafetySignal(lastUserText)
             }
         } catch {
             print("[PrePipeline] ⚠ Flash API error: \(error.localizedDescription)")
-            result.safetyUncertain = true
+            result.analysisUnavailable = true
+            result.safetyUncertain = hasLocalSafetySignal(lastUserText)
         }
 
         return result
@@ -301,9 +272,8 @@ extension ChatAgent {
     func applyPrePipelineResults(_ result: PrePipelineResult, for conversationID: UUID, requestSentAt: Date) async {
         // Do not persist inferred profiles or relationship hypotheses when the
         // safety pass was incomplete or the turn was escalated to crisis mode.
-        guard !result.safetyUncertain, !result.safetyCrisis else { return }
-        guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return }
-        let conv = conversations[index]
+        guard !result.analysisUnavailable, !result.safetyUncertain, !result.safetyCrisis else { return }
+        guard conversations.contains(where: { $0.id == conversationID }) else { return }
 
         // Merge emotions
         for e in result.emotions {
@@ -317,63 +287,6 @@ extension ChatAgent {
             ))
         }
         if emotionTimeline.count > 200 { emotionTimeline = Array(emotionTimeline.suffix(200)) }
-
-        // Merge persons (cap at 200 unique entries)
-        for p in result.persons {
-            let mention = p.mention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? p.name : p.mention
-            let incomingTraits = p.traits.map { finding in
-                PersonTraitRecord(
-                    pattern: finding.pattern,
-                    evidence: [finding.evidence],
-                    confidence: finding.confidence,
-                    scope: finding.scope,
-                    status: "suspected",
-                    occurrenceCount: 1,
-                    firstObservedAt: requestSentAt,
-                    lastObservedAt: requestSentAt
-                )
-            }
-            let resolvedIndex = personArchive.firstIndex { person in
-                guard person.conversationIDs?.contains(conversationID) == true,
-                      person.isSelf == p.isSelf else { return false }
-                if let matchedID = p.matchedPersonID,
-                   p.matchConfidence >= 0.75,
-                   person.id == matchedID {
-                    return true
-                }
-                let labels = [person.name] + person.aliases
-                return labels.contains { normalizedPersonLabel($0) == normalizedPersonLabel(p.name) }
-                    || labels.contains { normalizedPersonLabel($0) == normalizedPersonLabel(mention) }
-            }
-            if let idx = resolvedIndex {
-                personArchive[idx].lastMentionedAt = requestSentAt
-                personArchive[idx].mentionCount += 1
-                personArchive[idx].notes.append("\(conv.title): \(p.role)")
-                if !mention.isEmpty,
-                   normalizedPersonLabel(mention) != normalizedPersonLabel(personArchive[idx].name),
-                   !personArchive[idx].aliases.contains(where: { normalizedPersonLabel($0) == normalizedPersonLabel(mention) }) {
-                    personArchive[idx].aliases.append(mention)
-                    personArchive[idx].aliases = Array(personArchive[idx].aliases.suffix(12))
-                }
-                mergePersonTraits(&personArchive[idx].traits, incoming: incomingTraits)
-            } else {
-                personArchive.append(PersonRecord(
-                    name: p.name,
-                    role: p.role,
-                    firstMentionedAt: requestSentAt,
-                    lastMentionedAt: requestSentAt,
-                    aliases: mention == p.name ? [] : [mention],
-                    isSelf: p.isSelf,
-                    traits: incomingTraits,
-                    conversationIDs: [conversationID]
-                ))
-            }
-        }
-        // Trim: keep 200 most recently mentioned persons
-        if personArchive.count > 200 {
-            personArchive.sort { $0.lastMentionedAt > $1.lastMentionedAt }
-            personArchive = Array(personArchive.prefix(200))
-        }
 
         // Merge blindspots
         for f in result.blindspotFindings {
@@ -398,35 +311,7 @@ extension ChatAgent {
             blindspots = Array(blindspots.prefix(300))
         }
 
-        saveArchives()
-    }
-
-    private func normalizedPersonLabel(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    /// Merge behavior-pattern observations without turning them into confirmed labels.
-    private func mergePersonTraits(_ existing: inout [PersonTraitRecord], incoming: [PersonTraitRecord]) {
-        for observation in incoming {
-            guard !observation.pattern.isEmpty, !observation.evidence.isEmpty else { continue }
-            if let index = existing.firstIndex(where: { $0.pattern == observation.pattern }) {
-                let previousCount = max(existing[index].occurrenceCount, 1)
-                let newCount = previousCount + 1
-                existing[index].confidence = ((existing[index].confidence * Double(previousCount)) + observation.confidence) / Double(newCount)
-                existing[index].occurrenceCount = newCount
-                existing[index].lastObservedAt = observation.lastObservedAt
-                existing[index].scope = newCount > 1 || observation.scope == "repeated_pattern" ? "repeated_pattern" : "single_event"
-                existing[index].status = "suspected"
-                for snippet in observation.evidence where !existing[index].evidence.contains(snippet) {
-                    existing[index].evidence.append(snippet)
-                }
-                existing[index].evidence = Array(existing[index].evidence.suffix(5))
-            } else {
-                existing.append(observation)
-            }
-        }
-        existing.sort { $0.lastObservedAt > $1.lastObservedAt }
-        existing = Array(existing.prefix(8))
+        saveSupervisorObservations()
     }
 
     // MARK: - Pre‑Pipeline JSON Parser
@@ -518,54 +403,6 @@ extension ChatAgent {
             }
         }
 
-        // ── Parse persons and evidence-backed behavior patterns ──
-        if let persons = obj["persons"] as? [[String: Any]] {
-            result.persons = persons.compactMap { p -> PersonFinding? in
-                guard let n = p["name"] as? String,
-                      let r = p["role"] as? String else { return nil }
-                let allowedPatterns: Set<String> = [
-                    "control_autonomy",
-                    "communication_withdrawal",
-                    "invalidates_feelings",
-                    "boundary_violation",
-                    "guilt_pressure",
-                    "promise_action_mismatch",
-                    "threat_or_coercion"
-                ]
-                let traits = (p["traits"] as? [[String: Any]] ?? []).compactMap { trait -> PersonTraitFinding? in
-                    guard let pattern = trait["pattern"] as? String,
-                          allowedPatterns.contains(pattern),
-                          let evidence = trait["evidence"] as? String,
-                          !evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-                    let scope = (trait["scope"] as? String) == "repeated_pattern" ? "repeated_pattern" : "single_event"
-                    let confidence = min(max(trait["confidence"] as? Double ?? 0.0, 0.0), 1.0)
-                    return PersonTraitFinding(
-                        pattern: pattern,
-                        evidence: String(evidence.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240)),
-                        confidence: confidence,
-                        scope: scope
-                    )
-                }
-                let mention: String = {
-                    guard let raw = p["mention"] as? String else { return n }
-                    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return trimmed.isEmpty ? n : trimmed
-                }()
-                let matchedPersonID = (p["person_id"] as? String).flatMap(UUID.init(uuidString:))
-                let matchConfidence = min(max(p["match_confidence"] as? Double ?? 0.0, 0.0), 1.0)
-                let isSelf = (p["speaker"] as? String)?.lowercased() == "self"
-                return PersonFinding(
-                    name: n,
-                    mention: mention,
-                    role: r,
-                    traits: traits,
-                    matchedPersonID: matchedPersonID,
-                    matchConfidence: matchConfidence,
-                    isSelf: isSelf
-                )
-            }
-        }
-
         // ── Parse blindspot findings from guard ──
         if let guardObj = obj["guard"] as? [String: Any],
            let blindspotsObj = guardObj["blindspots"] as? [String: Any],
@@ -578,7 +415,7 @@ extension ChatAgent {
             }
         }
 
-        print("[PrePipeline] guard:\(result.guardWarningDimensions.count)warnings emotions:\(result.emotions.count) persons:\(result.persons.count) blindspots:\(result.blindspotFindings.count) safetyUncertain:\(result.safetyUncertain)")
+        print("[SupervisorPipeline] guard:\(result.guardWarningDimensions.count)warnings emotions:\(result.emotions.count) blindspots:\(result.blindspotFindings.count) safetyUncertain:\(result.safetyUncertain)")
         return true
     }
 
