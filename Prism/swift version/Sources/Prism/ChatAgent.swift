@@ -822,11 +822,23 @@ final class ChatAgent {
                     await Task.yield()
                 }
             } else if preResult.safetyCrisis {
-                finalContent = buildSafetyResponse(
+                // Persist the safety state before composing the response so the
+                // next turn is re-checked in safety mode. The response composer
+                // may personalize wording, but it cannot call tools or resume
+                // the main relationship-analysis path.
+                await saveSafetyContext(
+                    for: index,
+                    hint: preResult.safetyHint,
+                    resources: preResult.safetyResources
+                )
+                let latestUserText = conversations[index].messages
+                    .last(where: { $0.role == .user })?.content ?? ""
+                finalContent = await generateSafetyResponse(
+                    userMessage: latestUserText,
                     signals: preResult.safetySignals,
                     hint: preResult.safetyHint,
                     resources: preResult.safetyResources,
-                    language: settings.language
+                    settings: settings
                 )
                 finalReasoning = "⚠️ 安全干预 — 检测到严重安全信号，叙事分析已暂停。"
 
@@ -867,12 +879,16 @@ final class ChatAgent {
                 $0.role == .assistant
                     && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             })
+            let psychologySearchAvailable = URL(string: settings.baseURL)?.host?.lowercased() == "api.deepseek.com"
+            let availableTools = psychologySearchAvailable
+                ? ToolRegistry.definitions
+                : ToolRegistry.definitions.filter { $0.function.name != "search_psychology" }
             let toolsForRound: (Int) -> [ToolDef]? = { round in
                 // A new conversation has no history to retrieve, but it can
                 // already contain a clear autobiographical time node.
                 (round == 0 && !hasCompletedTurn)
                     ? [.manageNarrativeTimeline]
-                    : ToolRegistry.definitions
+                    : availableTools
             }
 
             // Reserve one final, tool-free request after the capped execution

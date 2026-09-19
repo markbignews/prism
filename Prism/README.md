@@ -43,6 +43,7 @@ Prism brings together:
 - Emotion tracking, narrative timelines, chapters, people, memories, and blindspots
 - Three response styles: Rational, Balanced, and Warm; they share facts and safety boundaries and change presentation only
 - A local safety guard that can interrupt the normal model flow when a crisis signal is detected
+- On-demand psychology research search through DeepSeek's official web search only; no third-party search service is included
 - Local SQLite persistence with no built-in telemetry, analytics, or account system
 
 ## Highlights
@@ -58,6 +59,10 @@ An event is placed on the narrative timeline only when its date or period comes 
 ### Find patterns with evidence
 
 The quality guard checks for explanation loops, emotional spirals, intent–action gaps, over-agreement, and missing concrete facts. Warnings are passed to the main model as structured guidance, so the response can stay grounded without replacing the model's judgment.
+
+### Look up psychology evidence when needed
+
+When a question clearly needs psychological research, concept definitions, or professional material, the main model can call `search_psychology`. Prism restricts the query to psychology, mental-health, and relationship-communication topics, removes emails, links, and long numeric strings, and sends it through DeepSeek's official Anthropic Web Search endpoint. It does not use Semantic Scholar, Brave, or a Prism-operated search proxy. Ordinary relationship analysis does not search automatically, and safety-crisis turns never search. Results include source links, and the main model is instructed to separate findings, source claims, and inferences about the user's situation.
 
 ### Mark tentative behavior patterns for people
 
@@ -97,6 +102,7 @@ The current packaged release is `v1.0.16`. Updated source builds use **DeepSeek 
 4. After the reply, the people worker updates aliases and evidence without delaying the conversation.
 5. At the chapter boundary, the chapter worker summarizes the transcript; the profile worker then records only evidence-backed explicit user context.
 6. Local tools can retrieve chapters, memories, people, emotions, or narrative-time events when the response needs them.
+7. When a reply clearly needs psychology evidence, the main model can call DeepSeek's official web search; crisis mode never calls search.
 
 The safety path has priority over the normal response path. When a crisis signal is detected, Prism provides a localized safety response and does not ask the main model to continue the conversation as usual.
 
@@ -213,6 +219,12 @@ Prism is built with Swift Package Manager and Apple frameworks.
 - Conversation models are limited to `deepseek-flash` and `deepseek-v4-pro`. Flash is the default with native image input; Pro remains text-only. Retired model IDs migrate to a supported model.
 - SQLite is now the single primary store. Legacy JSON imports keep neighbouring backups; writes use transactions and WAL with stale-writer detection, and changing the data directory never overwrites an existing database.
 - Attachment binaries are kept only for the current request. The message and file name remain in the local record, while reopening the app requires selecting the original file again. Attachment contents are sent only to the API endpoint configured by the user.
+
+## This update — 2026-09-19
+
+- Added the on-demand `search_psychology` tool. It uses only DeepSeek's official web search when a question needs psychology research evidence; it does not add a third-party search provider, and it stays disabled for custom-compatible endpoints and crisis mode.
+- Safety responses now use constrained dynamic wording with a fixed fallback. If the safety check fails, ordinary relationship analysis pauses and the crisis state is persisted for the next-turn review.
+- Rebuilt and ad-hoc signed `release/Prism-SwiftUI-macOS.app`. Build and signature verification passed; the live API search path has not been smoke-tested with a real key.
 
 ## Roadmap
 

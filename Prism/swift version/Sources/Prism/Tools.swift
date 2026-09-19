@@ -2,8 +2,9 @@ import Foundation
 
 // MARK: - Tool Registry
 
-/// All retrieval tools available to the main model. Each tool reads from the
-/// app's on‑disk JSON archives and returns a JSON result string.
+/// Retrieval and evidence tools available to the main model. Local tools read
+/// the app's archives; search_psychology calls only DeepSeek's official search
+/// endpoint and returns a JSON result string.
 /// Quality guard checks run automatically in the pre‑pipeline — they are not
 /// exposed as tools.
 enum ToolRegistry {
@@ -15,6 +16,7 @@ enum ToolRegistry {
         .searchChapters,
         .fetchChapterMessages,
         .searchMemory,
+        .searchPsychology,
         .manageNarrativeTimeline,
     ]
 
@@ -84,6 +86,12 @@ enum ToolRegistry {
                 result = encodeMemoryResults(entries)
             } else {
                 result = searchMemory(query: args["query"] ?? "", store: store, limit: n)
+            }
+        case "search_psychology":
+            if let settings {
+                result = await DeepSeekWebSearchClient.search(query: args["query"] ?? "", settings: settings)
+            } else {
+                result = #"{"error":"DeepSeek official search requires the current app settings."}"#
             }
         case "manage_narrative_timeline":
             result = manageNarrativeTimeline(args: args, store: store)
@@ -380,6 +388,14 @@ struct ToolDef: Encodable {
         parameters: .init(properties: [
             "query": .init(type: "string", description: "搜索关键词或短语，留空返回最近记忆"),
             "count": .init(type: "integer", description: "返回条数，默认10"),
+        ], required: ["query"])
+    ))
+
+    static let searchPsychology = ToolDef(function: .init(
+        name: "search_psychology",
+        description: "仅在用户的问题明确需要心理学、心理健康或关系沟通方面的研究依据、概念解释或较新的专业资料时调用。搜索由 DeepSeek 官方联网搜索完成，不访问其他搜索服务。查询必须改写成不含姓名、联系方式和可识别细节的中性研究问题；不要用它证明某个人的诊断、人格或主观动机。危机或安全风险下不要调用。返回结果后必须区分研究发现、来源陈述和对用户处境的推断，并保留来源链接。",
+        parameters: .init(properties: [
+            "query": .init(type: "string", description: "脱敏后的心理学研究问题，例如“亲密关系中的回应不一致与关系不确定感有哪些研究发现”"),
         ], required: ["query"])
     ))
 
