@@ -46,7 +46,13 @@ If using the checked-in app, open `Prism/release/Prism-SwiftUI-macOS.app`. It ma
 
 On first launch, configure your API key, endpoint, and models in onboarding or Settings. The current defaults use the DeepSeek endpoint and `deepseek-flash`; Prism does not include an API key or an offline model.
 
+Settings automatically discovers models using the configured provider’s `GET /models` endpoint, with manual refresh and editable model IDs. Flash models appear first. Valid deliberate selections are preserved; unavailable selections prefer an available Flash model. Conversation and auxiliary models can be selected separately.
+
+Safety decisions use context, including negation, quotations, past events and present danger. An unavailable or uncertain auxiliary check leaves the main model responsible for judging the context; keywords do not select a crisis template. Timeline writes require reviewing an event preview and clicking Save.
+
 Model requests send the required messages, supplied attachments, and relevant analysis or retrieved context to the configured provider. Only upload information you are authorized to share. Outputs can be incomplete or wrong; Prism is not a therapy, diagnostic, or emergency service.
+
+This fix passed 18 automated regression tests, a Release build, and local signature verification. Live model and native UI integration checks have not been performed.
 
 ## Source
 

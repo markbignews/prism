@@ -736,6 +736,12 @@ struct ChatView: View {
                     .padding(.bottom, 4)
                 }
 
+                if !chatStore.isSending, let proposal = chatStore.pendingNarrativeEvent {
+                    NarrativeEventApprovalView(proposal: proposal)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
+
                 ComposerView(
                     draft: $draft,
                     attachments: $draftAttachments,
@@ -940,7 +946,7 @@ struct ChatView: View {
 
             // Keep only enough permanent clearance for the floating composer.
             Color.clear
-                .frame(height: 60)
+                .frame(height: chatStore.pendingNarrativeEvent == nil ? 60 : 300)
                 .id(Self.latestMessageScrollTarget)
                 .accessibilityHidden(true)
 

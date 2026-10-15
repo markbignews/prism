@@ -152,11 +152,7 @@ struct OnboardingView: View {
             } else if currentPage == 4 {
                 // API Key page: dedicated save button
                 Button {
-                    settings.apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                    apiKeySaved = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        goToNextPage()
-                    }
+                    saveAndAdvance()
                 } label: {
                     Label(
                         apiKeySaved ? "✓" : L10n.text(.save, settings.language),
@@ -559,6 +555,7 @@ extension OnboardingView {
         guard !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         settings.apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         apiKeySaved = true
+        Task { await settings.refreshModels() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             goToNextPage()
         }
@@ -582,6 +579,8 @@ extension OnboardingView {
                 try await client.validateAPIKey(apiKey: key, baseURL: settings.baseURL)
                 if !Task.isCancelled {
                     validationState = .success
+                    settings.apiKey = key
+                    await settings.refreshModels()
                 }
             } catch {
                 if !Task.isCancelled {

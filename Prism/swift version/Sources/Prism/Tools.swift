@@ -42,7 +42,7 @@ enum ToolRegistry {
     }
 
     /// Execute a retrieval tool call locally and return the result.
-    /// Search tools use Flash reranking for semantic understanding when settings are provided.
+    /// Local search uses keyword candidates; the main model interprets returned evidence.
     @MainActor
     static func execute(
         name: String,
@@ -109,7 +109,7 @@ enum ToolRegistry {
     @MainActor private static func manageNarrativeTimeline(args: [String: String], store: ChatAgent) -> String {
         let action = args["action"] ?? "list"
         if action == "list" {
-            let events = store.narrativeEvents(for: store.selectedConversationID)
+            let events = store.narrativeEvents(for: store.activeToolConversationID ?? store.selectedConversationID)
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             guard let data = try? encoder.encode(events),
@@ -117,44 +117,11 @@ enum ToolRegistry {
             return string
         }
 
-        let confirmed = args["confirmed"]?.lowercased() == "true"
-        let latestUserText = store.selectedConversationID.flatMap { conversationID in
-            store.conversations.first(where: { $0.id == conversationID })?.messages.last(where: { $0.role == .user })?.content
-        }?.lowercased() ?? ""
-        let negative = [
-            "不要保存", "不保存", "别保存", "无需保存", "不用保存", "不要写入",
-            "don't save", "do not save", "don't write", "do not write"
-        ]
-        let affirmative = [
-            "确认保存", "确认写入", "可以保存", "请保存", "保存到时间轴", "写入时间轴", "记入时间轴",
-            "确认", "confirm save", "yes, save", "save it", "save to timeline", "write to timeline", "please save"
-        ]
-        let looksLikeQuestion = latestUserText.contains("吗") || latestUserText.contains("?") || latestUserText.contains("？")
-        let explicitConfirmation = confirmed
-            && !negative.contains(where: { latestUserText.contains($0) })
-            && !looksLikeQuestion
-            && affirmative.contains(where: { latestUserText.contains($0) })
-        guard explicitConfirmation else {
-            return #"{"pending_confirmation":true,"instruction":"Ask the user to confirm saving this event. Do not write it yet."}"#
+        guard action == "upsert" else { return #"{"error":"unknown timeline action"}"# }
+        guard store.proposeNarrativeEvent(arguments: args) else {
+            return #"{"error":"a title, clear time label and valid event ID are required"}"#
         }
-
-        let eventID = args["eventId"].flatMap(UUID.init(uuidString:))
-        guard let event = store.upsertNarrativeEvent(
-            eventID: eventID,
-            title: args["title"] ?? "",
-            summary: args["summary"] ?? "",
-            startLabel: args["startLabel"] ?? "",
-            endLabel: args["endLabel"] ?? "",
-            timeKind: args["timeKind"] ?? "period",
-            sortIndex: Int(args["sortIndex"] ?? "10") ?? 10
-        ) else {
-            return #"{"error":"title and a clear time label are required; ask the user to clarify before writing"}"#
-        }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(event),
-              let string = String(data: data, encoding: .utf8) else { return #"{"saved":true}"# }
-        return #"{"saved":true,"event":\#(string)}"#
+        return #"{"pending_confirmation":true,"instruction":"A native review card will appear after this reply. The event is NOT saved. The user must review it and click Save; do not ask for a magic phrase or claim it is saved."}"#
     }
 
     /// Encode memory entries as JSON for tool response.
@@ -182,7 +149,7 @@ enum ToolRegistry {
         guard !name.isEmpty else {
             return #"{"found":false,"reason":"empty name"}"#
         }
-        guard let conversationID = store.selectedConversationID,
+        guard let conversationID = store.activeToolConversationID ?? store.selectedConversationID,
               let person = archive.first(where: {
                   ($0.name.localizedCaseInsensitiveContains(name)
                       || $0.aliases.contains(where: { $0.localizedCaseInsensitiveContains(name) }))
@@ -202,7 +169,7 @@ enum ToolRegistry {
     /// Return recent emotional trajectory — raw data only, model judges the trend.
     @MainActor private static func emotionTimeline(count: Int, store: ChatAgent) -> String {
         let timeline = store.emotionTimeline
-            .filter { $0.conversationID == store.selectedConversationID }
+            .filter { $0.conversationID == (store.activeToolConversationID ?? store.selectedConversationID) }
             .suffix(count)
         var result: [[String: Any]] = []
         for entry in timeline {
@@ -401,7 +368,7 @@ struct ToolDef: Encodable {
 
     static let manageNarrativeTimeline = ToolDef(function: .init(
         name: "manage_narrative_timeline",
-        description: "读取或写入用户叙述中事件实际发生的时间轴，不使用消息发送时间。用户给出明确的具体日期、时间段（如高二期间）或两者混合时使用。若时间归属不清且会影响排序，先向用户提一个澄清问题，不要写入。写入或修改前必须得到用户明确确认，并将 confirmed 设为 true；补充旧事件前先 action=list，再用 eventId 更新。",
+        description: "读取或写入用户叙述中事件实际发生的时间轴，不使用消息发送时间。用户给出明确的具体日期、时间段（如高二期间）或两者混合时使用。若时间归属不清且会影响排序，先向用户提一个澄清问题，不要写入。写入或修改会生成待用户点击确认的原生预览卡片，点击前不得声称已保存；补充旧事件前先 action=list，再用 eventId 更新。",
         parameters: .init(properties: [
             "action": .init(type: "string", description: "list 或 upsert"),
             "eventId": .init(type: "string", description: "更新已有节点时填写 list 返回的 ID；新增留空"),
@@ -411,7 +378,6 @@ struct ToolDef: Encodable {
             "endLabel": .init(type: "string", description: "可选结束时间；单点事件留空"),
             "timeKind": .init(type: "string", description: "period、date 或 mixed"),
             "sortIndex": .init(type: "integer", description: "按经历先后排序的整数，建议10、20、30；插入旧事件可用15等"),
-            "confirmed": .init(type: "boolean", description: "只有用户在当前消息明确确认保存时才设为 true"),
         ], required: ["action"])
     ))
 }

@@ -3,10 +3,10 @@ import Foundation
 @MainActor
 final class AppSettings: ObservableObject {
     @Published var apiKey = "" {
-        didSet { saveConfig() }
+        didSet { if oldValue != apiKey { invalidateModelCatalog() }; saveConfig() }
     }
     @Published var baseURL = "https://api.deepseek.com" {
-        didSet { saveConfig() }
+        didSet { if oldValue != baseURL { invalidateModelCatalog() }; saveConfig() }
     }
     @Published var model = "deepseek-flash" {
         didSet { saveConfig() }
@@ -55,6 +55,64 @@ final class AppSettings: ObservableObject {
     @Published private(set) var providerBalance: DeepSeekBalanceResponse? = nil
     @Published private(set) var balanceUnavailable = false
 
+    @Published private(set) var availableModels: [ProviderModel] = []
+    @Published private(set) var isFetchingModels = false
+    @Published private(set) var modelCatalogError: String?
+    // An opaque revision lets SwiftUI debounce changes without exposing keys as task IDs.
+    @Published private(set) var modelCatalogRevision = UUID()
+    private var catalogRequestID = UUID()
+
+    var usesFlashParameters: Bool {
+        model.localizedCaseInsensitiveContains("flash") || availableModels.first(where: { $0.id == model })?.isFlash == true
+    }
+
+    var modelChoices: [ProviderModel] {
+        var choices = availableModels
+        if choices.isEmpty, URL(string: baseURL)?.host?.lowercased() == "api.deepseek.com" {
+            choices = [ProviderModel(id: DeepSeekModels.flash, name: "DeepSeek V4.1 Flash"),
+                       ProviderModel(id: DeepSeekModels.pro, name: "DeepSeek V4 Pro")]
+        }
+        for id in [model, flashModel] where !id.isEmpty && !choices.contains(where: { $0.id == id }) {
+            choices.append(ProviderModel(id: id))
+        }
+        return ProviderModel.sorted(choices)
+    }
+
+    private func invalidateModelCatalog() {
+        catalogRequestID = UUID()
+        availableModels = []
+        modelCatalogError = nil
+        isFetchingModels = false
+        modelCatalogRevision = UUID()
+    }
+
+    /// Re-check credentials and request identity after suspension so a stale
+    /// provider response cannot change a newly entered provider's selections.
+    func refreshModels(client: ModelCatalogClient = ModelCatalogClient()) async {
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let requestID = UUID()
+        catalogRequestID = requestID
+        let requestKey = apiKey
+        let requestBase = baseURL
+        let requestModel = model
+        let requestAuxiliary = flashModel
+        isFetchingModels = true
+        modelCatalogError = nil
+        defer { if catalogRequestID == requestID { isFetchingModels = false } }
+        do {
+            let models = try await client.fetch(apiKey: requestKey, baseURL: requestBase)
+            guard !Task.isCancelled, catalogRequestID == requestID,
+                  apiKey == requestKey, baseURL == requestBase else { return }
+            availableModels = models
+            // Keep a valid deliberate selection. Missing/default models choose Flash first.
+            if model == requestModel { model = ProviderModel.selection(current: model, from: models) }
+            if flashModel == requestAuxiliary { flashModel = ProviderModel.selection(current: flashModel, from: models) }
+        } catch {
+            guard !Task.isCancelled, catalogRequestID == requestID else { return }
+            modelCatalogError = L10n.text(.modelListFailure, language)
+        }
+    }
+
     @Published var storageError: String?
     var canChangeStorage: () -> Bool = { true }
 
@@ -83,18 +141,18 @@ final class AppSettings: ObservableObject {
 
     // MARK: - Init
 
-    init() {
+    init(storagePath: String? = nil) {
         let defaultDataPath = Self.localDefaultPath
-        dataPath = UserDefaults.standard.string(forKey: "storage.dataPath") ?? defaultDataPath
+        dataPath = storagePath ?? UserDefaults.standard.string(forKey: "storage.dataPath") ?? defaultDataPath
         do {
             dataPath = try SQLiteStore.localRoot(URL(fileURLWithPath: dataPath)).path
-            UserDefaults.standard.set(dataPath, forKey: "storage.dataPath")
+            if storagePath == nil { UserDefaults.standard.set(dataPath, forKey: "storage.dataPath") }
         } catch { storageError = error.localizedDescription }
         PrismLog.configure(dataPath: dataPath)
         UsageStatsStore.shared.configure(dataPath: dataPath)
 
         // Migrate legacy UserDefaults keys → config.json
-        let legacyKey = UserDefaults.standard.string(forKey: "deepseek.apiKey") ?? ""
+        let legacyKey = storagePath == nil ? (UserDefaults.standard.string(forKey: "deepseek.apiKey") ?? "") : ""
 
         // Load from config.json in data directory
         loadConfig(legacyAPIKey: legacyKey)
@@ -114,7 +172,7 @@ final class AppSettings: ObservableObject {
     /// Refresh the DeepSeek account balance in the background. The endpoint
     /// returns account metadata only, so this does not consume model tokens.
     func refreshProviderBalance() async {
-        let parameters = model.lowercased().contains("flash") ? flashParameters : self.parameters
+        let parameters = usesFlashParameters ? flashParameters : self.parameters
         let client = DeepSeekClient(
             apiKey: apiKey,
             baseURL: baseURL,
@@ -170,14 +228,11 @@ final class AppSettings: ObservableObject {
         language = AppLanguage(rawValue: config.language) ?? .simplifiedChinese
         parameters = config.parameters
         flashParameters = config.flashParameters
-        // Prism intentionally maintains the two current conversation models.
-        // Retired aliases and past custom selections migrate to Flash.
-        let supportedModel = DeepSeekModels.supportedConversationModel(
-            DeepSeekModels.canonical(model, baseURL: baseURL)
-        )
-        let migratedModelDefaults = supportedModel != model || flashModel != DeepSeekModels.flash
-        model = supportedModel
-        flashModel = DeepSeekModels.flash
+        let canonicalModel = DeepSeekModels.supportedConversationModel(DeepSeekModels.canonical(model, baseURL: baseURL))
+        let canonicalAuxiliary = DeepSeekModels.supportedConversationModel(DeepSeekModels.canonical(flashModel, baseURL: baseURL))
+        let migratedModelDefaults = canonicalModel != model || canonicalAuxiliary != flashModel
+        model = canonicalModel
+        flashModel = canonicalAuxiliary
         summaryDialogCount = config.summaryDialogCount
         contextWindow = config.contextWindow
         enableLogging = config.enableLogging

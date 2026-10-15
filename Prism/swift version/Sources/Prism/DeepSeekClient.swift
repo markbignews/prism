@@ -56,10 +56,10 @@ enum DeepSeekModels {
         }
     }
 
-    /// Prism exposes only the two maintained conversation models. Saved custom
-    /// and retired selections fall back to Flash, which is the default.
+    /// Preserve discovered and manually entered model IDs across restarts.
     static func supportedConversationModel(_ model: String) -> String {
-        model.trimmingCharacters(in: .whitespacesAndNewlines) == pro ? pro : flash
+        let cleaned = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? flash : cleaned
     }
 }
 
@@ -285,36 +285,7 @@ struct DeepSeekClient {
     /// Returns normally on success,
     /// throws on invalid key, network failure, or provider error.
     func validateAPIKey(apiKey: String, baseURL: String) async throws {
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DeepSeekError.missingAPIKey
-        }
-        guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/models") else {
-            throw DeepSeekError.invalidBaseURL
-        }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
-        } catch {
-            throw DeepSeekError.api("Network error: \(error.localizedDescription)")
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw DeepSeekError.invalidResponse
-        }
-        if (200..<300).contains(http.statusCode) {
-            return
-        }
-        if http.statusCode == 401 {
-            throw DeepSeekError.api("Invalid API key (HTTP 401)")
-        }
-        let body = String(data: data, encoding: .utf8) ?? ""
-        throw DeepSeekError.api("API error (HTTP \(http.statusCode)): \(String(body.prefix(200)))")
+        _ = try await ModelCatalogClient().fetch(apiKey: apiKey, baseURL: baseURL)
     }
 
     /// Read the provider balance without invoking a model or consuming model

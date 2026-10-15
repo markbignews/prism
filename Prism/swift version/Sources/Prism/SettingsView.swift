@@ -28,10 +28,8 @@ struct SettingsView: View {
                 TextField(L10n.text(.baseURL, settings.language), text: $settings.baseURL)
                     .textFieldStyle(.roundedBorder)
 
-                Picker(L10n.text(.conversationModel, settings.language), selection: $settings.model) {
-                    Text("DeepSeek V4.1 Flash").tag("deepseek-flash")
-                    Text("DeepSeek V4 Pro").tag("deepseek-v4-pro")
-                }
+                ModelDiscoverySection()
+
             }
 
             Section(L10n.text(.proParameters, settings.language)) {

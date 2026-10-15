@@ -29,5 +29,6 @@ let package = Package(
                 ])
             ]
         ),
+        .testTarget(name: "PrismTests", dependencies: ["Prism"]),
     ]
 )

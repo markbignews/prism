@@ -9,6 +9,9 @@ final class ChatAgent {
     weak var delegate: ChatAgentDelegate?
     private(set) var conversations: [Conversation] = []
     var selectedConversationID: Conversation.ID?
+    var pendingNarrativeEvents: [NarrativeEventProposal] = []
+    var activeToolConversationID: UUID?
+    var activeToolSourceMessageID: UUID?
     var isSending = false
     var errorMessage: String?
     var isSummarizing = false
@@ -21,8 +24,8 @@ final class ChatAgent {
     private var storageFailure = false
     private var storageURL: URL
 
-    init() {
-        let dataPath = UserDefaults.standard.string(forKey: "storage.dataPath")
+    init(storagePath: String? = nil) {
+        let dataPath = storagePath ?? UserDefaults.standard.string(forKey: "storage.dataPath")
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Documents/Prism").path
         let folder = URL(fileURLWithPath: dataPath)
@@ -95,6 +98,7 @@ final class ChatAgent {
         currentSendTask?.cancel()
         currentSendTask = nil
         conversations.removeAll { $0.id == id }
+        pendingNarrativeEvents.removeAll { $0.conversationID == id }
         if selectedConversationID == id {
             selectConversation(conversations.first?.id)
         }
@@ -132,6 +136,7 @@ final class ChatAgent {
     func resetAll() {
         guard !isSending, !isSummarizing, !storageFailure else { return }
         conversations = []
+        pendingNarrativeEvents = []
         selectedConversationID = nil
         personArchive = []
         emotionTimeline = []
@@ -146,6 +151,7 @@ final class ChatAgent {
     /// Call after changing `AppSettings.dataPath` and migrating files.
     func reloadStorage(from settings: AppSettings? = nil) {
         guard !isSending, !isSummarizing else { return }
+        pendingNarrativeEvents = []
         let dataPath = settings?.dataPath
             ?? UserDefaults.standard.string(forKey: "storage.dataPath")
             ?? FileManager.default.homeDirectoryForCurrentUser
@@ -273,11 +279,20 @@ final class ChatAgent {
         // Find the user message right before this assistant message
         let prevIndex = msgIndex - 1
         guard conversations[convIndex].messages[prevIndex].role == .user else { return }
+        pendingNarrativeEvents.removeAll { $0.conversationID == conversationID }
+        activeToolConversationID = conversationID
+        activeToolSourceMessageID = conversations[convIndex].messages[prevIndex].id
         let userText = conversations[convIndex].messages[prevIndex].content
         let requestSentAt = conversations[convIndex].messages[prevIndex].createdAt
 
-        // Remove this assistant message
-        conversations[convIndex].messages.remove(at: msgIndex)
+        // Scope regeneration to the original user turn, preserving later messages.
+        var contextConversation = conversations[convIndex]
+        contextConversation.messages = Array(contextConversation.messages.prefix(msgIndex))
+        let contextIDs = Set(contextConversation.messages.map(\.id))
+        contextConversation.chapters.removeAll { !$0.messageIDs.allSatisfy(contextIDs.contains) }
+        conversations[convIndex].messages[msgIndex].content = ""
+        conversations[convIndex].messages[msgIndex].reasoning = nil
+        conversations[convIndex].messages[msgIndex].toolCalls = nil
         conversations[convIndex].updatedAt = Date()
         save()
 
@@ -285,29 +300,38 @@ final class ChatAgent {
         isSending = true
         delegate?.agentStateDidChange()
         defer {
+            activeToolConversationID = nil
+            activeToolSourceMessageID = nil
             isSending = false
             save()
             delegate?.agentStateDidChange()
         }
 
         let trimmed = userText.trimmingCharacters(in: .whitespacesAndNewlines)
-        var memoryContext = StoryMemory.relevantContext(for: trimmed, in: conversations[convIndex], language: settings.language)
+        var memoryContext = StoryMemory.relevantContext(for: trimmed, in: contextConversation, language: settings.language)
         // Time is injected as a plain `[System time]` block in the system
         // prompt every API round — no time tool needed.
         memoryContext = (memoryContext ?? "")
-            + "\n\n" + temporalContext(for: conversations[convIndex], now: requestSentAt, language: settings.language)
+            + "\n\n" + temporalContext(for: contextConversation, now: requestSentAt, language: settings.language)
         errorMessage = nil
 
-        let mainParameters = settings.model.lowercased().contains("flash")
+        let mainParameters = settings.usesFlashParameters
             ? settings.flashParameters
             : settings.parameters
-        let assistantID = UUID()
-        conversations[convIndex].messages.append(
-            ChatMessage(id: assistantID, role: .assistant, content: "", reasoning: nil)
-        )
+        let assistantID = messageID
         save()
 
         do {
+            let preResult = await runPrePipeline(for: conversationID, requestSentAt: requestSentAt, settings: settings, context: contextConversation)
+            try Task.checkCancellation()
+            if preResult.safetyCrisis {
+                await saveSafetyContext(for: convIndex, hint: preResult.safetyHint, resources: "")
+                let response = await generateSafetyResponse(userMessage: userText, signals: preResult.safetySignals,
+                    hint: preResult.safetyHint, resources: "", settings: settings)
+                try Task.checkCancellation()
+                finishStreamingMessage(assistantID, in: conversationID, content: response, reasoning: "当前现实危险：优先安全支持。")
+                return
+            }
             let effectiveMode = conversations[convIndex].mode ?? settings.conversationMode
             let client = DeepSeekClient(
                 apiKey: settings.apiKey,
@@ -320,26 +344,28 @@ final class ChatAgent {
             )
             let requestMessages = buildWindowedMessages(
                 for: convIndex,
-                includeReasoning: mainParameters.thinkingEnabled
+                includeReasoning: mainParameters.thinkingEnabled,
+                context: contextConversation
             )
             var roundMessages = requestMessages
             var pendingToolResults: [ToolResult] = []
             var earlierToolContext = ""
             var finalResult = DeepSeekResult(content: "", reasoning: nil, toolCalls: [])
 
-            for _ in 0..<2 {
+            for round in 0...2 {
                 try Task.checkCancellation()
                 let result = try await client.stream(
                     messages: roundMessages,
-                    memoryContext: memoryContext,
-                    tools: ToolRegistry.definitions,
+                    memoryContext: (memoryContext ?? "") + earlierToolContext,
+                    supervisorHint: buildGuardHint(from: preResult),
+                    tools: round == 2 ? nil : ToolRegistry.definitions,
                     toolResults: pendingToolResults
                 ) { [weak self] delta in
                     self?.append(delta, to: assistantID, in: conversationID)
                 }
                 finalResult = result
                 pendingToolResults = []
-                if result.toolCalls.isEmpty { break }
+                if result.toolCalls.isEmpty || round == 2 { break }
 
                 if let messageIndex = conversations[convIndex].messages.lastIndex(where: { $0.id == assistantID }) {
                     conversations[convIndex].messages[messageIndex].toolCalls = result.toolCalls
@@ -359,9 +385,14 @@ final class ChatAgent {
                         content: resultJSON
                     ))
                 }
+                if let assistant = conversations[convIndex].messages.first(where: { $0.id == assistantID }) {
+                    contextConversation.messages.removeAll { $0.id == assistantID }
+                    contextConversation.messages.append(assistant)
+                }
                 roundMessages = buildWindowedMessages(
                     for: convIndex,
-                    includeReasoning: mainParameters.thinkingEnabled
+                    includeReasoning: mainParameters.thinkingEnabled,
+                    context: contextConversation
                 )
             }
             if let messageIndex = conversations[convIndex].messages.lastIndex(where: { $0.id == assistantID }) {
@@ -374,6 +405,7 @@ final class ChatAgent {
                 reasoning: finalResult.reasoning ?? fallbackReasoningSummary(language: settings.language)
             )
         } catch is CancellationError {
+            pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
             finishStreamingMessage(
                 assistantID,
                 in: conversationID,
@@ -381,6 +413,7 @@ final class ChatAgent {
                 reasoning: "[Cancelled]"
             )
         } catch {
+            pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
             errorMessage = error.localizedDescription
             PrismLog.log("send_message failed (regenerate) — error=\(error.localizedDescription)")
             finishStreamingMessage(
@@ -539,7 +572,7 @@ final class ChatAgent {
         }
 
         let conversation = conversations[index]
-        let mainParameters = settings.model.lowercased().contains("flash")
+        let mainParameters = settings.usesFlashParameters
             ? settings.flashParameters
             : settings.parameters
         let effectiveMessages = buildWindowedMessages(
@@ -632,8 +665,8 @@ final class ChatAgent {
     /// Chapter synthesis remains an index/memory feature and does not evict
     /// raw messages. At the 75% hard threshold, only the request payload is
     /// compacted; every original message remains stored locally.
-    private func buildWindowedMessages(for index: Int, includeReasoning: Bool) -> [ChatMessage] {
-        let conv = conversations[index]
+    private func buildWindowedMessages(for index: Int, includeReasoning: Bool, context: Conversation? = nil) -> [ChatMessage] {
+        let conv = context ?? conversations[index]
         let rawTokens = conv.messages.reduce(0) {
             $0 + estimateMessageTokens($1, includeReasoning: includeReasoning)
         }
@@ -765,6 +798,9 @@ final class ChatAgent {
             createdAt: requestSentAt,
             attachments: attachments
         )
+        pendingNarrativeEvents.removeAll { $0.conversationID == id }
+        activeToolConversationID = id
+        activeToolSourceMessageID = userMessage.id
         conversations[index].messages.append(userMessage)
         StoryMemory.ingest(userText: effectiveText, messageID: userMessage.id, conversation: &conversations[index])
         conversations[index].updatedAt = requestSentAt
@@ -772,7 +808,7 @@ final class ChatAgent {
         memoryContext = (memoryContext ?? "")
             + "\n\n" + temporalContext(for: conversations[index], now: requestSentAt, language: settings.language)
 
-        let mainParameters = settings.model.lowercased().contains("flash")
+        let mainParameters = settings.usesFlashParameters
             ? settings.flashParameters
             : settings.parameters
         let requestMessages = buildWindowedMessages(
@@ -794,6 +830,8 @@ final class ChatAgent {
         var finalReasoning: String?
         var hasCompletedAnalysis = false
         defer {
+            activeToolConversationID = nil
+            activeToolSourceMessageID = nil
             isSending = false
             save()
             // Publish the terminal state explicitly. Without this, SwiftUI
@@ -810,18 +848,8 @@ final class ChatAgent {
             try Task.checkCancellation()
             let guardHint = buildGuardHint(from: preResult)
 
-            // ── Safety gate — never continue silently after an unknown check ──
-            if preResult.safetyUncertain {
-                finalContent = buildSafetyUncertaintyResponse(language: settings.language)
-                finalReasoning = "⚠️ 安全检查未完成 — 已暂停关系分析。"
-
-                let words = finalContent.map { String($0) }
-                for i in stride(from: 0, to: words.count, by: 8) {
-                    let chunk = words[i..<min(i + 8, words.count)].joined()
-                    append(.content(chunk), to: assistantID, in: id)
-                    await Task.yield()
-                }
-            } else if preResult.safetyCrisis {
+            // Only a contextual finding of current danger changes the reply route.
+            if preResult.safetyCrisis {
                 // Persist the safety state before composing the response so the
                 // next turn is re-checked in safety mode. The response composer
                 // may personalize wording, but it cannot call tools or resume
@@ -840,7 +868,8 @@ final class ChatAgent {
                     resources: preResult.safetyResources,
                     settings: settings
                 )
-                finalReasoning = "⚠️ 安全干预 — 检测到严重安全信号，叙事分析已暂停。"
+                try Task.checkCancellation()
+                finalReasoning = "当前现实危险：优先安全支持。"
 
                 // Stream safety response to the UI chunk by chunk
                 let words = finalContent.map { String($0) }
@@ -1001,6 +1030,7 @@ final class ChatAgent {
                 schedulePeopleAnalysis(for: id, requestSentAt: requestSentAt, settings: settings)
             }
         } catch is CancellationError {
+            pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
             // User stopped generation — replace partial content with cancel marker.
             let cancelMsg = switch settings.language {
             case .simplifiedChinese: "[已取消生成]"
@@ -1014,6 +1044,7 @@ final class ChatAgent {
                 reasoning: cancelMsg
             )
         } catch {
+            pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
             errorMessage = error.localizedDescription
             PrismLog.log("send_message failed — conv_id=\(id.uuidString) error=\(error.localizedDescription)")
             finishStreamingMessage(

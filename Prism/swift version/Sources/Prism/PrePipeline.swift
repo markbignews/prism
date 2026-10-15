@@ -5,45 +5,21 @@ import Foundation
 extension ChatAgent {
     // MARK: - Safety Crisis Response
 
-    /// Build a safety intervention response in the user's language.
-    /// Called when the pre‑pipeline detects a safety crisis — skips the main model entirely.
-    func buildSafetyResponse(signals: [String], hint: String, resources: String, language: AppLanguage) -> String {
-        let signalList = signals.map { "• \($0)" }.joined(separator: "\n")
-        let resourceBlock = resources.isEmpty ? "" : "\n\n\(resources)"
-
+    /// Used only after a contextual immediate-danger assessment AND a failed
+    /// response-generation request. User words never select this fallback.
+    func emergencySafetyFallback(language: AppLanguage) -> String {
         switch language {
-        case .simplifiedChinese, .traditionalChinese:
-            return """
-            我听到了你正在经历的事情，也感受到了你的痛苦。
-
-            有些情况需要我们认真对待——你现在不需要故事分析，你需要的是专业的支持。
-
-            检测到的安全信号：
-            \(signalList)
-
-            请尽快联系专业的心理援助机构或前往最近的医院急诊科。专业人员能提供你需要的帮助。
-
-            你的安全是最重要的。我暂停叙事分析，这些话题等你安全了再回来聊。你愿意告诉我你现在是否安全吗？
-            """
+        case .simplifiedChinese:
+            return "暂时无法生成完整回应。针对刚才描述的当前危险，请尽快联系身边可信任的人、当地急救服务或最近的医院急诊；在安全可行的情况下远离危险来源。"
+        case .traditionalChinese:
+            return "暫時無法產生完整回應。針對剛才描述的當前危險，請盡快聯絡身邊可信任的人、當地急救服務或最近的醫院急診；在安全可行的情況下遠離危險來源。"
         case .english:
-            return """
-            I hear what you're going through, and I can feel how much pain you're in.
-
-            This is a moment that calls for professional support, not conversation analysis.
-
-            Safety signals detected:
-            \(signalList)
-            \(resourceBlock)
-
-            Please reach out to a mental health professional or go to your nearest emergency room. They can provide the help you need.
-
-            Your safety comes first. I'm pausing all narrative analysis. We can talk about these things when you're in a safe place. Can you tell me if you're safe right now?
-            """
+            return "A full response is temporarily unavailable. For the immediate danger you described, contact someone you trust, local emergency services, or the nearest emergency department. Move away from the danger if it is safe to do so."
         }
     }
 
     /// Generate a natural-language safety response inside a tightly bounded
-    /// safety mode. The crisis gate remains deterministic at the caller: this
+    /// safety mode. Only a contextual assessment of immediate danger can enter this mode: this
     /// request may shape wording only and must never resume relationship
     /// analysis, invoke tools, or perform web search.
     func generateSafetyResponse(
@@ -60,13 +36,13 @@ extension ChatAgent {
         }
         let systemPrompt = """
         你是棱镜的“安全回应措辞器”，不是关系分析器、心理诊断器或搜索助手。
-        安全门已经判定当前消息需要进入安全模式。你的任务只是把给定的安全策略说得自然、具体、尊重，不得改变风险等级。
+        上下文分析发现了当前现实危险。结合用户原话和给定证据回应，不要套用固定开场、假定用户的感受，或罗列检测标签。若用户否定、纠正了前提，应尊重纠正。
 
         强制要求：
         1. 使用\(languageName)纯文本回复，不要 JSON、标题或分析过程。
         2. 简短回应用户刚才表达的一个具体事实或感受。
         3. 明确说明现在暂停关系/叙事分析，把注意力放在当前安全上。
-        4. 只问一个当前安全问题，例如“你现在是否安全？”或“你现在有没有已经受伤？”。
+        4. 根据尚缺的信息决定是否需要一个简短的当前安全问题，已明确的信息不要重复追问。
         5. 给出一到两个现实可行的下一步：联系可信任的人、当地急救服务、最近的医院急诊，或在安全的情况下离开危险处境。
         6. 如果提供了求助资源，只能原样使用；没有提供时不要编造电话号码、机构、网址或地点。
 
@@ -99,50 +75,15 @@ extension ChatAgent {
         do {
             let generated = try await client.summarize(systemPrompt: systemPrompt, userContent: userContent)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if isUsableSafetyResponse(generated, language: settings.language) {
+            if !generated.isEmpty {
                 return generated
             }
-            print("[Safety] Dynamic response failed validation; using local fallback")
+            print("[Safety] Dynamic response was empty; using local fallback")
         } catch {
             print("[Safety] Dynamic response failed: \(error.localizedDescription); using local fallback")
         }
 
-        return buildSafetyResponse(
-            signals: signals,
-            hint: hint,
-            resources: resources,
-            language: settings.language
-        )
-    }
-
-    /// Keep the dynamic response inside the minimum safety contract. A failed
-    /// validation must never turn a crisis turn into an empty or ordinary reply.
-    private func isUsableSafetyResponse(_ text: String, language: AppLanguage) -> Bool {
-        guard !text.isEmpty, text.count <= 1800 else { return false }
-        switch language {
-        case .simplifiedChinese, .traditionalChinese:
-            let hasSafetyCheck = text.contains("安全") && (text.contains("吗") || text.contains("？") || text.contains("?"))
-            let hasRealWorldStep = ["联系", "聯絡", "求助", "急诊", "急診", "医院", "醫院", "可信", "信任", "离开", "離開"].contains { text.contains($0) }
-            return hasSafetyCheck && hasRealWorldStep
-        case .english:
-            let lowercased = text.lowercased()
-            let hasSafetyCheck = lowercased.contains("safe") && lowercased.contains("?")
-            let hasRealWorldStep = ["contact", "emergency", "hospital", "trusted", "leave", "call"].contains { lowercased.contains($0) }
-            return hasSafetyCheck && hasRealWorldStep
-        }
-    }
-
-    /// Do not silently continue with ordinary relationship analysis when the
-    /// safety pass failed or returned an incomplete result.
-    func buildSafetyUncertaintyResponse(language: AppLanguage) -> String {
-        switch language {
-        case .simplifiedChinese:
-            return "我暂时无法可靠完成安全判断，所以先不做关系分析。如果你现在有自伤、伤人、暴力、胁迫或无法离开的风险，请先联系当地急救服务、可信任的人或最近的急诊。你现在是否处于安全环境？"
-        case .traditionalChinese:
-            return "我暫時無法可靠完成安全判斷，所以先不做關係分析。如果你現在有自傷、傷人、暴力、脅迫或無法離開的風險，請先聯絡當地急救服務、可信任的人或最近的急診。你現在是否處於安全環境？"
-        case .english:
-            return "I could not reliably complete the safety check, so I will pause relationship analysis for now. If there is any risk of self-harm, harm to others, violence, coercion, or being unable to leave, contact local emergency services, someone you trust, or the nearest emergency department. Are you currently in a safe place?"
-        }
+        return emergencySafetyFallback(language: settings.language)
     }
 
     /// Save safety crisis context so the next turn's pre‑pipeline can re‑inject it.
@@ -165,20 +106,6 @@ extension ChatAgent {
         UserDefaults.standard.removeObject(forKey: "safety.hint.\(conversationID.uuidString)")
     }
 
-    /// A deliberately narrow fallback for an unavailable auxiliary analysis.
-    /// It preserves the safety gate for direct, urgent language without
-    /// turning an ordinary Flash outage into a refusal to answer every turn.
-    private func hasLocalSafetySignal(_ text: String) -> Bool {
-        let normalized = text.lowercased()
-        let directSignals = [
-            "自杀", "自殺", "想死", "不想活", "结束生命", "結束生命", "割腕", "自残", "自殘", "伤害自己", "傷害自己",
-            "杀了他", "殺了他", "杀人", "殺人", "伤害别人", "傷害別人", "我要打死", "我要殺",
-            "被囚禁", "被控制不能走", "无法离开", "無法離開", "救救我",
-            "suicide", "kill myself", "end my life", "self harm", "hurt myself", "kill him", "kill her", "hurt someone", "can't leave", "being held"
-        ]
-        return directSignals.contains { normalized.contains($0) }
-    }
-
     // MARK: - Unified Pre‑Pipeline (runs BEFORE main model, 1 Flash call)
 
     /// Result of the unified pre‑pipeline Flash call.
@@ -191,7 +118,7 @@ extension ChatAgent {
         var safetyCrisis: Bool = false
         var safetyUncertain: Bool = false
         /// The auxiliary Flash analysis did not produce a complete JSON result.
-        /// Normal turns may continue after a deterministic local safety check.
+        /// The main model independently judges the context when this pass is unavailable.
         var analysisUnavailable: Bool = false
         var safetySignals: [String] = []
         var safetyHint: String = ""
@@ -216,7 +143,7 @@ extension ChatAgent {
         1. reality — 用户叙述中「可观察事实」vs「主观解释」的比例。
            事实信号：具体时间/地点/人名、引述原话（"他说……""她回了……"）、可验证行为描述。
            解释信号："我觉得""我认为""应该是""可能是""大概是""说明""意味着""代表着"。
-           解释性语言远多于事实描述（比例 > 2.5:1）时 flag = warning。
+           根据上下文判断是否存在会影响结论的证据缺口；不能用词频、比例或某些措辞直接决定 warning。引用、否定、假设和对概念的讨论应保留原义。
            hint: 温和建议拉回具体事实层，问一个具体的时间/行为/场景问题。
 
         2. spiral — 用户是否在同一情绪状态下反复讨论同一话题，没有情感位移。
@@ -241,15 +168,13 @@ extension ChatAgent {
            仅当用户表达了新意图且与历史记录明确对应时才 warning；优先探索阻碍和矛盾，不要施压。
 
         6. safety — 安全信号检测（最高优先级）。
-           检测用户消息中是否存在以下安全信号：
-           a) 自杀/自伤意图或行为描述
-           b) 严重暴力/虐待（用户是受害者或施害者）
-           c) 精神错乱状态描述
-           d) 未成年人受害场景
-           e) 明确求助信号（被囚禁、被控制、极度危险处境）
-           明确的安全信号 flag = "crisis"；明确没有安全信号 flag = "ok"；证据不足、输出不完整或无法判断 flag = "uncertain"，不得假装安全。
-           提供具体的 suggest 告诉主模型应该怎么说，以及可用的求助资源。
-           严格判断，不把普通悲伤、冲突或非主流表达自动标成危机。
+           结合最近对话判断当前现实危险，明确区分当事人、时间、意图、行为和否定。
+           只有具体证据表明用户或他人正面临即时危险（例如当前自伤意图/行为、迫近暴力或正在遭受胁迫无法脱身）才 flag = "crisis"，immediate_danger = true，并在 evidence 中引用支持判断的用户原话。
+           出现“自杀”“不想活”“无法离开”等词本身不构成危险；小说/新闻讨论、引用他人、过去经历、假设、否定意图、普通难过或关系冲突，不能单凭这些词升级。
+           例：“小说人物说不想活，这段怎么理解”是文本讨论；“我以前想死，但现在没有这个想法”不能当作当前意图；“我现在准备伤害自己”需要即时支持。
+           flag = "ok" 表示未发现当前危险；有真实但不足的风险线索时 flag = "uncertain"，描述尚缺的信息，不能把“不确定”等同于危机。
+           不能因为输出失败、字段缺失或历史曾经干预就断定当前有危险；每轮重新判断，用户的最新纠正优先。
+           suggest 是针对当前证据的建议，不是固定话术。resources 留空，不编造求助号码或机构。
 
         ═══════════════════════════════════════
         二、emotions（情绪标注）
@@ -268,7 +193,7 @@ extension ChatAgent {
             "blindspots": {"flag":"ok|warning","findings":[{"pattern":"...","evidence":"...","counter_question":"...","severity":"new|recurring|persistent"}],"hint":""},
             "ingratiation": {"flag":"ok|warning","signals":["..."],"hint":""},
             "action_hollow": {"flag":"ok|warning","matched_count":0,"persistent_count":0,"hint":""},
-            "safety": {"flag":"ok|uncertain|crisis","signals":["..."],"suggest":"","resources":""}
+            "safety": {"flag":"ok|uncertain|crisis","immediate_danger":false,"evidence":"","signals":["..."],"suggest":"","resources":""}
           },
           "emotions": [{"segment":"...","emotion":"...","intensity":0.0,"confidence":0.0}]
         }
@@ -278,11 +203,11 @@ extension ChatAgent {
 
     /// Run the synchronous supervisor: one small Flash call for safety, reply
     /// quality, emotions, and blindspots. People are analyzed separately.
-    func runPrePipeline(for conversationID: UUID, requestSentAt: Date, settings: AppSettings) async -> PrePipelineResult {
+    func runPrePipeline(for conversationID: UUID, requestSentAt: Date, settings: AppSettings, context: Conversation? = nil) async -> PrePipelineResult {
         var result = PrePipelineResult()
         result.safetyUncertain = true
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return result }
-        let conv = conversations[index]
+        let conv = context ?? conversations[index]
 
         // Gather conversation context
         let recentMessages = conv.messages
@@ -312,7 +237,7 @@ extension ChatAgent {
         let safetyContext: String
         if hasActiveSafetyCrisis(for: conversationID),
            let hint = UserDefaults.standard.string(forKey: "safety.hint.\(conversationID.uuidString)") {
-            safetyContext = "\n\n⚠️ 上轮对话已触发安全干预，本轮继续在安全模式运行。上一轮的安全建议：\n\(hint)\n请判断用户当前是否仍处于危险中，还是已脱离危险。"
+            safetyContext = "\n\n上轮对话曾出现风险线索，仅作历史背景，不代表本轮仍有危险。上一轮的安全建议：\n\(hint)\n请判断用户当前是否仍处于危险中，还是已脱离危险。"
         } else {
             safetyContext = ""
         }
@@ -341,18 +266,14 @@ extension ChatAgent {
             result.rawJSON = raw
             if !parsePrePipelineJSON(raw, into: &result, conversationID: conversationID) {
                 result.analysisUnavailable = true
-                let directSignal = hasLocalSafetySignal(lastUserText)
-                result.safetyCrisis = directSignal
-                result.safetySignals = directSignal ? ["本地检测到直接安全信号"] : []
-                result.safetyUncertain = !directSignal
+                result.safetyCrisis = false
+                result.safetyUncertain = true
             }
         } catch {
             print("[PrePipeline] ⚠ Flash API error: \(error.localizedDescription)")
             result.analysisUnavailable = true
-            let directSignal = hasLocalSafetySignal(lastUserText)
-            result.safetyCrisis = directSignal
-            result.safetySignals = directSignal ? ["本地检测到直接安全信号"] : []
-            result.safetyUncertain = !directSignal
+            result.safetyCrisis = false
+            result.safetyUncertain = true
         }
 
         return result
@@ -360,8 +281,14 @@ extension ChatAgent {
 
     /// Build a supervisor hint string from guard warnings.
     func buildGuardHint(from result: PrePipelineResult) -> String? {
-        guard !result.guardHint.isEmpty else { return nil }
-        return result.guardHint
+        var hints = result.analysisUnavailable ? [] : [result.guardHint].filter { !$0.isEmpty }
+        if result.analysisUnavailable {
+            hints.append("辅助检查不可用，这不是用户有危险的证据。请直接结合完整上下文独立判断，不得按关键词、引用、否定或假设触发危机模板；有即时现实危险才优先给安全支持。")
+        } else if result.safetyUncertain {
+            hints.append("辅助安全判断不确定，不能据此断定危机或停止回答。结合上下文独立判断，只有真实风险线索且答案会改变建议时才平和确认一个关键问题。")
+            if !result.safetyHint.isEmpty { hints.append(result.safetyHint) }
+        }
+        return hints.isEmpty ? nil : hints.joined(separator: "\n")
     }
 
     /// Apply pre‑pipeline results to local archives (detached, non‑blocking).
@@ -463,29 +390,25 @@ extension ChatAgent {
             result.guardHint = hints.joined(separator: "\n")
 
             // ── Parse safety crisis (special: overrides normal flow) ──
-            if let safetyObj = guardObj["safety"] as? [String: Any],
-               let flag = safetyObj["flag"] as? String {
-                if flag == "crisis" {
-                    result.safetyCrisis = true
-                    result.safetySignals = (safetyObj["signals"] as? [String]) ?? []
-                    result.safetyHint = (safetyObj["suggest"] as? String) ?? "立即进行安全干预。"
-                    result.safetyResources = (safetyObj["resources"] as? String) ?? ""
-                    result.safetyUncertain = false
-                } else if flag == "ok" && hasActiveSafetyCrisis(for: conversationID) {
-                    // Auto-clear: user is no longer in crisis
-                    clearSafetyCrisis(for: conversationID)
-                    print("[Safety] Crisis cleared for conversation \(conversationID)")
-                    result.safetyUncertain = false
-                } else if flag == "ok" {
-                    result.safetyUncertain = false
-                } else {
-                    result.safetyUncertain = true
-                }
-            } else {
+            guard let safetyObj = guardObj["safety"] as? [String: Any],
+                  let safetyData = try? JSONSerialization.data(withJSONObject: safetyObj),
+                  let assessment = try? JSONDecoder().decode(SafetyAssessment.self, from: safetyData) else {
+                result.safetyCrisis = false
                 result.safetyUncertain = true
+                return false
             }
+            result.safetyCrisis = assessment.requiresIntervention
+            result.safetyUncertain = assessment.isUncertain
+            result.safetySignals = (safetyObj["signals"] as? [String]) ?? []
+            result.safetyHint = (safetyObj["suggest"] as? String) ?? ""
+            // Resource lookup is not verified by this classifier. Never pass
+            // hallucinated phone numbers/organizations to the response composer.
+            result.safetyResources = ""
+            if assessment.flag == .ok { clearSafetyCrisis(for: conversationID) }
         } else {
+            result.safetyCrisis = false
             result.safetyUncertain = true
+            return false
         }
 
         // ── Parse emotions ──

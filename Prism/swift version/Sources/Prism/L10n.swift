@@ -59,6 +59,14 @@ enum L10n {
     }
 
     enum Key: String {
+        case fetchModels
+        case modelListHint
+        case modelListFailure
+        case manualConversationModel
+        case auxiliaryModel
+        case manualAuxiliaryModel
+        case saveTimelineEvent
+        case timelineApprovalHint
         case newConversation
         case settings
         case delete
@@ -267,6 +275,14 @@ enum L10n {
     }
 
     private static let simplified: [Key: String] = [
+        .fetchModels: "获取模型列表",
+        .modelListHint: "填写 API Key 后自动获取。Flash 优先排列；保留仍可用的选择，也可手动填写模型 ID。",
+        .modelListFailure: "模型列表获取失败，已保留当前设置；请检查连接、密钥和服务地址，或手动填写模型 ID。",
+        .manualConversationModel: "对话模型 ID（可手动输入）",
+        .auxiliaryModel: "辅助模型",
+        .manualAuxiliaryModel: "辅助模型 ID（可手动输入）",
+        .saveTimelineEvent: "保存到时间轴",
+        .timelineApprovalHint: "请核对事件及时间，点击保存后才会写入。",
         .newConversation: "新对话",
         .settings: "设置",
         .delete: "删除",
@@ -299,8 +315,8 @@ enum L10n {
         .proModel: "Pro 模型",
         .flashModel: "Flash 模型",
         .modelParameters: "模型参数",
-        .proParameters: "Pro 参数",
-        .flashParameters: "Flash 参数",
+        .proParameters: "其他对话模型参数",
+        .flashParameters: "Flash／辅助模型参数",
         .temperature: "Temperature",
         .topP: "Top P",
         .maxTokens: "Max Tokens",
@@ -463,6 +479,14 @@ enum L10n {
     ]
 
     private static let traditional: [Key: String] = [
+        .fetchModels: "取得模型列表",
+        .modelListHint: "填寫 API Key 後自動取得。Flash 優先排列；保留仍可用的選擇，也可手動填寫模型 ID。",
+        .modelListFailure: "無法取得模型列表，已保留目前設定；請檢查連線、金鑰與服務位址，或手動填寫模型 ID。",
+        .manualConversationModel: "對話模型 ID（可手動輸入）",
+        .auxiliaryModel: "輔助模型",
+        .manualAuxiliaryModel: "輔助模型 ID（可手動輸入）",
+        .saveTimelineEvent: "儲存至時間軸",
+        .timelineApprovalHint: "請核對事件與時間，點擊儲存後才會寫入。",
         .newConversation: "新對話",
         .settings: "設定",
         .delete: "刪除",
@@ -495,8 +519,8 @@ enum L10n {
         .proModel: "Pro 模型",
         .flashModel: "Flash 模型",
         .modelParameters: "模型參數",
-        .proParameters: "Pro 參數",
-        .flashParameters: "Flash 參數",
+        .proParameters: "其他對話模型參數",
+        .flashParameters: "Flash／輔助模型參數",
         .temperature: "Temperature",
         .topP: "Top P",
         .maxTokens: "Max Tokens",
@@ -659,6 +683,14 @@ enum L10n {
     ]
 
     private static let english: [Key: String] = [
+        .fetchModels: "Fetch models",
+        .modelListHint: "Fetched automatically after entering an API key. Flash models appear first. Valid selections are kept; model IDs can also be entered manually.",
+        .modelListFailure: "Could not fetch models. Your settings were kept. Check the connection, key and base URL, or enter a model ID manually.",
+        .manualConversationModel: "Conversation model ID (editable)",
+        .auxiliaryModel: "Auxiliary model",
+        .manualAuxiliaryModel: "Auxiliary model ID (editable)",
+        .saveTimelineEvent: "Save to timeline",
+        .timelineApprovalHint: "Review the event and its time. It will be saved only when you click Save.",
         .newConversation: "New Chat",
         .settings: "Settings",
         .delete: "Delete",
@@ -691,8 +723,8 @@ enum L10n {
         .proModel: "Pro Model",
         .flashModel: "Flash Model",
         .modelParameters: "Model Parameters",
-        .proParameters: "Pro Parameters",
-        .flashParameters: "Flash Parameters",
+        .proParameters: "Other conversation model parameters",
+        .flashParameters: "Flash / auxiliary model parameters",
         .temperature: "Temperature",
         .topP: "Top P",
         .maxTokens: "Max Tokens",

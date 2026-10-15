@@ -30,6 +30,14 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     var blindspots: [BlindspotRecord] { agent.blindspots }
     var memoryStore: [MemoryEntry] { agent.memoryStore }
     var narrativeTimeline: [NarrativeEvent] { agent.narrativeTimeline }
+    var pendingNarrativeEvent: NarrativeEventProposal? {
+        agent.pendingNarrativeEvents.first {
+            $0.isCurrent(conversationID: selectedConversationID,
+                latestUserMessageID: selectedConversation?.messages.last(where: { $0.role == .user })?.id)
+        }
+    }
+    func confirmNarrativeEvent(id: UUID) { agent.confirmNarrativeEvent(id: id); refreshAfterMutation() }
+    func rejectNarrativeEvent(id: UUID) { agent.rejectNarrativeEvent(id: id); refreshAfterMutation() }
     var currentSendTask: Task<Void, Never>? {
         get { agent.currentSendTask }
         set { agent.currentSendTask = newValue }
