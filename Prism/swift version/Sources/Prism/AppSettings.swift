@@ -2,8 +2,21 @@ import Foundation
 
 @MainActor
 final class AppSettings: ObservableObject {
+    private let credentialStore: any CredentialStore
+    private let migratesUserDefaults: Bool
+    private var credentialID = UUID().uuidString
+    private var persistedCredential: String?
+    private var isLoadingConfig = true
+    private var credentialReadFailed = false
+    private var configurationLoadFailed = false
     @Published var apiKey = "" {
-        didSet { if oldValue != apiKey { invalidateModelCatalog() }; saveConfig() }
+        didSet {
+            if oldValue != apiKey {
+                invalidateModelCatalog()
+                if !isLoadingConfig { credentialReadFailed = false }
+            }
+            saveConfig()
+        }
     }
     @Published var baseURL = "https://api.deepseek.com" {
         didSet { if oldValue != baseURL { invalidateModelCatalog() }; saveConfig() }
@@ -26,10 +39,6 @@ final class AppSettings: ObservableObject {
         didSet { saveConfig() }
     }
     @Published var summaryDialogCount = 5 {
-        didSet { saveConfig() }
-    }
-    /// Context message window for the agent's history injection; 0 keeps everything.
-    @Published var contextWindow = 60 {
         didSet { saveConfig() }
     }
     /// Write a prism.log file next to the data directory.
@@ -145,7 +154,9 @@ final class AppSettings: ObservableObject {
 
     // MARK: - Init
 
-    init(storagePath: String? = nil) {
+    init(storagePath: String? = nil, credentialStore: any CredentialStore = KeychainCredentials()) {
+        self.credentialStore = credentialStore
+        migratesUserDefaults = storagePath == nil
         let defaultDataPath = Self.localDefaultPath
         dataPath = storagePath ?? UserDefaults.standard.string(forKey: "storage.dataPath") ?? defaultDataPath
         do {
@@ -160,10 +171,12 @@ final class AppSettings: ObservableObject {
 
         // Load from config.json in data directory
         loadConfig(legacyAPIKey: legacyKey)
+        isLoadingConfig = false
+        saveConfig()
         PrismLog.setEnabled(enableLogging)
 
         // If migrated, clear legacy UserDefaults
-        if !legacyKey.isEmpty {
+        if !legacyKey.isEmpty, storageError == nil {
             for k in ["deepseek.apiKey", "deepseek.baseURL", "deepseek.model",
                       "deepseek.flashModel", "ui.language", "deepseek.parameters",
                       "deepseek.flashParameters", "agent.summaryDialogCount",
@@ -200,7 +213,9 @@ final class AppSettings: ObservableObject {
     }
 
     private struct ConfigFile: Codable {
-        var apiKey = ""
+        // Decode old plaintext only; new saves leave this nil (omitted in JSON).
+        var apiKey: String? = nil
+        var credentialID: String? = nil
         var baseURL = "https://api.deepseek.com"
         var model = "deepseek-flash"
         var flashModel = "deepseek-flash"
@@ -208,7 +223,6 @@ final class AppSettings: ObservableObject {
         var parameters = ModelParameters()
         var flashParameters = ModelParameters()
         var summaryDialogCount = 5
-        var contextWindow = 60
         var enableLogging = true
         var showReasoningPanel = true
         var onboardingCompleted = false
@@ -218,14 +232,39 @@ final class AppSettings: ObservableObject {
 
     private func loadConfig(legacyAPIKey: String = "") {
         guard let data = try? Data(contentsOf: configURL),
-              let config = try? JSONDecoder().decode(ConfigFile.self, from: data) else {
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let defaults = try? JSONEncoder().encode(ConfigFile()),
+              var merged = try? JSONSerialization.jsonObject(with: defaults) as? [String: Any] else {
+            if FileManager.default.fileExists(atPath: configURL.path) {
+                configurationLoadFailed = true
+                credentialReadFailed = true
+                storageError = "Cannot read config.json; the original settings were preserved."
+                return
+            }
             // No config file yet — adopt an earlier Prism settings.json if present.
             if importLegacySettingsIfNeeded() { return }
             // Otherwise use defaults, migrating legacy API key if present
             if !legacyAPIKey.isEmpty { apiKey = legacyAPIKey }
             return
         }
-        apiKey = config.apiKey.isEmpty ? legacyAPIKey : config.apiKey
+        merged.merge(raw) { _, new in new }
+        guard let mergedData = try? JSONSerialization.data(withJSONObject: merged),
+              let config = try? JSONDecoder().decode(ConfigFile.self, from: mergedData) else {
+            configurationLoadFailed = true
+            storageError = "Cannot read config.json; the original settings were preserved."
+            credentialReadFailed = true
+            return
+        }
+        credentialID = config.credentialID ?? credentialID
+        do {
+            let stored = try credentialStore.read(account: credentialID)
+            persistedCredential = stored
+            apiKey = stored ?? config.apiKey ?? legacyAPIKey
+        } catch {
+            apiKey = config.apiKey ?? legacyAPIKey
+            credentialReadFailed = true
+            storageError = error.localizedDescription
+        }
         baseURL = config.baseURL
         model = config.model
         flashModel = config.flashModel
@@ -238,7 +277,6 @@ final class AppSettings: ObservableObject {
         model = canonicalModel
         flashModel = canonicalAuxiliary
         summaryDialogCount = config.summaryDialogCount
-        contextWindow = config.contextWindow
         enableLogging = config.enableLogging
         showReasoningPanel = config.showReasoningPanel
         onboardingCompleted = config.onboardingCompleted
@@ -279,7 +317,6 @@ final class AppSettings: ObservableObject {
         let length = json["responseLength"] as? String ?? json["response_length"] as? String ?? "standard"
         responseLength = ResponseLength(rawValue: length) ?? .standard
         summaryDialogCount = json["summaryInterval"] as? Int ?? json["summary_interval"] as? Int ?? 5
-        contextWindow = json["contextWindow"] as? Int ?? json["context_window"] as? Int ?? 60
         enableLogging = json["enableLogging"] as? Bool ?? json["enable_logging"] as? Bool ?? true
 
         parameters.thinkingEnabled = json["proThinkingEnabled"] as? Bool ?? true
@@ -296,12 +333,17 @@ final class AppSettings: ObservableObject {
 
     /// Delete all data files and reset settings to factory defaults.
     /// Triggered from Settings → Reset. App needs a restart afterwards.
-    func resetAll() {
+    @discardableResult func resetAll() -> Bool {
         let folder = URL(fileURLWithPath: dataPath)
 
-        guard canChangeStorage() else { storageError = "Wait for the active operation before resetting."; return }
-        do { try SQLiteStore(root: folder).clear() }
-        catch { storageError = error.localizedDescription; return }
+        guard canChangeStorage() else { storageError = "Wait for the active operation before resetting."; return false }
+        do {
+            try SQLiteStore(root: folder).clear()
+            try credentialStore.remove(account: credentialID)
+            persistedCredential = ""
+        }
+        catch { storageError = error.localizedDescription; return false }
+        credentialReadFailed = false; configurationLoadFailed = false
         // Original JSON and migration backups are retained; the database's
         // import markers prevent them from being re-imported after reset.
 
@@ -330,12 +372,11 @@ final class AppSettings: ObservableObject {
         )
         UsageStatsStore.shared.reset()
         summaryDialogCount = 5
-        contextWindow = 60
         enableLogging = true
         showReasoningPanel = true
         onboardingCompleted = false
         responseLength = .standard
-
+        return storageError == nil
     }
 
     // MARK: - Data Migration
@@ -362,6 +403,7 @@ final class AppSettings: ObservableObject {
     }
 
     private func saveConfig() {
+        guard !isLoadingConfig, !credentialReadFailed, !configurationLoadFailed else { return }
         let folder = URL(fileURLWithPath: dataPath)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -371,7 +413,7 @@ final class AppSettings: ObservableObject {
         }
 
         let config = ConfigFile(
-            apiKey: apiKey,
+            credentialID: credentialID,
             baseURL: baseURL,
             model: model,
             flashModel: flashModel,
@@ -379,7 +421,6 @@ final class AppSettings: ObservableObject {
             parameters: parameters,
             flashParameters: flashParameters,
             summaryDialogCount: summaryDialogCount,
-            contextWindow: contextWindow,
             enableLogging: enableLogging,
             showReasoningPanel: showReasoningPanel,
             onboardingCompleted: onboardingCompleted,
@@ -387,11 +428,48 @@ final class AppSettings: ObservableObject {
             responseLength: responseLength.rawValue
         )
         do {
+            if persistedCredential != apiKey {
+                if apiKey.isEmpty { try credentialStore.remove(account: credentialID) }
+                else { try credentialStore.write(apiKey, account: credentialID) }
+                guard (try credentialStore.read(account: credentialID) ?? "") == apiKey else {
+                    throw SQLiteStore.Failure(message: "Keychain verification failed; the old config was preserved.")
+                }
+                persistedCredential = apiKey
+            }
             let data = try JSONEncoder().encode(config)
             try data.write(to: configURL, options: .atomic)
+            if migratesUserDefaults, UserDefaults.standard.string(forKey: "deepseek.apiKey") == apiKey {
+                UserDefaults.standard.removeObject(forKey: "deepseek.apiKey")
+            }
+            // An older settings.json may still contain the same plaintext.
+            // Scrub it only after the Keychain and replacement config succeeded.
+            let legacy = folder.appendingPathComponent("settings.json")
+            if let bytes = try? Data(contentsOf: legacy),
+               var object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] {
+                object.removeValue(forKey: "apiKey"); object.removeValue(forKey: "api_key")
+                try JSONSerialization.data(withJSONObject: object, options: .sortedKeys).write(to: legacy, options: .atomic)
+            }
+            storageError = nil
         } catch {
             storageError = error.localizedDescription
         }
+    }
+    func retryCredentialStorage() {
+        if configurationLoadFailed {
+            isLoadingConfig = true
+            configurationLoadFailed = false; credentialReadFailed = false
+            loadConfig()
+            isLoadingConfig = false
+            guard !configurationLoadFailed, !credentialReadFailed else { return }
+        }
+        if credentialReadFailed {
+            do {
+                let stored = try credentialStore.read(account: credentialID)
+                credentialReadFailed = false
+                if let stored { apiKey = stored; persistedCredential = stored }
+            } catch { storageError = error.localizedDescription; return }
+        }
+        saveConfig()
     }
 }
 

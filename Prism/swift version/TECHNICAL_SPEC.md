@@ -1,202 +1,117 @@
-# Prism (macOS SwiftUI Version) - 本地叙事反思与认知守护伴侣
-## 技术文档与核心代码规范 (Technical Specifications & Code Architecture)
+# Prism SwiftUI 技术说明
 
----
+本文描述当前源码。版本号唯一来源为 `../VERSION`；打包脚本读取该文件。仓库内应用包通过 `--sync-release` 同步；单独修改源码不会自动更新二进制。
 
-## 一、 项目概述与设计愿景 (Project Overview & Vision)
+## 运行与构建
 
-**Prism (棱镜)** 是一款运行于 macOS 原生平台（SwiftUI + AppKit）的**本地数据存储、远程模型推理且尊重隐私边界的情感分析与认知反思 Agent**。
+- 原生 SwiftUI + AppKit，Swift 6，运行最低 macOS 15。
+- 编译需要 Xcode 26 或更新的 macOS SDK，因为源码使用受 availability 保护的 macOS 26 Liquid Glass API；较早系统运行时使用 material 回退。
+- SwiftPM manifest 仅声明包。`scripts/build_app.py` 与打包入口通过 `xcrun --sdk macosx --show-sdk-version` 查询实际 SDK 并传给链接器，修正 Swift Build 把 SDK 错记为 deployment target 的行为；SDK 缺失或过旧时明确报错，不伪造 SDK 版本。
+- 没有第三方依赖；`CSQLite` 是系统 SQLite 的模块映射，Security 是系统 Keychain 框架。
+- 当前打包目标为 Apple Silicon arm64；Intel 未列入本轮支持范围。
 
-区别于传统的迎合型或伴侣型 AI，Prism 定位于用户**“思维的镜子”**。它通过追踪个人叙事、审查认知扭曲、捕获情绪轨迹和发现逻辑盲点，引导用户客观审视自身叙事。项目将本地数据存储与远程模型推理明确分开：数据以纯文本 JSON 格式保存在用户本地（或 iCloud Drive），模型功能则通过配置的 API 端点处理每次请求所需的上下文。系统同时通过高保真 **Liquid Glass (毛玻璃)** 视觉与三阶智能分析管线，实现苹果生态下的完整体验。
-
----
-
-## 二、 架构模式与数据流设计 (Architecture & Data Flow)
-
-Prism 采用 **Agent-Facade 设计模式** 组织数据与 UI 绑定：
-
-```
-[ SwiftUI 视图层 ] (ContentView / SidebarView / ChatView / SettingsView / OnboardingView)
-       │
-       │ @EnvironmentObject / @Published
-       ▼
-[ ChatStore (ObservableObject 外观层) ] ──(agentStateDidChange)──▶ 触发 SwiftUI 重绘
-       │
-       ▼
-[ ChatAgent (@MainActor — 核心业务逻辑编排) ]
-       ├── DeepSeekClient        # HTTP 客户端：SSE 流式解析 + 非流式归纳
-       ├── ToolRegistry          # 6 个本地函数调用工具的 schema 注册与原生执行
-       ├── AgentPrompt           # 系统提示词 (三种镜模式) + 归纳 + 重排序
-       ├── StoryMemory           # 基于章节的本地上下文记忆与关键词提取
-       ├── PrePipeline           # 单次统一 Flash JSON 调用 (守护+情绪+人物+盲点)
-       └── SearchExpander        # ~40 组中英文情绪/爱情/职场同义词语义扩展
+```sh
+cd "Prism/swift version"
+swift test -Xswiftc -warnings-as-errors
+swift run -c release Prism
 ```
 
-* **Token 流式渲染**：首段立即展示；后续正文和推理片段按 50 ms 窗口合并，只通知当前回复的 `StreamingMessageState`。侧栏、输入框和历史快照不随每个 token 更新。工具轮完成时冲刷缓冲，最终回复先写入完整内容再发布全局状态；停止或完成后取消待发布帧，迟到片段不能覆盖结果。上下文估算按会话版本和设置缓存；未改变的 Markdown 段落跳过重复行内解析。
-* **输入与标题**：多行输入使用连续圆角矩形与固定圆角，原生输入框自然增长到六行后内部滚动。消息列表底部留白跟随输入区实测高度；窗口标题下显示简短 AI 生成提示。
-* **共同基调**：三种回应方式均使用谨慎乐观原则。证据、风险和关系判断不随风格改变；积极表达落在有依据的可能性与用户可控行动，不保证关系结果。
+受限环境可把 `CLANG_MODULE_CACHE_PATH`、`SWIFTPM_MODULECACHE_OVERRIDE` 和 SwiftPM `--cache-path` 指向可写临时目录。`--disable-sandbox` 仅关闭 SwiftPM manifest sandbox；宿主权限仍可能影响 dSYM 生成。不能把宿主拒绝访问当成测试失败。
 
----
+## 编排与产品约束
 
-## 三、 三阶对话生命周期管线 (Three-Stage Pipeline)
+`ChatStore` 提供 SwiftUI observable 外观；`ChatAgent` 在 MainActor 上维护业务状态。`DeepSeekClient` 处理 HTTP、SSE 和工具历史。`PrePipeline` 做辅助上下文检查；独立的 `PeoplePipeline` 和 `ProfilePipeline` 整理人物和用户观察。
 
-每一次用户发送消息，均会在后台启动一轮闭环的流水线分析：
+`AgentPrompt.swift` 的证据纪律、事实/用户解释/模型推断边界和共同判断标准保持不变。三种回应风格不改变结论标准。安全路径仍由 `SafetyAssessment.requiresIntervention` 的三个条件共同决定：`flag=crisis`、`immediate_danger=true`、非空 evidence。辅助请求不可用或语义不确定不自动触发危机模式。当前轮监督提示重申既有否定与证据规则，并以反例提醒模型不要把否定扩写成隐藏危机或未经陈述的情绪强度；没有增加关键词分类或改变干预触发条件。
 
-```
-                      【 用户发送消息 (trimmedText) 】
-                                     │
-                                     ▼
- ┌───────────────────────────────────────────────────────────────────────┐
- │ 1. 记忆写入与提取 (StoryMemory)                                         │
- │    - 按段落拆分输入，实时创建或追加本地 `StoryChapter`                   │
- └───────────────────────────────────┬───────────────────────────────────┘
-                                     │
-                                     ▼
- ┌───────────────────────────────────────────────────────────────────────┐
- │ 2. 前置守护分析 (Pre-Pipeline - 单次 Flash API JSON 调用)               │
- │    - 6 维度守护监控 (Reality / Spiral / Ingratiation 等)                │
- │    - 提取情绪；人物由独立 worker 处理                             │
- │    - 盲点审计与自杀/危机干预拦截 (Safety Crisis Override)                │
- └───────────────────────────────────┬───────────────────────────────────┘
-                                     │
-                      ┌──────────────┴──────────────┐
-                      ▼ (正常 / 不确定 / 检查不可用)  ▼ (确认即时危险与证据)
- ┌──────────────────────────────────────────┐   ┌────────────────────────┐
- │ 3. 主模型对话周期 (Stream)    │   │  4. 上下文安全回应    │
- │    - 注入 [监督者方向] 守护提示          │   │  - 暂停主模型分析       │
- │    - 注入 Context 本地检索与跨对话记忆    │   │  - 模型措辞；失败才用兜底  │
- │    - 激活本地工具调用循环 (最多 3 轮)      │   │  - 状态写入 UserDefaults│
- └────────────────────┬─────────────────────┘   └────────────────────────┘
-                      │
-                      ▼
- ┌───────────────────────────────────────────────────────────────────────┐
- │ 5. 后处理归纳管道 (Post-Pipeline)                                      │
- │    - 将 PrePipeline 结果异步合并入本地 JSON 存档库                      │
- │    - 周期性触发自动总结 (每 3 次增量归纳 ➡️ 自动触发 1 次全量重扫)          │
- │    - 更新会话大标题并原子写入 conversations.json                         │
- └───────────────────────────────────────────────────────────────────────┘
-```
+这些是程序和提示词约束，不能代替真实模型语义验收。验收入口及未完成项目见 `REGRESSION_CHECKLIST.md` 与 `SEMANTIC_ACCEPTANCE.md`。
 
----
+## 工具与调用轮次
 
-## 四、 核心技术模块规范
+`Tools.swift` 注册八个工具：
 
-### 1. 预处理管线与守护模式限制 (Pre-Pipeline Guarding)
-发送与重新生成回复都会运行辅助上下文分析。首轮和短消息也检查；人物识别由独立 worker 负责，不混入安全判定。
+| 工具 | 职责 |
+| --- | --- |
+| `track_person` | 读取人物与别名档案 |
+| `emotion_timeline` | 读取情绪记录 |
+| `search_chapters` | 关键词与同义词扩展检索章节 |
+| `fetch_chapter_messages` | 读取章节原消息 |
+| `search_memory` | 检索跨会话记忆 |
+| `search_psychology` | DeepSeek 官方搜索；自定义端点不暴露该工具 |
+| `manage_narrative_timeline` | 读取时间线或生成待用户确认的预览 |
+| `request_user_input` | 结构化追问 |
 
-| 维度 | 当前判断方式 |
-| :--- | :--- |
-| `reality` | 模型判断证据缺口，不以解释性词汇比例或关键词命中决定告警。 |
-| `spiral` / `blindspots` / `ingratiation` / `action_hollow` | 模型结合对话与历史记录给出待核实的提示，不作为自动定性或固定回复。 |
-| `safety` | 只有 `flag=crisis`、`immediate_danger=true` 且提供非空证据时进入安全回应路径；区分引用、否定、假设与过去经历。 |
+检索不额外调用模型重排。发送流程最多执行两轮工具调用，再保留一轮不带工具的最终合成。每轮可以包含多个工具调用。新对话第一轮只提供时间线提案与追问工具。保存时间线仍须点击原生确认按钮，模型参数不构成授权。
 
-辅助请求失败、JSON 无效、字段缺失与语义不确定分别保留为不可用或不确定状态，主模型独立判断，不走关键词兜底，不自动暂停回答。主模型提示也要求独立检查即时现实危险。
+## 上下文与流式展示
 
-确认即时危险后，辅助模型根据用户原话生成安全回应，不检查是否包含“安全”、问号等固定字符。只有该生成请求失败或返回空内容，才显示简短的本地应急兜底。旧危机状态只作为下轮的历史背景，每轮重新判断。分类器产生的求助号码和机构未经核实，不转交给回复生成器。
+上下文按估算 token 阈值管理，不再按 60/40 条消息截断：
 
----
+| 原文估算 token | 行为 |
+| --- | --- |
+| 550,000 | 显示容量提醒，不改变发送原文 |
+| 750,000 | 压缩请求中的旧上下文，近期目标保留 200,000 tokens |
+| 850,000 | 加强压缩保护，近期目标保留 150,000 tokens |
 
-### 2. 工具（7 个函数调用工具）
-Prism 注册了 7 个工具供模型按需调度。除 `search_psychology` 外，工具只读本地数据或生成待确认的本地写入提案：
+当前模型容量常量为 1,000,000 tokens，不是自定义服务商能力探测。估算值不是服务端实际用量；单条消息超过近期预算时仍保留该条，不能视为严格的请求长度上限。本地原消息不会因压缩而物理替换或删除。旧 `contextWindow` 配置字段被忽略，设置页保留有效阈值说明。
 
-| 工具名 | 数据来源 | 返回内容规范 |
-| :--- | :--- | :--- |
-| `track_person` | `person_archive.json` | 匹配特定人名，返回人物的身份角色、提及次数、情感变化弧线及历史记事。 |
-| `emotion_timeline` | `emotion_timeline.json` | 返回最近 N 条情绪条目：`{emotion, intensity, date, segment}`。 |
-| `search_chapters` | 当前对话章节 `StoryChapter` | 模糊搜索匹配章节，返回 `{title, summary, keywords}`。 |
-| `fetch_chapter_messages` | 当前会话消息 `ChatMessage` | 基于 1-based 索引，返回该章节覆盖的最多 12 条对话明细。 |
-| `search_memory` | 跨对话归档 `memory.json` | 返回包含同义词扩展和重排序后相关的跨对话核心记忆。 |
-| `manage_narrative_timeline` | 叙事事件档案 | 读取或生成事件预览。只接受用户在原生预览卡片点击保存；`confirmed` 参数、特定词或问号都不构成授权。提案绑定来源对话和消息，过期提案不能保存。 |
-| `search_psychology` | DeepSeek 官方搜索 | 模型按问题语义判断心理学相关性，保留来源链接；本地不再按领域词表拦截。 |
+流式首帧立即显示，后续片段按 50ms 合并，优先通知当前消息 observable；完成时冲刷缓冲并发布最终历史。工具查询占位使用不持久化的 `isToolPlaceholder` 状态，不依赖中文文案比较。章节解析拒绝越界起始索引，并约束结束索引与摘要长度。
 
-* **本地候选检索**：`search_chapters` 和 `search_memory` 使用关键词与同义词扩展排序，不额外调用模型重排；主模型解释检索证据。检索规则用于查找数据，不用于决定用户的风险或强制输出话术。
+## 存储、写入与故障恢复
 
-* **模型发现**：设置使用配置端点的 `GET /models`（保留 `/v1` 等路径），按 Flash 优先展示。空列表、HTTP 错误或解析失败保留现有选择。API Key/Base URL 变更清空旧列表，过期请求不能覆盖新端点结果；自定义模型 ID 会随配置保存，不再被强制迁移到两个固定模型。完整回归项目见 `REGRESSION_CHECKLIST.md`。
+默认目录为 `~/Documents/Prism`，可在设置中更换本地目录：
 
----
+- `prism.sqlite3`：会话及七类结构化档案。
+- `config.json`：非敏感设置与 Keychain 条目 ID。
+- `usage_stats.json`、可选 `prism.log`：用量统计和日志。
+- `Data/*.json`、`*.pre-sqlite.bak`：旧版本数据及迁移备份，仅兼容导入；后续写入以 SQLite 为准。
 
-### 3. 上下文窗口与自动归纳语义压缩策略 (Context Window & Trimming)
-为了最大化利用长上下文窗口并控制 API 成本，Prism 采用分段压缩机制：
-* **≤60 条消息**：全文发送，并在 system 提示词中注入章节索引，明确提示 Agent 哪些过往记忆可以用工具精确调取。
-* **>60 条消息 (窗口模式)**：仅保留最后 40 条消息的全文。其余更旧的历史消息执行**语义压缩（`trimConversation`）**：
-  * 被章节覆盖的消息在保存时物理替换为 `[已归纳: 第N章「标题」]`。
-  * 未被章节覆盖的其余消息文本截断至 200 字符。
-  * 章节摘要截断至 600 字符。
+SQLite schema 保持 `user_version=1`，不改变现有 record payload 结构。历史 Rust schema 注释不再承诺当前跨客户端兼容。启用 WAL 和 `synchronous=FULL`；不支持直接将活跃数据库放入 iCloud。
 
----
+`StorageWriter` 使用独立串行队列完成快照编码与数据库 IO。业务操作标记 dirty collection，约 500ms 防抖合并；按版本记录确认成功的 dirty 状态，旧写入完成不会清除新改动。SQLite 连接由递归锁保护，串行写入与同步 flush 不并发使用连接。
 
-### 4. 自动归纳混合策略 (Summary Mechanics)
-对话在达到特定轮数时（于后台 Deselect 或轮数满额）异步触发章节归纳。
+一个 batch 的所有集合共享 `BEGIN IMMEDIATE` 事务，失败同时回滚 SQL 数据与缓存 revision。仍需扫描/编码被标记集合，并非按消息增量落盘；SQLite 仅更新有变化的 record。没有实施按会话拆文件。
 
-* **增量归纳 (Incremental Summarization)**：使用 Flash 模型，读取最近 3 个章节及最新消息，返回增量 `{title, summary, keywords}` 追加到章节队列，同步写入跨对话记忆。
-* **全量重扫 (Full Re-Summarize)**：每执行 **3 次增量归纳，自动触发 1 次全量重扫**。向模型发送完整对话历史、最近情绪轨迹（前 5 条）、高频人物（前 5 人）及活跃盲点。模型重构整个章节列表，返回包含 `startIndex` 与 `endIndex` 的 JSON 数组，映射并重置消息 ID 引用，保持全文章节风格和粒度完全一致。
+删除会话会清理其时间线、记忆、盲点、画像与提案，人物仅清理引用、保留本体。会话和关联档案一起提交；提交失败时保留窗口中的待保存改动和错误状态，磁盘保持事务之前的数据。
 
----
+切换目录、导入前、删除时、应用失去 active 状态与退出前强制 flush。正常退出遇到保存失败可导出快照后退出、取消退出，或明确选择不保存退出。强制终止进程/断电仍可能丢失尚未提交的防抖窗口内容。
 
-## 五、 本地存储模型与目录规范 (Persistence & Folder Tree)
+- 单次占锁等待上限 250ms；写入队列仅对 SQLITE_BUSY（含扩展码）额外自动重试两次，退避 250ms、750ms，持续占锁约 1.75 秒后上报。冲突、SQLITE_LOCKED、磁盘满、IO/权限故障不自动重放；保留 dirty，条件恢复后点击“重试保存”。
+- revision 冲突阻止盲目重试覆盖其他窗口：先导出当前窗口，确认后丢弃未保存改动并重新加载。
+- 格式损坏或新版本数据库拒绝写入；不把加载失败得到的空列表作为正常数据覆盖磁盘。
 
-所有本地数据一律存放于 `~/Documents/Prism/` 中（可通过设置面板自定义至 iCloud Drive 实现多端同步）：
+只有所有集合完整加载成功后才做启动孤儿对账。清理不存在会话的引用时，把会话 revision 也纳入同一事务校验；保留人物本体和旧版本无 scope 的人物。成功清理记录数量无关的简短日志，不输出档案原文。
 
-```
-~/Documents/Prism/
-├── conversations.json           # 核心会话数据库（原子写入，防断电文件损坏）
-├── config.json                  # 应用设置、配置参数及 API Key
-└── Data/                        # 后置分析数据库文件夹
-    ├── person_archive.json      # 人物归档记录（上限 200 条，按 lastMentionedAt 排序）
-    ├── emotion_timeline.json    # 情绪时间轴数据（上限 200 条）
-    ├── narrative_timeline.json  # 按故事内实际发生时间排列的叙事事件
-    ├── blindspots.json          # 认知盲点历史记录（上限 300 条）
-    └── memory.json              # 跨会话核心知识库记忆（上限 500 条，溢出自动裁剪至 300 条）
+`history` 每条 record 保留最近五版，总计最多 10,000 条、32MiB 历史 payload；启动与写入事务都会裁剪旧历史。该上限不包括活跃数据、索引、空闲页和 WAL，不能称为数据库物理文件上限。需要回收旧空闲页时，退出应用后运行 `../scripts/storage_maintenance.py --help`；脚本默认只报告统计，写入前先备份。
+
+## 密钥与迁移
+
+API Key 使用系统 Keychain generic password，设置文件只保存条目 ID，不启用 iCloud Keychain 同步。迁移旧 `config.json`、`settings.json` 或 UserDefaults 时先写 Keychain、读回确认，再原子保存去掉明文的配置并清理旧字段。Keychain 失败时保留原配置，允许重试；禁止因为读失败把旧 Key 当空值删除。
+
+已存在的系统备份/同步盘副本不会被程序追溯擦除。数据目录迁移保留同一 credential ID；复制快照到其他机器需重新设置该机器的 Key。Keychain 的系统权限提示与签名身份稳定性需要真实应用升级验收。
+
+## 导出、导入与备份
+
+设置页可打开数据目录、导出当前窗口 JSON 快照、导入完整快照。导出不包含 API Key；加载不完整的窗口会被标记为不完整，不能当作完整快照导入。快照可能包含敏感对话，应由用户自行保存。
+
+导入与目录切换会更新数据代次，旧后台人物/画像结果会丢弃；人物处理绑定原用户消息，画像还要求原章节未被替换。导入前校验版本、所有集合和模型解码，先通过 SQLite backup API 生成 `pre-import-<UUID>.sqlite3`，再原子替换所有集合。解析或事务失败不会部分替换旧数据。复制活跃数据库应使用 backup API，不能只复制 `.sqlite3` 而遗漏 WAL。
+
+## 测试、CI 与打包
+
+测试覆盖存储锁恢复、跨集合回滚、旧数据备份、history 收敛、孤儿对账、快照往返、500 条消息与合并写入、人物/画像解析合并、章节边界、流式与确认流程。默认测试仅用临时目录、模拟凭据与 mock HTTP，不读取真实 Keychain 或调用真实模型。
+
+`.github/workflows/swift.yml` 在 `macos-26` 和 `xcode-27` runner 上测试、release 编译及打包。工作流入库不代表 GitHub 已实际运行；要阻止合并，还须将两个检查配置为分支必需状态检查。
+
+从仓库根目录一条命令打包：
+
+```sh
+python3 Prism/scripts/package_app.py --sync-release
 ```
 
-`person_archive.json` 中的 `traits` 只保存受当前对话证据支持的疑似行为模式：固定 pattern ID、证据片段、依据强度、单次/重复范围和首次/最近观察时间。它们始终带有 `suspected` 状态，不是人格、心理疾病或依恋类型诊断；旧档案缺少该字段时按空数组兼容读取。人物记录还包含 `aliases`（自然称呼变化）和 `isSelf`（仅在原话明确指向用户本人时为真）。预处理模型会从当前上下文和候选人物中做共指链接：`match_confidence >= 0.75` 才允许使用已有 `person_id`，否则保留为新称呼，避免把不同人物强行合并。
+默认生成 `swift version/Prism.app`；`--sync-release` 同步 `release/Prism-SwiftUI-macOS.app`。替换前把旧包移到仓库外 `~/Documents/Prism-build-backups`，可用 `--backup-dir` 指定。`../VERSION` 生成两个 bundle version 字段。源码摘要算法固定为按相对路径排序，对路径、NUL、文件字节、NUL 依次做 SHA-256；包括 Sources、Resources、Package.swift、VERSION、build_app.py 与 package_app.py；Tests 和文档不参与摘要。`--digest` 可复核。
 
-### 5.1 性能优化计划（写盘节流，2026-07）
+受限宿主若禁止 SwiftPM manifest 沙箱，可给构建/打包入口设置 `PRISM_DISABLE_MANIFEST_SANDBOX=1`；普通构建与 CI 无需此开关。
 
-**现状瓶颈**（`ChatAgent.swift` 事实）：
+这是来源摘要，不承诺不同工具链下的二进制逐字节相同。打包命令始终运行构建，前后核对源码摘要，并验证二进制的 arm64、最低 macOS 与实际 SDK 记录。
 
-| 问题 | 现状 |
-|---|---|
-| 全量同步写盘 | `save()` 每次对全部会话 `JSONEncoder().encode` + `data.write(.atomic)`，运行在 `@MainActor` 上，操作时阻塞 UI |
-| 调用点过多 | `save()` 调用点 16 处（发送、工具调用、删除、改名、摘要等每阶段一次），每次全量写 |
-| 启动同步加载 | `load()` 启动时同步 decode 整个 `conversations.json` |
-
-**优化方案**：
-
-1. **写盘节流合并**：`save()` 改为置 dirty 标记 + 取消上一个 pending 写 + 调度延迟约 500ms 的合并写；连续操作只写最后一次；IO 写盘移至后台队列（encode 留在主线程，纯 CPU 开销可接受）；
-2. **退出前 flush**（正确性关键）：`scenePhase` 转后台 / `willTerminate` 时同步写一次并取消 pending，防止节流导致退出丢数据；保留 `atomic` 写与 `trimConversation` 语义；
-3. **启动加载异步化**（可选）：`load()` 改为后台 decode、完成后主线程应用，注意 init 时序。
-
-**范围边界**：不改数据格式、不改 agent 逻辑、不做 SwiftData/SQLite 迁移、不做备份导出与检索增强。
-
-**工作量**：核心（1+2）约 2 天；加启动异步约 3 天。
-
-### 5.2 数据一致性：删除与孤儿清理
-
-> 参考来源：note/ARCHITECTURE.md「删除一致性」设计（唯一删除入口 + 启动对账孤儿清扫），此处仅取其适用于 Prism JSON 架构的部分。
-
-**现状问题**：`conversations.json` 与 `Data/` 存档（person/emotion/blindspots/memory）之间无参照关系；删除会话后，存档中引用该会话的记录成为孤儿数据，长期累积会污染记忆召回与搜索。
-
-**改进**：
-
-1. **统一删除入口**：所有删除操作（删除会话、resetAll）经由单一方法，按会话 ID 级联清理存档：
-   - `emotion_timeline.json`：删除 `conversationID` 匹配项；
-   - `blindspots.json`：删除 `conversationID` 匹配项；
-   - `memory.json`：删除 `sourceConversationID` 匹配项；
-   - `person_archive.json`：只清理 `notes` 中引用该会话的增量，保留人物本体；
-2. **启动对账**（轻量）：启动时扫描存档中不存在的 `conversationID` 并删除孤儿条目，与 5.1 的加载流程合并执行，不增加启动耗时。
-
-### 5.3 消息模型演进参考（暂不实施）
-
-note 架构的教训：消息若作为整包 blob 持久化，每次追加都会全量重写（长对话 O(n²) 写入放大）。Prism 当前 `conversations.json` 全量存储即属此类，5.1 的节流合并已缓解写频率；若未来会话量或单会话规模持续增长，可按会话拆分为独立文件（`Data/conversations/<id>.json`），只写变更的会话。当前不实施。
-
----
-
-## 六、 命名及界面代码规范 (`Package.swift` 结构)
-
-1. **状态更新通知机制**：`ChatAgent` 执行的所有更新都必须在 `@MainActor` 中执行，并通过 `delegate?.agentStateDidChange()` 让 UI 状态外观层 `ChatStore` 发送 `objectWillChange.send()`。
-2. **原生 Markdown 渲染 (`MarkdownText.swift`)**：不依赖第三方包。手动解析 markdown 到 `MarkdownBlock` 抽象语法树，利用 SwiftUI `Grid` 渲染高保真表格，使用原生的 `Text` 组装粗体、斜体、链接、代码块及列表。
-3. **输入框弹性排版 (`MacEditor.swift`)**：利用 `NSViewRepresentable` 封装 AppKit 的 `NSTextView`，以便完美控制 macOS 下的回车直接发送、`Shift + Enter` 换行以及输入框随内容自动拉伸的布局。
-4. **磨砂微透效果实现 (`GlassBackground.swift`)**：
-   * 原生支持 macOS 26 `glassEffect(Glass.regular)`。
-   * 对于低版本自适应降级：使用 `.ultraThinMaterial` 模拟磨砂度，外层套两圈不同透明度的 Stroke 边框，并在左上角使用 mask 混合遮罩，在老系统上也能完美折射光泽感。
+默认 ad hoc 签名，未做 Developer ID 公证；Apple Silicon 的支持范围不因签名改变。可用 `--identity` 和已有 `--notary-profile` 完成正式签名、公证和 stapling。仓库不存证书、私钥或公证凭据。`codesign --verify`、`stapler validate` 与干净 Mac 首次打开是不同验收项目。

@@ -71,9 +71,9 @@ enum ToolRegistry {
             let n = Int(args["count"] ?? "5") ?? 5
             result = emotionTimeline(count: n, store: store)
         case "search_chapters":
-            if let settings {
+            if settings != nil {
                 let n = Int(args["count"] ?? "5") ?? 5
-                let chapters = await store.searchChaptersSemantic(query: args["query"] ?? "", settings: settings, limit: n)
+                let chapters = await store.searchChaptersSemantic(query: args["query"] ?? "", limit: n)
                 result = buildChapterResults(chapters: chapters.map(\.chapter), store: store)
             } else {
                 result = searchChapters(query: args["query"] ?? "", store: store)
@@ -82,8 +82,8 @@ enum ToolRegistry {
             result = fetchChapterMessages(args: args, store: store)
         case "search_memory":
             let n = Int(args["count"] ?? "10") ?? 10
-            if let settings {
-                let entries = await store.searchMemorySemantic(query: args["query"] ?? "", settings: settings, limit: n)
+            if settings != nil {
+                let entries = await store.searchMemorySemantic(query: args["query"] ?? "", limit: n)
                 result = encodeMemoryResults(entries)
             } else {
                 result = searchMemory(query: args["query"] ?? "", store: store, limit: n)

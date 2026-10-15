@@ -35,6 +35,10 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
     // trailing assistant messages are intentionally removed during load.
     conversation.messages.append(reply)
     agent.selectedConversation = conversation
+    // Fixture setup schedules a 500ms persistence write. Complete it before
+    // attaching stream observers: a save-completion notification is legitimate
+    // global state, unrelated to token delivery, and may arrive on a busy runner.
+    try #require(agent.flushStorage())
     return (folder, agent, conversation.id, reply.id)
 }
 
@@ -97,6 +101,7 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
             content: "最终答复", reasoning: "Write the reply now.")
         #expect(fixture.agent.selectedConversation?.messages.last?.reasoning == original)
         fixture.agent.save()
+        #expect(fixture.agent.flushStorage())
         let restored = ChatAgent(storagePath: fixture.folder.path)
         #expect(restored.selectedConversation?.messages.last?.reasoning == original)
     }
@@ -109,10 +114,10 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
         fixture.agent.beginStreamingMessage(fixture.replyID)
         fixture.agent.append(.reasoning("需要检索原文"), to: fixture.replyID, in: fixture.conversationID)
         var conversation = try #require(fixture.agent.selectedConversation)
-        conversation.messages[conversation.messages.count - 1].content = "🔧 正在查询…"
+        conversation.messages[conversation.messages.count - 1].isToolPlaceholder = true
         fixture.agent.selectedConversation = conversation
         fixture.agent.delegate?.agentStateDidChange()
-        #expect(store.stream.message?.content == "🔧 正在查询…")
+        #expect(store.stream.message?.isToolPlaceholder == true)
         #expect(store.stream.message?.reasoning == "需要检索原文")
         fixture.agent.finishStreamingMessage(fixture.replyID, in: fixture.conversationID, content: "已核对原文", reasoning: "依据")
         #expect(store.stream.message == nil)
@@ -122,7 +127,7 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
         let fixture = try streamingFixture(historyCount: 80)
         defer { try? FileManager.default.removeItem(at: fixture.folder) }
         let store = ChatStore(agent: fixture.agent)
-        let settings = AppSettings(storagePath: fixture.folder.path)
+        let settings = AppSettings(storagePath: fixture.folder.path, credentialStore: TestCredentials.shared)
         let before = store.contextUsage(settings: settings)
         var notifications = 0
         let subscription = store.objectWillChange.sink { notifications += 1 }

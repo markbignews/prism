@@ -23,9 +23,21 @@ final class ChatAgent {
     private var hasPublishedStreamFrame = false
     /// Status of the last summarization attempt (empty = never run / nothing to report).
     var lastSummaryStatus: String = ""
+    var lastSummarySucceeded: Bool? = nil
 
     private var database: SQLiteStore?
     private var storageFailure = false
+    private var storageWriter: StorageWriter?
+    private var pendingSave: Task<Void, Never>?
+    private var dirtyCollections: [String: UInt] = [:]
+    private var storageRevision: UInt = 0
+    private var writeSequence: UInt = 0
+    private var appliedWriteSequence: UInt = 0
+    private var storageLoaded = false
+    private(set) var storageGeneration = UUID()
+    private(set) var canRetryStorage = false
+    var hasStorageFailure: Bool { storageFailure }
+    var hasUnsavedChanges: Bool { !dirtyCollections.isEmpty }
     private var storageURL: URL
 
     init(storagePath: String? = nil) {
@@ -49,6 +61,7 @@ final class ChatAgent {
         openDatabase(folder)
         load()
         loadArchives()
+        reconcileArchives()
     }
 
     var selectedConversation: Conversation? {
@@ -104,7 +117,7 @@ final class ChatAgent {
     }
 
     func deleteConversation(id: UUID) {
-        guard !isSending, !isSummarizing else { return }  // block deletion during summarization
+        guard !isSending, !isSummarizing, !storageFailure else { return }
         currentSendTask?.cancel()
         currentSendTask = nil
         conversations.removeAll { $0.id == id }
@@ -117,7 +130,6 @@ final class ChatAgent {
         personArchive = personArchive.compactMap { person in
             guard var ids = person.conversationIDs else { return person }
             ids.removeAll { $0 == id }
-            guard !ids.isEmpty else { return nil }
             var retained = person
             retained.conversationIDs = ids
             return retained
@@ -132,7 +144,6 @@ final class ChatAgent {
                 || !personArchive.contains(where: { $0.id == proposal.sourcePersonID })
                 || !personArchive.contains(where: { $0.id == proposal.candidatePersonID })
         }
-        clearSafetyCrisis(for: id)
         saveArchives()
 
         if conversations.isEmpty {
@@ -140,6 +151,7 @@ final class ChatAgent {
         } else {
             save()
         }
+        if flushStorage() { clearSafetyCrisis(for: id) }
         delegate?.agentStateDidChange()
     }
 
@@ -159,8 +171,14 @@ final class ChatAgent {
 
     /// Reload conversations and archives from the current data path.
     /// Call after changing `AppSettings.dataPath` and migrating files.
-    func reloadStorage(from settings: AppSettings? = nil) {
+    func reloadStorage(from settings: AppSettings? = nil, discardingUnsaved: Bool = false) {
         guard !isSending, !isSummarizing else { return }
+        if !discardingUnsaved, !flushStorage() { return }
+        pendingSave?.cancel(); pendingSave = nil
+        dirtyCollections = [:]
+        writeSequence &+= 1; appliedWriteSequence = writeSequence
+        storageLoaded = false
+        storageGeneration = UUID()
         pendingNarrativeEvents = []
         let dataPath = settings?.dataPath
             ?? UserDefaults.standard.string(forKey: "storage.dataPath")
@@ -175,6 +193,7 @@ final class ChatAgent {
         openDatabase(folder)
         load()
         loadArchives()
+        reconcileArchives()
 
         // If the previously selected conversation no longer exists, pick the first.
         if let sid = selectedConversationID, !conversations.contains(where: { $0.id == sid }) {
@@ -679,7 +698,7 @@ final class ChatAgent {
     /// Chapter synthesis remains an index/memory feature and does not evict
     /// raw messages. At the 75% hard threshold, only the request payload is
     /// compacted; every original message remains stored locally.
-    private func buildWindowedMessages(for index: Int, includeReasoning: Bool, context: Conversation? = nil) -> [ChatMessage] {
+    func buildWindowedMessages(for index: Int, includeReasoning: Bool, context: Conversation? = nil) -> [ChatMessage] {
         let conv = context ?? conversations[index]
         let rawTokens = conv.messages.reduce(0) {
             $0 + estimateMessageTokens($1, includeReasoning: includeReasoning)
@@ -796,7 +815,7 @@ final class ChatAgent {
         let trimmed = (clarificationResponse ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!trimmed.isEmpty || !attachments.isEmpty), !isSending, !isSummarizing, !storageFailure else { return }
         let effectiveText = trimmed.isEmpty && !attachments.isEmpty
-            ? "请分析我上传的附件。"
+            ? L10n.text(.analyzeAttachment, settings.language)
             : trimmed
         bootstrapIfNeeded(language: settings.language)
         guard let id = selectedConversationID,
@@ -1009,7 +1028,7 @@ final class ChatAgent {
                 // looks stuck between streaming and the next round).
                 if let msgIndex = conversations[index].messages.lastIndex(where: { $0.id == assistantID }),
                    conversations[index].messages[msgIndex].content.isEmpty {
-                    conversations[index].messages[msgIndex].content = "🔧 正在查询…"
+                    conversations[index].messages[msgIndex].isToolPlaceholder = true
                     delegate?.agentStateDidChange()
                 }
 
@@ -1029,8 +1048,8 @@ final class ChatAgent {
 
                 // Clear placeholder + save so UI sees the transition
                 if let msgIndex = conversations[index].messages.lastIndex(where: { $0.id == assistantID }),
-                   conversations[index].messages[msgIndex].content == "🔧 正在查询…" {
-                    conversations[index].messages[msgIndex].content = ""
+                   conversations[index].messages[msgIndex].isToolPlaceholder {
+                    conversations[index].messages[msgIndex].isToolPlaceholder = false
                     delegate?.agentStateDidChange()
                 }
                 save()
@@ -1063,8 +1082,10 @@ final class ChatAgent {
             // ── Step 3: Background specialist workers ──
             // The supervisor persists only safety/quality observations. Entity
             // resolution is independent and never sits on the reply's path.
+            let generation = storageGeneration
             Task { @MainActor [weak self] in
-                await self?.applyPrePipelineResults(preResult, for: id, requestSentAt: requestSentAt)
+                guard let self, self.storageGeneration == generation else { return }
+                await self.applyPrePipelineResults(preResult, for: id, requestSentAt: requestSentAt)
             }
             if !preResult.safetyUncertain, !preResult.safetyCrisis {
                 schedulePeopleAnalysis(for: id, requestSentAt: requestSentAt, settings: settings)
@@ -1204,7 +1225,8 @@ final class ChatAgent {
 
         let conv = conversations[index]
         guard conv.messages.count >= 2 else {
-            lastSummaryStatus = "消息不足（需至少2条）"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryInsufficient, settings.language)
             return
         }
 
@@ -1217,11 +1239,13 @@ final class ChatAgent {
 
         // Pre-flight: validate API configuration
         guard !settings.apiKey.trimmingCharacters(in: .whitespaces).isEmpty else {
-            lastSummaryStatus = "未配置 API Key"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryMissingKey, settings.language)
             return
         }
         guard !settings.flashModel.trimmingCharacters(in: .whitespaces).isEmpty else {
-            lastSummaryStatus = "未配置 Flash 模型"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryMissingModel, settings.language)
             return
         }
 
@@ -1254,17 +1278,20 @@ final class ChatAgent {
                 }
                 scheduleProfileAnalysis(for: chapters, conversationID: convID, settings: settings)
                 save()
-                lastSummaryStatus = "已生成 \(chapters.count) 个章节"
+                lastSummarySucceeded = true
+                lastSummaryStatus = L10n.format(.summaryGenerated, settings.language, String(chapters.count))
                 NotificationCenter.default.post(name: .prismChaptersUpdated, object: nil)
 
                 // Conversation Manager: update title to reflect full narrative
                 await updateConversationTitle(for: index, settings: settings)
             } else {
-                lastSummaryStatus = "模型返回结果解析失败"
+                lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryParseFailed, settings.language)
                 print("[FullReSummarize] parseChapterArrayJSON returned empty")
             }
         } catch {
-            lastSummaryStatus = "API请求失败: \(error.localizedDescription)"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.format(.summaryAPIFailed, settings.language, error.localizedDescription)
             print("[FullReSummarize] Failed: \(error.localizedDescription)")
         }
     }
@@ -1273,7 +1300,8 @@ final class ChatAgent {
     /// selectedConversationID when the user clicks a sidebar button.
     func fullReSummarize(conversationID: UUID, settings: AppSettings) async {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
-            lastSummaryStatus = "对话不存在"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryConversationMissing, settings.language)
             return
         }
         // Auto-recover from stuck flag (should never happen, safety net)
@@ -1282,9 +1310,11 @@ final class ChatAgent {
             isSummarizing = false
         }
         guard !isSummarizing else {
-            lastSummaryStatus = "正在归纳中"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryBusy, settings.language)
             return
         }
+        lastSummarySucceeded = nil
         lastSummaryStatus = ""
         await fullReSummarize(at: index, settings: settings)
     }
@@ -1292,7 +1322,8 @@ final class ChatAgent {
     func fullReSummarize(settings: AppSettings) async {
         guard let id = selectedConversationID,
               let index = conversations.firstIndex(where: { $0.id == id }) else {
-            lastSummaryStatus = "未选中对话"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryNoSelection, settings.language)
             return
         }
         // Auto-recover from stuck flag (should never happen, safety net)
@@ -1301,9 +1332,11 @@ final class ChatAgent {
             isSummarizing = false
         }
         guard !isSummarizing else {
-            lastSummaryStatus = "正在归纳中"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryBusy, settings.language)
             return
         }
+        lastSummarySucceeded = nil
         lastSummaryStatus = ""
         await fullReSummarize(at: index, settings: settings)
     }
@@ -1333,14 +1366,16 @@ final class ChatAgent {
         let conv = conversations[index]
         let startIndex = conv.lastSummaryMessageIndex
         guard startIndex < conv.messages.count else {
-            lastSummaryStatus = "没有新消息需要归纳"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryNoNewMessages, settings.language)
             return
         }
 
         let rawMessages = Array(conv.messages.suffix(from: startIndex))
         let newMessages = filterSummarizable(rawMessages)
         guard newMessages.count >= 2 else {
-            lastSummaryStatus = "新消息不足（需至少2条）"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryNewInsufficient, settings.language)
             return
         }
 
@@ -1358,7 +1393,8 @@ final class ChatAgent {
 
         // Pre-flight: validate API configuration
         guard !settings.apiKey.trimmingCharacters(in: .whitespaces).isEmpty else {
-            lastSummaryStatus = "未配置 API Key"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryMissingKey, settings.language)
             return
         }
 
@@ -1383,7 +1419,8 @@ final class ChatAgent {
             let trimmedResult = result.trimmingCharacters(in: .whitespacesAndNewlines)
             if (trimmedResult.hasPrefix("{") || trimmedResult.hasPrefix("["))
                 && !strictSummaryJSONParseSucceeds(result) {
-                lastSummaryStatus = "模型返回截断的 JSON，将在下次对话后自动重试"
+                lastSummarySucceeded = false
+            lastSummaryStatus = L10n.text(.summaryTruncated, settings.language)
                 return
             }
 
@@ -1409,18 +1446,21 @@ final class ChatAgent {
                 settings: settings
             )
             save()
-            lastSummaryStatus = "新增章节「\(title)」"
+            lastSummarySucceeded = true
+            lastSummaryStatus = L10n.format(.summaryAdded, settings.language, title)
             NotificationCenter.default.post(name: .prismChaptersUpdated, object: nil)
 
             // Conversation Manager: update title to reflect new chapters
             await updateConversationTitle(for: index, settings: settings)
         } catch {
-            lastSummaryStatus = "API请求失败: \(error.localizedDescription)"
+            lastSummarySucceeded = false
+            lastSummaryStatus = L10n.format(.summaryAPIFailed, settings.language, error.localizedDescription)
             print("[AutoSummarize] Failed: \(error.localizedDescription)")
         }
     }
 
-    private func parseChapterArrayJSON(_ text: String, messages: [ChatMessage]) -> [StoryChapter] {
+    func parseChapterArrayJSON(_ text: String, messages: [ChatMessage]) -> [StoryChapter] {
+        guard !messages.isEmpty else { return [] }
         var cleaned = text
         if let range = cleaned.range(of: "```json") {
             cleaned = String(cleaned[range.upperBound...])
@@ -1440,8 +1480,10 @@ final class ChatAgent {
                     guard let title = dict["title"] as? String,
                           let summary = dict["summary"] as? String else { return nil }
                     let keywords = dict["keywords"] as? [String] ?? []
-                    let startIdx = max(0, (dict["startIndex"] as? Int ?? 1) - 1)
-                    let endIdx = min(messages.count - 1, max(startIdx, (dict["endIndex"] as? Int ?? messages.count) - 1))
+                    let startIdx = max(1, dict["startIndex"] as? Int ?? 1) - 1
+                    guard startIdx < messages.count else { return nil }
+                    let boundedEnd = min(messages.count, max(1, dict["endIndex"] as? Int ?? messages.count))
+                    let endIdx = max(startIdx, boundedEnd - 1)
                     let ids = messages[startIdx...endIdx].map(\.id)
                     return StoryChapter(
                         title: title,
@@ -1578,6 +1620,7 @@ final class ChatAgent {
         streamingMessageID = nil
         guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }),
               let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
+        conversations[conversationIndex].messages[messageIndex].isToolPlaceholder = false
         conversations[conversationIndex].messages[messageIndex].content = content
         // Streamed reasoning is authoritative across every tool round. A final
         // result may contain only the last subrequest (e.g. "Write the reply now.").
@@ -1624,18 +1667,155 @@ final class ChatAgent {
     }
 
     private func openDatabase(_ folder: URL) {
-        do { database = try SQLiteStore(root: folder); storageFailure = false }
+        do {
+            let opened = try SQLiteStore(root: folder)
+            database = opened; storageWriter = StorageWriter(database: opened)
+            storageFailure = false; canRetryStorage = false
+        }
         catch { database = nil; reportStorageFailure(error) }
     }
     private func reportStorageFailure(_ error: Error) {
         storageFailure = true
-        errorMessage = "Storage / 存储错误：" + error.localizedDescription
+        canRetryStorage = (error as? SQLiteStore.Failure)?.isRetryable == true
+        errorMessage = "Storage: " + error.localizedDescription
         delegate?.agentStateDidChange()
     }
     func save() {
-        guard !storageFailure, let database else { return }
-        do { try database.write("conversations.json", data: SQLiteStore.encoder().encode(conversations)) }
-        catch { reportStorageFailure(error) }
+        markDirty("conversations.json")
+    }
+
+    func storageSnapshot() -> StorageSnapshot {
+        StorageSnapshot(conversations: conversations, people: personArchive, links: personLinkProposals,
+            profile: userProfileObservations, emotions: emotionTimeline, blindspots: blindspots,
+            memory: memoryStore, timeline: narrativeTimeline)
+    }
+    private func markDirty(_ name: String) {
+        guard storageLoaded else { return }
+        storageRevision &+= 1
+        dirtyCollections[name] = storageRevision
+        pendingSave?.cancel()
+        guard !storageFailure else { return }
+        pendingSave = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            guard let self, let writer = self.storageWriter, !Task.isCancelled else { return }
+            let versions = self.dirtyCollections
+            self.writeSequence &+= 1
+            let sequence = self.writeSequence
+            let result = await writer.write(self.storageSnapshot(), names: Set(versions.keys))
+            guard !Task.isCancelled else { return }
+            self.completeWrite(result, versions: versions, sequence: sequence)
+        }
+    }
+    private func completeWrite(_ result: Result<Void, Error>, versions: [String: UInt], sequence: UInt) {
+        guard sequence > appliedWriteSequence else { return }
+        appliedWriteSequence = sequence
+        switch result {
+        case .success:
+            for (name, version) in versions where dirtyCollections[name] == version { dirtyCollections[name] = nil }
+            if storageFailure { errorMessage = nil }
+            storageFailure = false; canRetryStorage = false
+        case .failure(let error): reportStorageFailure(error)
+        }
+        delegate?.agentStateDidChange()
+    }
+    /// Called at explicit durability boundaries: delete, backup, path change,
+    /// background and termination. Encoding still runs on the writer queue.
+    @discardableResult func flushStorage() -> Bool {
+        if streamingMessageID != nil { flushPendingStream(); markDirty("conversations.json") }
+        pendingSave?.cancel(); pendingSave = nil
+        guard !dirtyCollections.isEmpty else { return !storageFailure }
+        guard storageLoaded, let writer = storageWriter else { return false }
+        if storageFailure && !canRetryStorage { return false }
+        let versions = dirtyCollections
+        writeSequence &+= 1
+        completeWrite(Result { try writer.flush(storageSnapshot(), names: Set(versions.keys)) },
+            versions: versions, sequence: writeSequence)
+        return !storageFailure
+    }
+    func retryStorage() {
+        guard canRetryStorage else { return }
+        if storageLoaded { _ = flushStorage() }
+        else {
+            openDatabase(storageURL.deletingLastPathComponent())
+            load(); loadArchives(); reconcileArchives()
+            if !storageFailure { errorMessage = nil; delegate?.agentStateDidChange() }
+        }
+    }
+    func backupStorage(to target: URL) throws {
+        guard flushStorage(), let writer = storageWriter else {
+            throw SQLiteStore.Failure(message: "Save failed. Export the unsaved window snapshot first.")
+        }
+        try writer.backup(to: target)
+    }
+    static let collectionNames: Set<String> = ["conversations.json", "person_archive.json", "person_link_proposals.json",
+        "user_profile.json", "emotion_timeline.json", "blindspots.json", "memory.json", "narrative_timeline.json"]
+    func exportWindowSnapshot(to target: URL) throws {
+        var object: [String: Any] = ["prismSnapshotVersion": 1, "prismSnapshotComplete": storageLoaded]
+        for (name, data) in try storageSnapshot().encode(names: Self.collectionNames) {
+            object[name] = try JSONSerialization.jsonObject(with: data)
+        }
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: target, options: .atomic)
+    }
+    func importWindowSnapshot(from source: URL) throws {
+        guard !isSending, !isSummarizing, flushStorage(), let writer = storageWriter else {
+            throw SQLiteStore.Failure(message: "Finish the current operation and save before importing.")
+        }
+        guard let object = try JSONSerialization.jsonObject(with: Data(contentsOf: source)) as? [String: Any],
+              object["prismSnapshotVersion"] as? Int == 1,
+              object["prismSnapshotComplete"] as? Bool == true else {
+            throw SQLiteStore.Failure(message: "Not a supported Prism snapshot.")
+        }
+        let decoder = SQLiteStore.decoder()
+        func decode<T: Decodable>(_ name: String, as: T.Type) throws -> T {
+            guard let value = object[name] else { throw SQLiteStore.Failure(message: "Incomplete Prism snapshot: " + name) }
+            return try decoder.decode(T.self, from: JSONSerialization.data(withJSONObject: value))
+        }
+        let snapshot = try StorageSnapshot(
+            conversations: decode("conversations.json", as: [Conversation].self),
+            people: decode("person_archive.json", as: [PersonRecord].self),
+            links: decode("person_link_proposals.json", as: [PersonLinkProposal].self),
+            profile: decode("user_profile.json", as: [UserProfileObservation].self),
+            emotions: decode("emotion_timeline.json", as: [EmotionEntry].self),
+            blindspots: decode("blindspots.json", as: [BlindspotRecord].self),
+            memory: decode("memory.json", as: [MemoryEntry].self),
+            timeline: decode("narrative_timeline.json", as: [NarrativeEvent].self))
+        let backup = storageURL.deletingLastPathComponent().appendingPathComponent("pre-import-\(UUID().uuidString).sqlite3")
+        try writer.backup(to: backup)
+        try writer.flush(snapshot, names: Self.collectionNames)
+        storageGeneration = UUID()
+        pendingNarrativeEvents = []
+        load(); loadArchives(); reconcileArchives()
+        delegate?.agentStateDidChange()
+    }
+
+    /// Only run after every collection decoded successfully. Legacy people
+    /// without scope survive, and people retain their bodies when scope empties.
+    private func reconcileArchives() {
+        guard !storageFailure else { return }
+        storageLoaded = true
+        let before = storageSnapshot()
+        let ids = Set(conversations.map(\.id))
+        for index in personArchive.indices {
+            if let scoped = personArchive[index].conversationIDs {
+                personArchive[index].conversationIDs = scoped.filter(ids.contains)
+            }
+        }
+        let people = Set(personArchive.map(\.id))
+        personLinkProposals.removeAll { !ids.contains($0.conversationID) || !people.contains($0.sourcePersonID) || !people.contains($0.candidatePersonID) }
+        emotionTimeline.removeAll { !ids.contains($0.conversationID) }
+        blindspots.removeAll { !ids.contains($0.conversationID) }
+        memoryStore.removeAll { !ids.contains($0.sourceConversationID) }
+        narrativeTimeline.removeAll { !ids.contains($0.conversationID) }
+        userProfileObservations.removeAll { !ids.contains($0.sourceConversationID) }
+        if before.people != personArchive || before.links != personLinkProposals || before.emotions != emotionTimeline
+            || before.blindspots != blindspots || before.memory != memoryStore || before.timeline != narrativeTimeline
+            || before.profile != userProfileObservations {
+            // Validate the conversation revision in this transaction as well;
+            // another window may have added a conversation during loading.
+            save()
+            saveArchives()
+            if flushStorage() { PrismLog.log("Storage reconciliation removed orphan references") }
+        }
     }
 
 
@@ -2063,81 +2243,17 @@ final class ChatAgent {
         saveArchives()
     }
 
-    // MARK: - Semantic Search Reranker
-
-    /// Rerank keyword search results using Flash for semantic understanding.
-    /// Takes top N keyword candidates, sends them to Flash, returns reranked indices.
-    private func rerankWithFlash<T>(
-        query: String,
-        candidates: [T],
-        titleOf: (T) -> String,
-        summaryOf: (T) -> String,
-        settings: AppSettings,
-        topK: Int = 5
-    ) async -> [T] {
-        guard candidates.count > 2 else { return Array(candidates.prefix(topK)) }
-
-        let candidateLines = candidates.enumerated().map { i, c in
-            "[\(i)] \(titleOf(c)) — \(summaryOf(c).prefix(100))"
-        }.joined(separator: "\n")
-
-        let userContent = """
-        查询: \(query)
-
-        候选项:
-        \(candidateLines)
-        """
-
-        let client = DeepSeekClient(
-            apiKey: settings.apiKey,
-            baseURL: settings.baseURL,
-            model: settings.flashModel,
-            parameters: settings.flashParameters,
-            language: settings.language
-        )
-
-        do {
-            let raw = try await client.summarize(systemPrompt: AgentPrompt.searchRerankerPrompt, userContent: userContent)
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Parse JSON array of indices — Flash may return [3,1,5,2,4] or ```json [3,1,5,2,4] ```
-            let parseJSONArray: (String) -> [Int]? = { s in
-                // Strip markdown fences if present
-                let cleaned: String
-                if let start = s.range(of: "```json"),
-                   let end = s.range(of: "```", range: start.upperBound..<s.endIndex) {
-                    cleaned = String(s[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                } else if let start = s.range(of: "```"),
-                          let end = s.range(of: "```", range: start.upperBound..<s.endIndex) {
-                    cleaned = String(s[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                } else {
-                    cleaned = s
-                }
-                guard cleaned.hasPrefix("[") else { return nil }
-                guard let d = cleaned.data(using: .utf8),
-                      let arr = try? JSONSerialization.jsonObject(with: d) as? [Int] else { return nil }
-                return arr
-            }
-            if let indices = parseJSONArray(trimmed) {
-                return indices.compactMap { $0 < candidates.count ? candidates[$0] : nil }
-            }
-            return Array(candidates.prefix(topK))
-        } catch {
-            print("[Reranker] ⚠ Flash error: \(error.localizedDescription), falling back to keyword order")
-            return Array(candidates.prefix(topK))
-        }
-    }
-
     /// Search across chapters using the local ranked index. Calling Flash from
     /// inside a retrieval tool adds a second model request to every search;
     /// the main agent can still reason over the returned candidates itself.
-    func searchChaptersSemantic(query: String, settings: AppSettings, limit: Int = 5) async -> [(chapter: StoryChapter, score: Int)] {
+    func searchChaptersSemantic(query: String, limit: Int = 5) async -> [(chapter: StoryChapter, score: Int)] {
         let keywordResults = searchChapters(query: query, limit: 15)
         return Array(keywordResults.prefix(limit))
     }
 
     /// Search long-term memory locally. Keep retrieval tools model-free so a
     /// single user turn does not fan out into hidden reranker requests.
-    func searchMemorySemantic(query: String, settings: AppSettings, limit: Int = 5) async -> [MemoryEntry] {
+    func searchMemorySemantic(query: String, limit: Int = 5) async -> [MemoryEntry] {
         let keywordResults = searchMemory(query: query, limit: 15)
         return Array(keywordResults.prefix(limit))
     }
@@ -2225,9 +2341,7 @@ final class ChatAgent {
         catch { reportStorageFailure(error); return nil }
     }
     private func saveJSON<T: Encodable>(_ value: T, to url: URL) {
-        guard !storageFailure, let database else { return }
-        do { try database.write(url.lastPathComponent, data: SQLiteStore.encoder().encode(value)) }
-        catch { reportStorageFailure(error) }
+        markDirty(url.lastPathComponent)
     }
 
     /// Profile updates use their own collection so background portrait work

@@ -47,3 +47,23 @@ The local keyword search, JSON/schema checks, numeric limits and explicit UI app
 - Rational, balanced and warm responses share the same cautious-optimism principle. This is a prompt contract, not proof that every model response follows it.
 
 Manual acceptance: enter and edit wrapped text and explicit newlines, exceed six lines, use the Chinese IME, attach a file, expand reasoning while streaming, switch conversations and stop/regenerate an output. Confirm the input, scrolling, mode switch and toolbar remain responsive. For response semantics, check both uncertain situations with genuine room for improvement and explicit rejection or danger; neither guarantees nor blanket pessimism are appropriate.
+
+## Storage and delivery regression (2026-10-15)
+
+- SQLite rejects stale revisions; failure rolls back every collection and cached revision in a batch.
+- Temporary locks retain dirty snapshots and allow saving again without restarting.
+- A failed conversation deletion cannot leave only its archive cleanup committed.
+- Startup reconciliation runs only after complete decoding and retains person bodies.
+- Legacy import keeps a backup; online backup includes committed WAL data.
+- History is bounded; the maintenance command backs up before pruning/VACUUM.
+- Five hundred messages and one hundred consecutive edits persist as one coalesced update.
+- Complete snapshots round-trip; malformed/incomplete imports preserve current data.
+- Keychain migration uses an injected test store: failed writes preserve plaintext, failed reads cannot delete a key, and corrupt configuration retry cannot overwrite the original.
+- Chapter parser handles empty, truncated and extreme index inputs without slicing outside the source messages.
+- People/profile parsing clamps untrusted fields and preserves source scope; removed conversations cannot receive late profile updates.
+- Token-window selection preserves small conversations above 60 messages, compacts large input and retains recent originals.
+- Engineering strings have entries in all interface languages; tool execution state is not persisted or inferred from display text.
+
+The live collector is opt-in. It records raw model outputs locally and distinguishes successful requests from semantic approval. See [semantic acceptance](SEMANTIC_ACCEPTANCE.md) for reviewed sample summaries and remaining checks.
+
+Persistence tests that reload a store now explicitly call `flushStorage()` before reopening. Their data assertions remain; this exercises the new asynchronous save contract. The tool-placeholder regression now checks its semantic state flag instead of a Chinese display string.

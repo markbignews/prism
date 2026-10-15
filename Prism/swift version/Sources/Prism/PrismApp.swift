@@ -1,4 +1,12 @@
 import SwiftUI
+import AppKit
+
+@MainActor final class PrismAppDelegate: NSObject, NSApplicationDelegate {
+    var prepareToTerminate: (() -> Bool)?
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        prepareToTerminate?() == false ? .terminateCancel : .terminateNow
+    }
+}
 
 extension Notification.Name {
     /// Allows the app menu command to open the same memory panel as the toolbar.
@@ -7,9 +15,12 @@ extension Notification.Name {
 
 @main
 struct PrismApp: App {
+    @NSApplicationDelegateAdaptor(PrismAppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var settings = AppSettings()
     @StateObject private var chatStore = ChatStore()
     @State private var showOnboarding = false
+    @State private var initialized = false
 
     var body: some Scene {
         WindowGroup {
@@ -18,7 +29,10 @@ struct PrismApp: App {
                 .environmentObject(settings)
                 .frame(minWidth: 980, minHeight: 680)
                 .task {
-                    settings.canChangeStorage = { !chatStore.isSending && !chatStore.isSummarizing }
+                    guard !initialized else { return }
+                    initialized = true
+                    settings.canChangeStorage = { !chatStore.isSending && !chatStore.isSummarizing && chatStore.flushStorage() }
+                    appDelegate.prepareToTerminate = { NativeSupport.prepareToQuit(chatStore, language: settings.language) }
                     // ChatStore is initialized before AppSettings. Reconcile it
                     // with any storage path selected while settings were loaded.
                     chatStore.reloadStorage(from: settings)
@@ -38,6 +52,9 @@ struct PrismApp: App {
                     if oldPath != newPath {
                         chatStore.reloadStorage(from: settings)
                     }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase != .active { chatStore.flushStorage() }
                 }
                 .sheet(isPresented: $showOnboarding) {
                     OnboardingView()

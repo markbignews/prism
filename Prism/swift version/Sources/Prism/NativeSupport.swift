@@ -8,6 +8,44 @@ import AppKit
 /// file stays pure SwiftUI.
 @MainActor
 enum NativeSupport {
+    @discardableResult static func exportSnapshot(_ store: ChatStore, language: AppLanguage) -> Bool {
+        let panel = NSSavePanel()
+        panel.title = L10n.text(.exportSnapshot, language)
+        panel.nameFieldStringValue = "Prism-snapshot.json"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        do { try store.exportWindowSnapshot(to: url); return true }
+        catch { showError(error, language: language); return false }
+    }
+    static func importSnapshot(_ store: ChatStore, language: AppLanguage) {
+        let panel = NSOpenPanel()
+        panel.title = L10n.text(.importSnapshot, language)
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try store.importWindowSnapshot(from: url) }
+        catch { showError(error, language: language) }
+    }
+    private static func showError(_ error: Error, language: AppLanguage) {
+        let alert = NSAlert()
+        alert.messageText = L10n.text(.saveFailedQuit, language)
+        alert.informativeText = error.localizedDescription
+        alert.runModal()
+    }
+    static func prepareToQuit(_ store: ChatStore, language: AppLanguage) -> Bool {
+        if store.flushStorage() { return true }
+        let alert = NSAlert()
+        alert.messageText = L10n.text(.saveFailedQuit, language)
+        alert.informativeText = store.errorMessage ?? ""
+        alert.addButton(withTitle: L10n.text(.exportAndQuit, language))
+        alert.addButton(withTitle: L10n.text(.cancel, language))
+        alert.addButton(withTitle: L10n.text(.quitWithoutSaving, language))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return exportSnapshot(store, language: language)
+        case .alertThirdButtonReturn: return true
+        default: return false
+        }
+    }
 
     /// Copy a string to the general pasteboard (NSPasteboard is the only
     /// clipboard API on macOS).

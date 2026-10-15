@@ -122,12 +122,12 @@ private final class CatalogURLProtocol: URLProtocol, @unchecked Sendable {
     @Test func settingsPersistCustomModelsAndKeepThemOnFetchFailure() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let settings = AppSettings(storagePath: folder.path)
+        let settings = AppSettings(storagePath: folder.path, credentialStore: TestCredentials.shared)
         settings.apiKey = "test-placeholder"
         settings.baseURL = "https://provider.test/v1"
         settings.model = "vendor-chat"
         settings.flashModel = "vendor-fast"
-        let restored = AppSettings(storagePath: folder.path)
+        let restored = AppSettings(storagePath: folder.path, credentialStore: TestCredentials.shared)
         #expect(restored.model == "vendor-chat")
         #expect(restored.flashModel == "vendor-fast")
         let failing = client { _ in (503, Data()) }
@@ -142,7 +142,7 @@ private final class CatalogURLProtocol: URLProtocol, @unchecked Sendable {
     @Test func settingsChooseFlashForUnavailableIDsAndClearCatalogWhenCredentialsChange() async {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let settings = AppSettings(storagePath: folder.path)
+        let settings = AppSettings(storagePath: folder.path, credentialStore: TestCredentials.shared)
         settings.apiKey = "test-placeholder"
         settings.baseURL = "https://provider.test/v1"
         settings.model = "unavailable"
@@ -160,7 +160,7 @@ private final class CatalogURLProtocol: URLProtocol, @unchecked Sendable {
     @Test func staleProviderResponseCannotOverwriteNewProvider() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let settings = AppSettings(storagePath: folder.path)
+        let settings = AppSettings(storagePath: folder.path, credentialStore: TestCredentials.shared)
         settings.apiKey = "test-placeholder"
         settings.baseURL = "https://old.test"
         let started = Mutex(false)

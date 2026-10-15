@@ -47,28 +47,36 @@ extension ChatAgent {
     }
 
     func schedulePeopleAnalysis(for conversationID: UUID, requestSentAt: Date, settings: AppSettings) {
+        let generation = storageGeneration
+        guard let sourceMessageID = conversations.first(where: { $0.id == conversationID })?
+            .messages.last(where: { $0.role == .user })?.id else { return }
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, self.storageGeneration == generation else { return }
             let result = await self.runPeoplePipeline(
                 for: conversationID,
+                sourceMessageID: sourceMessageID,
                 requestSentAt: requestSentAt,
                 settings: settings
             )
-            self.applyPeopleResults(result, for: conversationID, requestSentAt: requestSentAt)
+            self.applyPeopleResults(result, for: conversationID, requestSentAt: requestSentAt,
+                generation: generation, sourceMessageID: sourceMessageID)
         }
     }
 
     private func runPeoplePipeline(
         for conversationID: UUID,
+        sourceMessageID: UUID,
         requestSentAt: Date,
         settings: AppSettings
     ) async -> PeoplePipelineResult {
         guard let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return PeoplePipelineResult(analysisUnavailable: true)
         }
-        let recentUserMessages = conversation.messages
-            .filter { $0.role == .user }
-            .suffix(10)
+        let userMessages = conversation.messages.filter { $0.role == .user }
+        guard let sourceIndex = userMessages.firstIndex(where: { $0.id == sourceMessageID }) else {
+            return PeoplePipelineResult(analysisUnavailable: true)
+        }
+        let recentUserMessages = userMessages.prefix(sourceIndex + 1).suffix(10)
         guard let currentMessage = recentUserMessages.last else { return PeoplePipelineResult() }
         let priorContext = recentUserMessages.dropLast().map {
             "[sentAt=\(AgentPrompt.transcriptTimestamp($0.createdAt))] \($0.content)"
@@ -110,7 +118,7 @@ extension ChatAgent {
         }
     }
 
-    private func parsePeoplePipelineJSON(_ text: String) -> PeoplePipelineResult {
+    func parsePeoplePipelineJSON(_ text: String) -> PeoplePipelineResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let json: String = {
             if let start = trimmed.range(of: "```json"),
@@ -164,9 +172,12 @@ extension ChatAgent {
         })
     }
 
-    private func applyPeopleResults(_ result: PeoplePipelineResult, for conversationID: UUID, requestSentAt: Date) {
+    func applyPeopleResults(_ result: PeoplePipelineResult, for conversationID: UUID, requestSentAt: Date,
+        generation: UUID? = nil, sourceMessageID: UUID? = nil) {
         guard !result.analysisUnavailable,
-              let conversation = conversations.first(where: { $0.id == conversationID }) else { return }
+              generation == nil || generation == storageGeneration,
+              let conversation = conversations.first(where: { $0.id == conversationID }),
+              sourceMessageID == nil || conversation.messages.contains(where: { $0.id == sourceMessageID }) else { return }
         for finding in result.persons {
             let mention = finding.mention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? finding.name : finding.mention
             let traits = finding.traits.map {
