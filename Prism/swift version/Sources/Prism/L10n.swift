@@ -12,6 +12,10 @@ enum L10n {
         }
     }
 
+    static func format(_ key: Key, _ language: AppLanguage, _ arguments: String...) -> String {
+        String(format: text(key, language), arguments: arguments)
+    }
+
     static func languageName(_ language: AppLanguage, in current: AppLanguage) -> String {
         switch language {
         case .simplifiedChinese:
@@ -59,6 +63,46 @@ enum L10n {
     }
 
     enum Key: String {
+        case done
+        case retryStorage
+        case exportSnapshot
+        case importSnapshot
+        case importSnapshotHint
+        case reloadStorage
+        case reloadStorageHint
+        case openDataFolder
+        case saveFailedQuit
+        case exportAndQuit
+        case quitWithoutSaving
+        case summaryFailed
+        case chapterDetails
+        case originalMessages
+        case messageNotFound
+        case chapterSummary
+        case analyzeAttachment
+        case attachmentReadFailed
+        case attachmentCountLimit
+        case attachmentTypeUnsupported
+        case attachmentImage
+        case attachmentText
+        case droppedImage
+        case unknownError
+        case attachmentSizeLimit
+        case attachmentTotalLimit
+        case summaryInsufficient
+        case summaryMissingKey
+        case summaryMissingModel
+        case summaryGenerated
+        case summaryParseFailed
+        case summaryAPIFailed
+        case summaryConversationMissing
+        case summaryBusy
+        case summaryNoSelection
+        case summaryNoNewMessages
+        case summaryNewInsufficient
+        case summaryTruncated
+        case summaryAdded
+
         case fetchModels
         case modelListHint
         case modelListFailure
@@ -276,6 +320,46 @@ enum L10n {
     }
 
     private static let simplified: [Key: String] = [
+        .done: "确定",
+        .retryStorage: "重试保存",
+        .exportSnapshot: "导出当前窗口快照",
+        .importSnapshot: "导入快照",
+        .importSnapshotHint: "导入会替换当前会话和档案；现有数据库会先自动备份。API Key 不随快照导出。",
+        .reloadStorage: "放弃未保存改动并重新加载",
+        .reloadStorageHint: "建议先导出当前窗口快照。重新加载会丢弃尚未保存的改动。",
+        .openDataFolder: "在访达中打开数据目录",
+        .saveFailedQuit: "保存失败",
+        .exportAndQuit: "导出快照并退出",
+        .quitWithoutSaving: "不保存并退出",
+        .summaryFailed: "归纳失败",
+        .chapterDetails: "查看章节详情",
+        .originalMessages: "对话原文",
+        .messageNotFound: "无法定位到对应消息",
+        .chapterSummary: "章节摘要",
+        .analyzeAttachment: "请分析我上传的附件。",
+        .attachmentReadFailed: "无法读取附件：%@",
+        .attachmentCountLimit: "一次最多添加 %@ 个附件。",
+        .attachmentTypeUnsupported: "暂不支持此文件类型：%@",
+        .attachmentImage: "图片",
+        .attachmentText: "文本文件",
+        .droppedImage: "拖入的图片",
+        .unknownError: "未知错误",
+        .attachmentSizeLimit: "%@不能超过 %@：%@",
+        .attachmentTotalLimit: "附件总大小最多 20 MB，剩余 %@：%@",
+        .summaryInsufficient: "消息不足（需至少2条）",
+        .summaryMissingKey: "未配置 API Key",
+        .summaryMissingModel: "未配置辅助模型",
+        .summaryGenerated: "已生成 %@ 个章节",
+        .summaryParseFailed: "模型返回结果解析失败",
+        .summaryAPIFailed: "请求失败：%@",
+        .summaryConversationMissing: "对话不存在",
+        .summaryBusy: "正在归纳中",
+        .summaryNoSelection: "未选中对话",
+        .summaryNoNewMessages: "没有新消息需要归纳",
+        .summaryNewInsufficient: "新消息不足（需至少2条）",
+        .summaryTruncated: "模型返回截断的 JSON，将在下次对话后自动重试",
+        .summaryAdded: "新增章节「%@」",
+
         .aiGeneratedSubtitle: "AI 生成，仅供参考，请独立判断",
         .fetchModels: "获取模型列表",
         .modelListHint: "填写 API Key 后自动获取。Flash 优先排列；保留仍可用的选择，也可手动填写模型 ID。",
@@ -481,6 +565,46 @@ enum L10n {
     ]
 
     private static let traditional: [Key: String] = [
+        .done: "確定",
+        .retryStorage: "重試儲存",
+        .exportSnapshot: "匯出目前視窗快照",
+        .importSnapshot: "匯入快照",
+        .importSnapshotHint: "匯入會取代目前對話與檔案；現有資料庫會先自動備份。API Key 不隨快照匯出。",
+        .reloadStorage: "捨棄未儲存變更並重新載入",
+        .reloadStorageHint: "建議先匯出目前視窗快照。重新載入會捨棄尚未儲存的變更。",
+        .openDataFolder: "在 Finder 中開啟資料目錄",
+        .saveFailedQuit: "儲存失敗",
+        .exportAndQuit: "匯出快照並結束",
+        .quitWithoutSaving: "不儲存並結束",
+        .summaryFailed: "歸納失敗",
+        .chapterDetails: "檢視章節詳細資訊",
+        .originalMessages: "對話原文",
+        .messageNotFound: "無法定位到對應訊息",
+        .chapterSummary: "章節摘要",
+        .analyzeAttachment: "請分析我上傳的附件。",
+        .attachmentReadFailed: "無法讀取附件：%@",
+        .attachmentCountLimit: "一次最多加入 %@ 個附件。",
+        .attachmentTypeUnsupported: "暫不支援此檔案類型：%@",
+        .attachmentImage: "圖片",
+        .attachmentText: "文字檔案",
+        .droppedImage: "拖入的圖片",
+        .unknownError: "未知錯誤",
+        .attachmentSizeLimit: "%@不能超過 %@：%@",
+        .attachmentTotalLimit: "附件總大小最多 20 MB，剩餘 %@：%@",
+        .summaryInsufficient: "訊息不足（需至少2則）",
+        .summaryMissingKey: "尚未設定 API Key",
+        .summaryMissingModel: "尚未設定輔助模型",
+        .summaryGenerated: "已產生 %@ 個章節",
+        .summaryParseFailed: "模型回傳結果解析失敗",
+        .summaryAPIFailed: "請求失敗：%@",
+        .summaryConversationMissing: "對話不存在",
+        .summaryBusy: "正在歸納中",
+        .summaryNoSelection: "尚未選取對話",
+        .summaryNoNewMessages: "沒有新訊息需要歸納",
+        .summaryNewInsufficient: "新訊息不足（需至少2則）",
+        .summaryTruncated: "模型回傳截斷的 JSON，將在下次對話後自動重試",
+        .summaryAdded: "新增章節「%@」",
+
         .aiGeneratedSubtitle: "AI 生成，僅供參考，請獨立判斷",
         .fetchModels: "取得模型列表",
         .modelListHint: "填寫 API Key 後自動取得。Flash 優先排列；保留仍可用的選擇，也可手動填寫模型 ID。",
@@ -686,6 +810,46 @@ enum L10n {
     ]
 
     private static let english: [Key: String] = [
+        .done: "OK",
+        .retryStorage: "Retry saving",
+        .exportSnapshot: "Export window snapshot",
+        .importSnapshot: "Import snapshot",
+        .importSnapshotHint: "Import replaces conversations and archives after backing up the current database. Snapshots exclude API keys.",
+        .reloadStorage: "Discard unsaved changes and reload",
+        .reloadStorageHint: "Export this window first. Reloading discards changes that have not been saved.",
+        .openDataFolder: "Open data folder in Finder",
+        .saveFailedQuit: "Saving failed",
+        .exportAndQuit: "Export snapshot and quit",
+        .quitWithoutSaving: "Quit without saving",
+        .summaryFailed: "Summary failed",
+        .chapterDetails: "View chapter details",
+        .originalMessages: "Original messages",
+        .messageNotFound: "The source messages could not be located",
+        .chapterSummary: "Chapter summary",
+        .analyzeAttachment: "Please analyze the attachments I uploaded.",
+        .attachmentReadFailed: "Cannot read attachment: %@",
+        .attachmentCountLimit: "Add up to %@ attachments at a time.",
+        .attachmentTypeUnsupported: "Unsupported file type: %@",
+        .attachmentImage: "Image",
+        .attachmentText: "Text file",
+        .droppedImage: "Dropped image",
+        .unknownError: "Unknown error",
+        .attachmentSizeLimit: "%@ must not exceed %@: %@",
+        .attachmentTotalLimit: "Attachments are limited to 20 MB total; %@ remaining: %@",
+        .summaryInsufficient: "At least two messages are required",
+        .summaryMissingKey: "Configure an API key first",
+        .summaryMissingModel: "Configure an auxiliary model first",
+        .summaryGenerated: "Generated %@ chapters",
+        .summaryParseFailed: "Could not parse the model response",
+        .summaryAPIFailed: "Request failed: %@",
+        .summaryConversationMissing: "Conversation not found",
+        .summaryBusy: "Summarizing",
+        .summaryNoSelection: "Select a conversation first",
+        .summaryNoNewMessages: "No new messages to summarize",
+        .summaryNewInsufficient: "At least two new messages are required",
+        .summaryTruncated: "The model returned truncated JSON. Summary will retry after the next turn.",
+        .summaryAdded: "Added chapter “%@”",
+
         .aiGeneratedSubtitle: "AI-generated · May be inaccurate · Use your judgment",
         .fetchModels: "Fetch models",
         .modelListHint: "Fetched automatically after entering an API key. Flash models appear first. Valid selections are kept; model IDs can also be entered manually.",

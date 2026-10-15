@@ -32,7 +32,17 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
 
     var isSending: Bool { agent.isSending }
     var errorMessage: String? { agent.errorMessage }
+    var hasStorageFailure: Bool { agent.hasStorageFailure }
+    var canRetryStorage: Bool { agent.canRetryStorage }
+    func retryStorage() { agent.retryStorage(); refreshAfterMutation() }
+    @discardableResult func flushStorage() -> Bool { agent.flushStorage() }
+    func exportWindowSnapshot(to url: URL) throws { try agent.exportWindowSnapshot(to: url) }
+    func importWindowSnapshot(from url: URL) throws { try agent.importWindowSnapshot(from: url); refreshAfterMutation() }
+    func discardAndReloadStorage(settings: AppSettings) {
+        agent.reloadStorage(from: settings, discardingUnsaved: true); refreshAfterMutation()
+    }
     var isSummarizing: Bool { agent.isSummarizing }
+    var lastSummarySucceeded: Bool? { agent.lastSummarySucceeded }
     var lastSummaryStatus: String { agent.lastSummaryStatus }
     var selectedConversation: Conversation? {
         guard let id = selectedConversationID else { return nil }

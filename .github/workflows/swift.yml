@@ -1,0 +1,35 @@
+name: Swift macOS
+on:
+  push:
+    paths: ['Prism/**', '.github/workflows/swift.yml']
+  pull_request:
+    paths: ['Prism/**', '.github/workflows/swift.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: swift-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test-and-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, xcode-27]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun --show-sdk-version
+      - name: Regression tests
+        working-directory: Prism/swift version
+        run: swift test -Xswiftc -warnings-as-errors
+      - name: Release build
+        working-directory: Prism/swift version
+        run: swift build -c release --arch arm64 -Xswiftc -warnings-as-errors
+      - name: Package and verify ad hoc app
+        run: python3 Prism/scripts/package_app.py --output "$RUNNER_TEMP/Prism.app"

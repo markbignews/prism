@@ -36,6 +36,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var suggestions: [String] = []
     /// Runtime-only payloads for the current request. Attachment bytes are
     /// never written to conversations.json.
+    var isToolPlaceholder = false
     var attachments: [MessageAttachment] = []
 
     enum CodingKeys: String, CodingKey {

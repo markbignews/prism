@@ -6,7 +6,10 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            if let error = settings.storageError { Text(error).foregroundStyle(.red) }
+            if let error = settings.storageError {
+                Text(error).foregroundStyle(.red)
+                Button(L10n.text(.retryStorage, settings.language)) { settings.retryCredentialStorage() }
+            }
             Section(L10n.text(.autoSummarization, settings.language)) {
                 Picker(L10n.text(.summaryInterval, settings.language), selection: $settings.summaryDialogCount) {
                     Text(L10n.text(.intervalOff, settings.language)).tag(0)
@@ -125,6 +128,15 @@ struct SettingsView: View {
                 Text(L10n.text(.dataPathHint, settings.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button(L10n.text(.openDataFolder, settings.language)) {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: settings.dataPath))
+                }
+                Button(L10n.text(.exportSnapshot, settings.language)) {
+                    NativeSupport.exportSnapshot(chatStore, language: settings.language)
+                }
+                Button(L10n.text(.importSnapshot, settings.language)) { showImportAlert = true }
+                    .disabled(chatStore.isSending || chatStore.isSummarizing || chatStore.hasStorageFailure)
+                Text(L10n.text(.importSnapshotHint, settings.language)).font(.caption).foregroundStyle(.secondary)
             }
 
             Section {
@@ -156,16 +168,21 @@ struct SettingsView: View {
         }
         .alert(L10n.text(.resetTitle, settings.language), isPresented: $showResetAlert) {
             Button(L10n.text(.resetButton, settings.language), role: .destructive) {
-                settings.resetAll()
-                NativeSupport.quitApp()
+                if settings.resetAll() { NativeSupport.quitApp() }
             }
             Button(L10n.text(.cancel, settings.language), role: .cancel) {}
         } message: {
             Text(L10n.text(.resetMessage, settings.language))
         }
+        .confirmationDialog(L10n.text(.importSnapshot, settings.language), isPresented: $showImportAlert) {
+            Button(L10n.text(.importSnapshot, settings.language), role: .destructive) {
+                NativeSupport.importSnapshot(chatStore, language: settings.language)
+            }
+        } message: { Text(L10n.text(.importSnapshotHint, settings.language)) }
     }
 
     @State private var showResetAlert = false
+    @State private var showImportAlert = false
     @State private var showFolderImporter = false
 }
 

@@ -281,7 +281,11 @@ extension ChatAgent {
 
     /// Build a supervisor hint string from guard warnings.
     func buildGuardHint(from result: PrePipelineResult) -> String? {
-        var hints = result.analysisUnavailable ? [] : [result.guardHint].filter { !$0.isEmpty }
+        // Repeat the existing evidence/negation contract near the current turn.
+        // This is not a classifier or a new intervention condition: the main
+        // model must still consider independent evidence of present danger.
+        var hints = ["保留用户明确表达的否定、时间范围和叙述主体。不要仅因用户提及或否认某种意图，就推断其隐含肯定、预设其感受，或把否定复述成危险证据。例如不能把‘我不想死’扩写为‘你困到必须这样说’，也不能把‘不知道关系怎么办’扩写成‘已经压了很久、今天撑不住’。温和回应不需要替用户解释未陈述的情绪、强度、时间或动机，也不必复读其否定；先回答实际问题，或询问必要事实。没有其他独立的当前危险依据时，不主动追加危机话术或未经核实的求助资源；若存在其他明确且即时的危险事实，仍按既有安全规则优先支持。"]
+        if !result.analysisUnavailable, !result.guardHint.isEmpty { hints.append(result.guardHint) }
         if result.analysisUnavailable {
             hints.append("辅助检查不可用，这不是用户有危险的证据。请直接结合完整上下文独立判断，不得按关键词、引用、否定或假设触发危机模板；有即时现实危险才优先给安全支持。")
         } else if result.safetyUncertain {

@@ -563,13 +563,12 @@ struct SidebarView: View {
         }
         .onChange(of: chatStore.lastSummaryStatus) { _, newStatus in
             if !newStatus.isEmpty,
-               !newStatus.hasPrefix("已生成"),
-               !newStatus.hasPrefix("新增") {
+               chatStore.lastSummarySucceeded == false {
                 showSummaryError = true
             }
         }
-        .alert("归纳失败", isPresented: $showSummaryError) {
-            Button("确定", role: .cancel) { }
+        .alert(L10n.text(.summaryFailed, settings.language), isPresented: $showSummaryError) {
+            Button(L10n.text(.done, settings.language), role: .cancel) { }
         } message: {
             Text(chatStore.lastSummaryStatus)
         }
@@ -615,6 +614,7 @@ struct SidebarView: View {
 // MARK: - Chapter Row (split: big button → scroll, info → detail)
 
 struct ChapterRow: View {
+    @EnvironmentObject private var settings: AppSettings
     let index: Int
     let chapter: StoryChapter
     @Binding var scrollToMessageID: ChatMessage.ID?
@@ -665,7 +665,7 @@ struct ChapterRow: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 4)
-            .help("查看章节详情")
+            .help(L10n.text(.chapterDetails, settings.language))
         }
     }
 }
@@ -688,6 +688,7 @@ struct ChatView: View {
     /// Tracking the ID avoids re-scrolling while assistant tokens stream in.
     @State private var pinnedUserMessageID: ChatMessage.ID?
     @State private var showScrollToLatest = false
+    @State private var showStorageReload = false
     @State private var composerHeight: CGFloat = 68
 
     /// A stable target immediately after the newest real message. The small
@@ -732,6 +733,23 @@ struct ChatView: View {
                             .padding(.horizontal, 18)
                             .padding(.vertical, 6)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        if chatStore.hasStorageFailure {
+                            HStack {
+                                if chatStore.canRetryStorage {
+                                    Button(L10n.text(.retryStorage, settings.language)) { chatStore.retryStorage() }
+                                }
+                                Button(L10n.text(.exportSnapshot, settings.language)) {
+                                    NativeSupport.exportSnapshot(chatStore, language: settings.language)
+                                }
+                                Button(L10n.text(.reloadStorage, settings.language)) { showStorageReload = true }
+                            }
+                            .font(.caption)
+                            .confirmationDialog(L10n.text(.reloadStorage, settings.language), isPresented: $showStorageReload) {
+                                Button(L10n.text(.reloadStorage, settings.language), role: .destructive) {
+                                    chatStore.discardAndReloadStorage(settings: settings)
+                                }
+                            } message: { Text(L10n.text(.reloadStorageHint, settings.language)) }
+                        }
                     }
 
                     if !hasClarification, let proposal = pendingPersonLinkProposal,
@@ -1356,7 +1374,7 @@ struct ChapterDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     // Chapter summary
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Summary", systemImage: "text.alignleft")
+                        Label(L10n.text(.chapterSummary, settings.language), systemImage: "text.alignleft")
                             .font(.headline)
                             .foregroundStyle(.secondary)
                         MarkdownText(text: chapter.summary)
@@ -1382,7 +1400,7 @@ struct ChapterDetailView: View {
                     // Original messages with full bubble rendering
                     if !chapterMessages.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Label("对话原文", systemImage: "bubble.left.and.bubble.right")
+                            Label(L10n.text(.originalMessages, settings.language), systemImage: "bubble.left.and.bubble.right")
                                 .font(.headline)
                                 .foregroundStyle(.secondary)
 
@@ -1400,7 +1418,7 @@ struct ChapterDetailView: View {
                             }
                         }
                     } else {
-                        Text("无法定位到对应消息")
+                        Text(L10n.text(.messageNotFound, settings.language))
                             .font(.callout)
                             .foregroundStyle(.tertiary)
                     }
@@ -1483,7 +1501,7 @@ struct MessageBubble: View {
 
                     if message.role == .assistant,
                        let calls = message.toolCalls, !calls.isEmpty,
-                       message.content == "🔧 正在查询…" {
+                       message.isToolPlaceholder {
                         // Tool execution in progress — show live tool badges
                         // Show a wrench badge and tool name while tools run.
                         VStack(alignment: .leading, spacing: 7) {
@@ -1530,9 +1548,9 @@ struct MessageBubble: View {
             .onChange(of: message.content) { oldContent, newContent in
                 // Collapse reasoning when real response content starts flowing.
                 // Skip tool-status placeholders so reasoning stays visible during
-                // tool execution (ChatStore sets "🔧 正在查询…" as interim content).
+                // tool execution is tracked by runtime state, independent of language.
                 if oldContent.isEmpty, !newContent.isEmpty, isReasoningExpanded,
-                   newContent != "🔧 正在查询…" {
+                   !message.isToolPlaceholder {
                     isReasoningExpanded = false
                 }
             }
@@ -1911,7 +1929,7 @@ struct ComposerView: View {
         attachmentError = nil
         switch result {
         case .failure(let error):
-            attachmentError = "无法读取附件：\(error.localizedDescription)"
+            attachmentError = L10n.format(.attachmentReadFailed, language, error.localizedDescription)
         case .success(let urls):
             importURLs(urls)
         }
@@ -1920,7 +1938,7 @@ struct ComposerView: View {
     private func importURLs(_ urls: [URL]) {
         for url in urls {
             guard attachments.count < maxAttachmentCount else {
-                attachmentError = "一次最多添加 \(maxAttachmentCount) 个附件。"
+                attachmentError = L10n.format(.attachmentCountLimit, language, String(maxAttachmentCount))
                 break
             }
             do {
@@ -1937,19 +1955,19 @@ struct ComposerView: View {
 
                 if isImage {
                     guard supportsImages else { throw AttachmentError.unsupported(proImageUnavailableText) }
-                    try validateAttachmentSize(fileSize, maximum: maxSingleImageBytes, label: "图片", fileName: url.lastPathComponent)
+                    try validateAttachmentSize(fileSize, maximum: maxSingleImageBytes, label: L10n.text(.attachmentImage, language), fileName: url.lastPathComponent)
                 } else if isText {
-                    try validateAttachmentSize(fileSize, maximum: maxTextBytes, label: "文本文件", fileName: url.lastPathComponent)
+                    try validateAttachmentSize(fileSize, maximum: maxTextBytes, label: L10n.text(.attachmentText, language), fileName: url.lastPathComponent)
                 } else {
-                    throw AttachmentError.unsupported("暂不支持此文件类型：\(url.lastPathComponent)")
+                    throw AttachmentError.unsupported(L10n.format(.attachmentTypeUnsupported, language, url.lastPathComponent))
                 }
                 try validateTotalAttachmentSize(fileSize, fileName: url.lastPathComponent)
 
                 let data = try Data(contentsOf: url, options: [.mappedIfSafe])
                 if isImage {
-                    try validateAttachmentSize(data.count, maximum: maxSingleImageBytes, label: "图片", fileName: url.lastPathComponent)
+                    try validateAttachmentSize(data.count, maximum: maxSingleImageBytes, label: L10n.text(.attachmentImage, language), fileName: url.lastPathComponent)
                 } else {
-                    try validateAttachmentSize(data.count, maximum: maxTextBytes, label: "文本文件", fileName: url.lastPathComponent)
+                    try validateAttachmentSize(data.count, maximum: maxTextBytes, label: L10n.text(.attachmentText, language), fileName: url.lastPathComponent)
                 }
                 try validateTotalAttachmentSize(data.count, fileName: url.lastPathComponent)
 
@@ -1963,7 +1981,7 @@ struct ComposerView: View {
             } catch let error as AttachmentError {
                 attachmentError = error.localizedDescription
             } catch {
-                attachmentError = "无法读取附件：\(url.lastPathComponent)"
+                attachmentError = L10n.format(.attachmentReadFailed, language, url.lastPathComponent)
             }
         }
     }
@@ -1983,11 +2001,11 @@ struct ComposerView: View {
                     }
                     Task { @MainActor in
                         if let error {
-                            attachmentError = "无法读取拖入的附件：\(error.localizedDescription)"
+                            attachmentError = L10n.format(.attachmentReadFailed, language, error.localizedDescription)
                         } else if let url {
                             importURLs([url])
                         } else {
-                            attachmentError = "无法读取拖入的附件。"
+                            attachmentError = L10n.format(.attachmentReadFailed, language, L10n.text(.unknownError, language))
                         }
                     }
                 }
@@ -1995,15 +2013,15 @@ struct ComposerView: View {
                 guard let type = UTType($0) else { return false }
                 return type.conforms(to: .image)
             }) {
-                let imageName = provider.suggestedName ?? "拖入的图片"
+                let imageName = provider.suggestedName ?? L10n.text(.droppedImage, language)
                 let imageMime = mimeType(for: imageType) ?? "image/png"
                 provider.loadDataRepresentation(forTypeIdentifier: imageType) { data, error in
-                    let errorMessage = error?.localizedDescription ?? "未知错误"
+                    let errorMessage = error?.localizedDescription ?? L10n.text(.unknownError, language)
                     Task { @MainActor in
                         if let data {
                             importDroppedImage(data, mime: imageMime, name: imageName)
                         } else {
-                            attachmentError = "无法读取拖入的图片：\(errorMessage)"
+                            attachmentError = L10n.format(.attachmentReadFailed, language, errorMessage)
                         }
                     }
                 }
@@ -2018,11 +2036,11 @@ struct ComposerView: View {
             return
         }
         guard attachments.count < maxAttachmentCount else {
-            attachmentError = "一次最多添加 \(maxAttachmentCount) 个附件。"
+            attachmentError = L10n.format(.attachmentCountLimit, language, String(maxAttachmentCount))
             return
         }
         do {
-            try validateAttachmentSize(data.count, maximum: maxSingleImageBytes, label: "图片", fileName: name)
+            try validateAttachmentSize(data.count, maximum: maxSingleImageBytes, label: L10n.text(.attachmentImage, language), fileName: name)
             try validateTotalAttachmentSize(data.count, fileName: name)
             attachments.append(MessageAttachment(
                 fileName: name,
@@ -2034,14 +2052,14 @@ struct ComposerView: View {
         } catch let error as AttachmentError {
             attachmentError = error.localizedDescription
         } catch {
-            attachmentError = "无法读取拖入的图片：\(name)"
+            attachmentError = L10n.format(.attachmentReadFailed, language, name)
         }
     }
 
     private func validateAttachmentSize(_ bytes: Int, maximum: Int, label: String, fileName: String) throws {
         guard bytes <= maximum else {
             let limit = ByteCountFormatter.string(fromByteCount: Int64(maximum), countStyle: .file)
-            throw AttachmentError.tooLarge("\(label)不能超过 \(limit)：\(fileName)")
+            throw AttachmentError.tooLarge(L10n.format(.attachmentSizeLimit, language, label, limit, fileName))
         }
     }
 
@@ -2049,7 +2067,7 @@ struct ComposerView: View {
         guard attachmentBytes + incomingBytes <= maxTotalAttachmentBytes else {
             let remaining = max(0, maxTotalAttachmentBytes - attachmentBytes)
             let remainingText = ByteCountFormatter.string(fromByteCount: Int64(remaining), countStyle: .file)
-            throw AttachmentError.tooLarge("附件总大小最多 20 MB，剩余 \(remainingText)：\(fileName)")
+            throw AttachmentError.tooLarge(L10n.format(.attachmentTotalLimit, language, remainingText, fileName))
         }
     }
 

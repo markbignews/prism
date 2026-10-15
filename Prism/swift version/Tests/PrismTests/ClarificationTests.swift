@@ -58,7 +58,7 @@ private let questionArguments = #"{"question":"这件事发生在哪个阶段？
         conversation.messages = [.init(role: .user, content: "请分析这件事。"), .init(role: .assistant, content: "准备澄清")]
         try JSONEncoder().encode([conversation]).write(to: folder.appendingPathComponent("conversations.json"))
         let agent = ChatAgent(storagePath: folder.path)
-        let settings = AppSettings(storagePath: folder.path)
+        let settings = AppSettings(storagePath: folder.path, credentialStore: TestCredentials.shared)
         settings.apiKey = "" // Intentional: tests never contact a provider.
         settings.summaryDialogCount = 0
         return (folder, agent, settings, conversation.id, conversation.messages.last!.id)
@@ -73,6 +73,7 @@ private let questionArguments = #"{"question":"这件事发生在哪个阶段？
         let (folder, agent, _, cid, mid) = try fixture()
         defer { try? FileManager.default.removeItem(at: folder) }
         let request = try stage(agent, cid, mid)
+        #expect(agent.flushStorage())
         let restored = ChatAgent(storagePath: folder.path)
         restored.selectedConversationID = cid
         #expect(restored.pendingClarification == request)

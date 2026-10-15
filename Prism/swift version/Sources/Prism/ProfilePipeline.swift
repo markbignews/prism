@@ -36,15 +36,17 @@ extension ChatAgent {
     /// smallest stable unit, so a quick back-and-forth never creates a portrait.
     func scheduleProfileAnalysis(for chapters: [StoryChapter], conversationID: UUID, settings: AppSettings) {
         guard !chapters.isEmpty else { return }
+        let generation = storageGeneration
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, self.storageGeneration == generation else { return }
             for chapter in chapters {
+                guard self.storageGeneration == generation else { return }
                 let result = await self.runProfilePipeline(
                     for: chapter,
                     conversationID: conversationID,
                     settings: settings
                 )
-                self.applyProfileResults(result, from: chapter, conversationID: conversationID)
+                self.applyProfileResults(result, from: chapter, conversationID: conversationID, generation: generation)
             }
         }
     }
@@ -95,7 +97,7 @@ extension ChatAgent {
         }
     }
 
-    private func parseProfilePipelineJSON(_ text: String) -> ProfilePipelineResult {
+    func parseProfilePipelineJSON(_ text: String) -> ProfilePipelineResult {
         let cleaned: String = {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if let start = trimmed.range(of: "```json"),
@@ -129,12 +131,15 @@ extension ChatAgent {
         })
     }
 
-    private func applyProfileResults(
+    func applyProfileResults(
         _ result: ProfilePipelineResult,
         from chapter: StoryChapter,
-        conversationID: UUID
+        conversationID: UUID,
+        generation: UUID? = nil
     ) {
-        guard !result.analysisUnavailable else { return }
+        guard !result.analysisUnavailable,
+              generation == nil || generation == storageGeneration,
+              conversations.contains(where: { $0.id == conversationID && $0.chapters.contains(chapter) }) else { return }
         for finding in result.findings {
             let normalized = finding.statement.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             if let index = userProfileObservations.firstIndex(where: {

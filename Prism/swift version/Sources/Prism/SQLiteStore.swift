@@ -1,13 +1,23 @@
 import Foundation
 import CSQLite
 
-/// Same schema as the Rust client. Snapshot revisions reject stale writers.
-final class SQLiteStore {
+/// Historical schema retained for existing Prism data. Stale writers are rejected.
+/// Every connection operation is protected by the recursive lock; background
+/// persistence and foreground snapshot/flush operations may share this instance.
+final class SQLiteStore: @unchecked Sendable {
+    private let lock = NSRecursiveLock()
+    private var isBatchWriting = false
     private var db: OpaquePointer?
     private var revisions: [String: Int64] = [:]
     let root: URL
     struct Failure: LocalizedError {
         let message: String
+        var code: Int32? = nil
+        var isConflict = false
+        var isRetryable: Bool {
+            guard let code else { return false }
+            return [SQLITE_BUSY, SQLITE_LOCKED, SQLITE_FULL, SQLITE_IOERR, SQLITE_READONLY].contains(code & 0xff)
+        }
         var errorDescription: String? { message }
     }
     init(root: URL) throws {
@@ -21,7 +31,7 @@ final class SQLiteStore {
             if let db { sqlite3_close(db) }; db = nil
             throw Failure(message: message)
         }
-        sqlite3_busy_timeout(db, 5000)
+        sqlite3_busy_timeout(db, 250)
         guard try scalar("PRAGMA user_version") <= 1 else { throw Failure(message: "This database requires a newer Prism version.") }
         try execute("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;")
         try execute("""
@@ -30,9 +40,10 @@ final class SQLiteStore {
         CREATE TABLE IF NOT EXISTS history(sequence INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         PRAGMA user_version=1;
         """)
+        try pruneHistory()
     }
     deinit { if let db { sqlite3_close(db) } }
-    private func failure() -> Failure { Failure(message: String(cString: sqlite3_errmsg(db))) }
+    private func failure() -> Failure { Failure(message: String(cString: sqlite3_errmsg(db)), code: sqlite3_extended_errcode(db)) }
     private func execute(_ sql: String) throws {
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw failure() }
     }
@@ -56,6 +67,7 @@ final class SQLiteStore {
         guard sqlite3_step(stmt) == SQLITE_DONE else { throw failure() }
     }
     func read(_ name: String, legacy: URL) throws -> Data {
+        lock.lock(); defer { lock.unlock() }
         if try scalar("SELECT COUNT(*) FROM collections WHERE name=?", [name]) == 0 {
             var records: Any = [Any]()
             if FileManager.default.fileExists(atPath: legacy.path) {
@@ -92,12 +104,13 @@ final class SQLiteStore {
         } catch { try? execute("ROLLBACK"); throw error }
     }
     func write(_ name: String, data: Data) throws {
+        lock.lock(); defer { lock.unlock() }
+        if !isBatchWriting { try writeBatch([name: data]); return }
         guard let expected = revisions[name] else { throw Failure(message: "Read the collection before writing; existing data is protected.") }
         guard let records = Self.normalize(try JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { throw Failure(message: "Expected records with IDs") }
-        try execute("BEGIN IMMEDIATE")
         do {
             let actual=try scalar("SELECT revision FROM collections WHERE name=?", [name])
-            guard actual == expected else { throw Failure(message: "Storage conflict: another client changed these records. Unsaved changes remain in this window; preserve them before reopening.") }
+            guard actual == expected else { throw Failure(message: "Storage conflict: another client changed these records. Export the unsaved window snapshot before reloading. Retrying cannot resolve a version conflict.", isConflict: true) }
             var existing: [String:(Int,String)] = [:]
             let select=try statement("SELECT id,position,payload FROM records WHERE collection=?",[name])
             do {
@@ -127,10 +140,49 @@ final class SQLiteStore {
             }
             let next=actual + (changed ? 1 : 0)
             try run("INSERT INTO collections(name,revision) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision",[name,String(next)])
-            try execute("COMMIT"); revisions[name]=next
-        } catch { try? execute("ROLLBACK"); throw error }
+            revisions[name]=next
+        } catch { throw error }
+    }
+    /// A conversation and all of its dependent collections commit together.
+    /// Rollback restores both SQL rows and the in-memory revision cache.
+    func writeBatch(_ collections: [String: Data]) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard !collections.isEmpty else { return }
+        let previous = revisions
+        try execute("BEGIN IMMEDIATE")
+        isBatchWriting = true
+        defer { isBatchWriting = false }
+        do {
+            for name in collections.keys.sorted() { try write(name, data: collections[name]!) }
+            try pruneHistory()
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            revisions = previous
+            throw error
+        }
+    }
+    /// Keep five versions per record, at most 10,000 entries and 32 MiB of
+    /// historical payloads. Live records are never removed by this policy.
+    private func pruneHistory() throws {
+        try execute("""
+        DELETE FROM history WHERE sequence IN (
+          SELECT sequence FROM (
+            SELECT sequence, ROW_NUMBER() OVER (
+              PARTITION BY collection, lower(json_extract(payload,'$.id')) ORDER BY sequence DESC
+            ) AS rank FROM history
+          ) WHERE rank > 5
+        );
+        DELETE FROM history WHERE sequence IN (
+          SELECT sequence FROM (
+            SELECT sequence, ROW_NUMBER() OVER (ORDER BY sequence DESC) AS rank,
+              SUM(length(CAST(payload AS BLOB))) OVER (ORDER BY sequence DESC) AS bytes FROM history
+          ) WHERE rank > 10000 OR bytes > 33554432
+        );
+        """)
     }
     func clear() throws {
+        lock.lock(); defer { lock.unlock() }
         try execute("BEGIN IMMEDIATE")
         do {
             try execute("DELETE FROM records; DELETE FROM history; UPDATE collections SET revision=revision+1;")
@@ -138,6 +190,7 @@ final class SQLiteStore {
         } catch { try? execute("ROLLBACK"); throw error }
     }
     func backup(to target: URL) throws {
+        lock.lock(); defer { lock.unlock() }
         var dest: OpaquePointer?
         guard sqlite3_open(target.path, &dest) == SQLITE_OK else { if let dest { sqlite3_close(dest) }; throw failure() }
         defer { sqlite3_close(dest) }

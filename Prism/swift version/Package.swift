@@ -1,6 +1,24 @@
 // swift-tools-version: 6.0
 
 import PackageDescription
+import Foundation
+
+// SwiftPM's Swift Build engine can otherwise record sdk=15.0 (the deployment
+// target) in LC_BUILD_VERSION. Use the selected SDK's real version; never claim
+// to have linked against a hard-coded future SDK.
+let sdkQuery = Process()
+let sdkOutput = Pipe()
+sdkQuery.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+sdkQuery.arguments = ["--no-cache", "--sdk", "macosx", "--show-sdk-version"]
+sdkQuery.standardOutput = sdkOutput
+try sdkQuery.run()
+let sdkVersion = String(decoding: sdkOutput.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+sdkQuery.waitUntilExit()
+guard sdkQuery.terminationStatus == 0,
+      sdkVersion.range(of: #"^\d+\.\d+(\.\d+)?$"#, options: .regularExpression) != nil else {
+    fatalError("Cannot determine the selected macOS SDK. Check xcode-select and xcrun.")
+}
 
 let package = Package(
     name: "Prism",
@@ -16,18 +34,10 @@ let package = Package(
             name: "Prism",
             dependencies: ["CSQLite"],
             path: "Sources/Prism",
-            linkerSettings: [
-                // 打包要求：最低 macOS 15、最高 27（以 27 SDK 链接）。
-                // 显式写 -platform_version，确保 LC_BUILD_VERSION 记录
-                // sdk=27.0 —— 否则系统会把应用当旧 SDK 应用，macOS 26+
-                // 不会启用 Liquid Glass 窗口效果。
-                .unsafeFlags([
-                    "-Xlinker", "-platform_version",
-                    "-Xlinker", "macos",
-                    "-Xlinker", "15.0",
-                    "-Xlinker", "27.0",
-                ])
-            ]
+            linkerSettings: [.unsafeFlags([
+                "-Xlinker", "-platform_version", "-Xlinker", "macos",
+                "-Xlinker", "15.0", "-Xlinker", sdkVersion
+            ])]
         ),
         .testTarget(name: "PrismTests", dependencies: ["Prism"]),
     ]
