@@ -35,6 +35,10 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
     // trailing assistant messages are intentionally removed during load.
     conversation.messages.append(reply)
     agent.selectedConversation = conversation
+    // Fixture setup schedules a 500ms persistence write. Complete it before
+    // attaching stream observers: a save-completion notification is legitimate
+    // global state, unrelated to token delivery, and may arrive on a busy runner.
+    try #require(agent.flushStorage())
     return (folder, agent, conversation.id, reply.id)
 }
 
