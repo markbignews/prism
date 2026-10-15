@@ -18,6 +18,7 @@ enum ToolRegistry {
         .searchMemory,
         .searchPsychology,
         .manageNarrativeTimeline,
+        .requestUserInput,
     ]
 
     // MARK: - Memory Search
@@ -93,6 +94,9 @@ enum ToolRegistry {
             } else {
                 result = #"{"error":"DeepSeek official search requires the current app settings."}"#
             }
+        case "request_user_input":
+            // Valid questions are intercepted by ChatAgent before execution.
+            result = #"{"error":"Invalid clarification. Supply one nonempty question and 2-4 distinct options, each with label and description. Do not claim the user answered."}"#
         case "manage_narrative_timeline":
             result = manageNarrativeTimeline(args: args, store: store)
         default:
@@ -295,26 +299,48 @@ enum ToolRegistry {
 
 // MARK: - Tool Definition Schema
 
-struct ToolDef: Encodable {
+struct ToolDef: Encodable, Sendable {
     var type = "function"
     let function: FunctionDef
 
-    struct FunctionDef: Encodable {
+    struct FunctionDef: Encodable, Sendable {
         let name: String
         let description: String
         let parameters: Parameters
 
-        struct Parameters: Encodable {
+        struct Parameters: Encodable, Sendable {
             var type = "object"
             let properties: [String: Property]
             let required: [String]?
         }
 
-        struct Property: Encodable {
+        struct Property: Encodable, Sendable {
             let type: String
             let description: String
+            var items: Items? = nil
+            var minItems: Int? = nil
+            var maxItems: Int? = nil
+        }
+        struct Items: Encodable, Sendable {
+            let type: String
+            let properties: [String: Property]
+            let required: [String]
+            var additionalProperties = false
         }
     }
+
+    static let requestUserInput = ToolDef(function: .init(
+        name: "request_user_input",
+        description: "当一个缺失事实会实质改变判断或下一步时，提出一个简短中性问题，并给出2至4个便于回答的选项。客户端会暂停本轮分析，展示包含选项与手动补充的紧凑追问卡片；只有收到用户答案后才继续。不要每轮都问，不要重复已知信息，不要把推断写成选项中的事实；允许不确定。不必生成其他或手动输入选项，界面始终支持自由输入。使用用户的语言。本次不要同时调用其他工具。",
+        parameters: .init(properties: [
+            "question": .init(type: "string", description: "一个真正影响判断的澄清问题，最多600字"),
+            "options": .init(type: "array", description: "2至4个中性、不同的选项，标签最多120字，说明最多300字",
+                items: .init(type: "object", properties: [
+                    "label": .init(type: "string", description: "简短选项"),
+                    "description": .init(type: "string", description: "可为空的简短说明，不暗示用户应选哪个")
+                ], required: ["label", "description"]), minItems: 2, maxItems: 4)
+        ], required: ["question", "options"])
+    ))
 
     static let trackPerson = ToolDef(function: .init(
         name: "track_person",

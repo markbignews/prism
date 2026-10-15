@@ -54,6 +54,11 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     }
     func confirmNarrativeEvent(id: UUID) { agent.confirmNarrativeEvent(id: id); refreshAfterMutation() }
     func rejectNarrativeEvent(id: UUID) { agent.rejectNarrativeEvent(id: id); refreshAfterMutation() }
+    var pendingClarification: UserClarification? { agent.pendingClarification }
+    func submitClarification(_ submission: ClarificationSubmission, settings: AppSettings) async {
+        await agent.send("", clarification: submission, settings: settings)
+        refreshAfterMutation()
+    }
     var currentSendTask: Task<Void, Never>? {
         get { agent.currentSendTask }
         set { agent.currentSendTask = newValue }

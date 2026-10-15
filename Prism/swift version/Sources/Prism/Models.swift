@@ -31,6 +31,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var content: String
     var reasoning: String?
     var toolCalls: [ToolCall]?
+    var clarification: UserClarification?
     var createdAt = Date()
     var suggestions: [String] = []
     /// Runtime-only payloads for the current request. Attachment bytes are
@@ -38,7 +39,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var attachments: [MessageAttachment] = []
 
     enum CodingKeys: String, CodingKey {
-        case id, role, content, reasoning, toolCalls, createdAt, suggestions
+        case id, role, content, reasoning, toolCalls, clarification, createdAt, suggestions
     }
 }
 

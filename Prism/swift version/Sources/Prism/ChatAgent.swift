@@ -64,6 +64,12 @@ final class ChatAgent {
         }
     }
 
+    func updateClarificationConversation(_ conversation: Conversation) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversation.id }) else { return }
+        conversations[index] = conversation
+        save()
+    }
+
     // MARK: - Conversation Management
 
     func bootstrapIfNeeded(language: AppLanguage = .simplifiedChinese) {
@@ -297,6 +303,7 @@ final class ChatAgent {
         conversations[convIndex].messages[msgIndex].content = ""
         conversations[convIndex].messages[msgIndex].reasoning = nil
         conversations[convIndex].messages[msgIndex].toolCalls = nil
+        conversations[convIndex].messages[msgIndex].clarification = nil
         conversations[convIndex].updatedAt = Date()
         save()
 
@@ -375,6 +382,10 @@ final class ChatAgent {
                 flushPendingStream()
                 if let reasoning = result.reasoning { reasoningRounds.append(reasoning) }
                 finalResult = result
+                if let question = pauseForClarification(toolCalls: result.toolCalls, assistantID: assistantID, conversationID: conversationID) {
+                    finalResult.content = question
+                    break
+                }
                 pendingToolResults = []
                 if result.toolCalls.isEmpty || round == 2 { break }
 
@@ -772,9 +783,17 @@ final class ChatAgent {
     func send(
         _ text: String,
         attachments: [MessageAttachment] = [],
+        clarification submission: ClarificationSubmission? = nil,
         settings: AppSettings
     ) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clarificationResponse: String?
+        if let submission {
+            guard let request = pendingClarification, request.id == submission.requestID,
+                  let response = request.response(selectedOption: submission.selectedOption,
+                    customText: submission.customText, language: settings.language) else { return }
+            clarificationResponse = response
+        } else { clarificationResponse = nil }
+        let trimmed = (clarificationResponse ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!trimmed.isEmpty || !attachments.isEmpty), !isSending, !isSummarizing, !storageFailure else { return }
         let effectiveText = trimmed.isEmpty && !attachments.isEmpty
             ? "请分析我上传的附件。"
@@ -801,6 +820,14 @@ final class ChatAgent {
             createdAt: requestSentAt,
             attachments: attachments
         )
+        for mi in conversations[index].messages.indices {
+            guard var request = conversations[index].messages[mi].clarification, request.status == .pending else { continue }
+            if request.id == submission?.requestID {
+                request.status = .answered
+                request.answer = clarificationResponse
+            } else { request.status = .superseded }
+            conversations[index].messages[mi].clarification = request
+        }
         pendingNarrativeEvents.removeAll { $0.conversationID == id }
         activeToolConversationID = id
         activeToolSourceMessageID = userMessage.id
@@ -833,6 +860,7 @@ final class ChatAgent {
         var finalContent = ""
         var finalReasoning: String?
         var hasCompletedAnalysis = false
+        var didPauseForClarification = false
         defer {
             activeToolConversationID = nil
             activeToolSourceMessageID = nil
@@ -921,7 +949,7 @@ final class ChatAgent {
                 // A new conversation has no history to retrieve, but it can
                 // already contain a clear autobiographical time node.
                 (round == 0 && !hasCompletedTurn)
-                    ? [.manageNarrativeTimeline]
+                    ? [.manageNarrativeTimeline, .requestUserInput]
                     : availableTools
             }
 
@@ -943,6 +971,11 @@ final class ChatAgent {
 
                 flushPendingStream()
                 if let reasoning = result.reasoning { reasoningRounds.append(reasoning) }
+                if let question = pauseForClarification(toolCalls: result.toolCalls, assistantID: assistantID, conversationID: id) {
+                    finalContent = question
+                    didPauseForClarification = true
+                    break
+                }
                 pendingToolResults = []
 
                 // If the model responds with content and no more tool calls, we're done
@@ -1024,6 +1057,8 @@ final class ChatAgent {
                 content: finalContent,
                 reasoning: finalReasoning
             )
+
+            if didPauseForClarification { return }
 
             // ── Step 3: Background specialist workers ──
             // The supervisor persists only safety/quality observations. Entity

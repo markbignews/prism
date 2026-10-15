@@ -175,6 +175,7 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var draft = ""
     @State private var draftAttachments: [MessageAttachment] = []
+    @State private var clarificationDrafts: [UUID: ClarificationDraft] = [:]
     @State private var selectedMessageID: ChatMessage.ID?
     @State private var scrollToMessageID: ChatMessage.ID?
     @State private var selectedChapter: StoryChapter?
@@ -225,6 +226,7 @@ struct ContentView: View {
             ChatView(
                 draft: $draft,
                 draftAttachments: $draftAttachments,
+                clarificationDrafts: $clarificationDrafts,
                 selectedMessageID: $selectedMessageID,
                 scrollToMessageID: $scrollToMessageID,
                 selectedChapter: $selectedChapter,
@@ -675,6 +677,7 @@ struct ChatView: View {
     @EnvironmentObject private var settings: AppSettings
     @Binding var draft: String
     @Binding var draftAttachments: [MessageAttachment]
+    @Binding var clarificationDrafts: [UUID: ClarificationDraft]
     @Binding var selectedMessageID: ChatMessage.ID?
     @Binding var scrollToMessageID: ChatMessage.ID?
     @Binding var selectedChapter: StoryChapter?
@@ -709,7 +712,8 @@ struct ChatView: View {
         // ZStack lets messages render behind the input area so chat content
         // refracts through the Liquid Glass input box.
         GeometryReader { geometry in
-            let reviewCount = (pendingPersonLinkProposal == nil ? 0 : 1)
+            let hasClarification = !chatStore.isSending && chatStore.pendingClarification != nil
+            let reviewCount = hasClarification ? 1 : (pendingPersonLinkProposal == nil ? 0 : 1)
                 + ((!chatStore.isSending && chatStore.pendingNarrativeEvent != nil) ? 1 : 0)
             let reviewBodyHeight = ConfirmationLayout.bodyHeight(availableHeight: geometry.size.height, cardCount: reviewCount)
             ZStack(alignment: .bottom) {
@@ -730,7 +734,7 @@ struct ChatView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    if let proposal = pendingPersonLinkProposal,
+                    if !hasClarification, let proposal = pendingPersonLinkProposal,
                        let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
                        let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
                         PersonLinkConfirmationBanner(
@@ -746,10 +750,23 @@ struct ChatView: View {
                         .padding(.bottom, 4)
                     }
 
-                    if !chatStore.isSending, let proposal = chatStore.pendingNarrativeEvent {
+                    if !hasClarification, !chatStore.isSending, let proposal = chatStore.pendingNarrativeEvent {
                         NarrativeEventApprovalView(proposal: proposal, maxBodyHeight: reviewBodyHeight)
                             .padding(.horizontal, 16)
                             .padding(.bottom, 4)
+                    }
+
+                    if !chatStore.isSending, let request = chatStore.pendingClarification {
+                        ClarificationCard(request: request, draft: Binding(
+                            get: { clarificationDrafts[request.id] ?? ClarificationDraft() },
+                            set: { clarificationDrafts[request.id] = $0 }
+                        ), maxBodyHeight: min(120, reviewBodyHeight)) { submission in
+                            let task = Task { await chatStore.submitClarification(submission, settings: settings) }
+                            chatStore.currentSendTask = task
+                        }
+                        .id(request.id)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
                     }
 
                     ComposerView(

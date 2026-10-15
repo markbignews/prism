@@ -62,6 +62,7 @@ enum AgentPrompt {
             + "\n\n输出语言：\(outputLanguage)。"
             + lengthInstruction
             + narrativeTimelineRules
+            + userClarificationRules
             + relationshipDecisionRules(language)
             + evidenceRules
             + responseStyle
@@ -127,6 +128,16 @@ enum AgentPrompt {
     4. 语义相关优先于关键词匹配——如果候选项表达了与查询相同的含义但没有使用相同的词，它应该排在前面
 
     输出格式：严格返回 JSON 数组，如 [3, 1, 5, 2, 4]
+    """
+
+    static let userClarificationRules = """
+
+    原生追问规则：
+    - 若一个尚未明确的事实会实质改变分析或下一步，优先调用 request_user_input，以一个中性问题和2至4个选项请求补充；用户始终可以手动输入，不需要生成“其他”选项。
+    - 选项只能表达可能的用户答案，不得编造经历、替用户确定动机或诱导选择；适合时提供“不确定/记不清”。问题、选项和说明使用当前输出语言。
+    - 一次只问一个最关键的问题，不要重复已知信息，也不要为不影响结论的小细节反复打断。能够基于现有信息合理回答时直接回答。
+    - 调用后等待用户回答，不同时调用其他工具，不声称已经得到答案；收到用户补充后先使用该信息继续，不要机械重复提问。
+    - 若用户不愿补充，尊重选择，明确保留事实缺口。需要即时安全支持时不要用选项面板延迟支持。
     """
 
     private static let narrativeTimelineRules = """
