@@ -2,38 +2,42 @@
 
 [简体中文](README_CN.md)
 
-Prism is an AI tool for analyzing complex relationships and personal narratives. It organizes what you describe, traces recurring patterns, and compares possible explanations.
+Prism is a macOS chat app I am building to help people make sense of complex relationships and personal stories. It should help you see things more clearly, not read someone's mind or make decisions for you.
 
-**A conclusion should be no stronger than the evidence behind it.**
+I want it to follow one simple rule: **a conclusion should not go further than the evidence.**
 
-## How it should reason
+## How I want it to respond
 
-- **Keep facts, interpretations, and inferences separate.** What the user reports, how they understand it, and what the model infers are different kinds of information. A reported event is not independently verified evidence.
-- **Behavior does not establish motive.** Repeated contact may reflect habit, practical need, dependence, or attraction. The behavior alone does not settle which explanation is right.
-- **Repetition does not turn an inference into a fact.** An earlier model judgment should remain provisional when reused. Without new evidence, repeating it adds no certainty.
-- **Message time is not event time.** Something described today may have happened years ago. An approximate period should stay approximate.
-- **People are not labels.** Patterns can be discussed with supporting examples; they do not justify personality or clinical diagnoses.
-- **Prism can disagree with the user.** It should check counterevidence and alternative explanations, including whether a wish has been treated as a fact. Sometimes there is not enough information to decide.
-- **Tone and judgment are separate.** Rational, balanced, and warm styles share the same evidence standards and cautious optimism: face reality honestly, keep hope grounded in evidence and actions the user can control, and never promise a relationship outcome.
+- Keep reported events, the user's interpretation, and the model's inference separate. A user's account is not independently verified fact.
+- Behavior alone does not prove motive. Contact, silence, or closeness can have different explanations; say when the evidence is not enough.
+- Repeating a guess does not make it evidence, and message time is not the same as event time.
+- Discuss behavior patterns without turning them into personality or clinical labels. Include counterevidence when it matters.
+- Be cautiously optimistic without pretending things are better than they are. Face problems honestly, keep hope grounded in facts and actions within the user's control, and do not promise an outcome.
 
-These are design constraints, not guarantees of model accuracy. **When the answer is unknown, it should stay unknown.** Prism cannot read another person's mind or decide what a relationship means on the user's behalf.
+These are product requirements, not a guarantee that a model is always right. Prism cannot read minds. **When it does not know, it should say so.**
 
-## Current implementation
+## What I fixed today
 
-Prism is an experimental native **SwiftUI macOS application** under active development. The current source includes:
+- **Long drafts no longer turn the composer into a huge text box.** It grows to about six lines, then scrolls inside with a mouse wheel or trackpad. Return sends; Shift+Return adds a line.
+- **Generating a reply no longer makes the whole window churn through updates.** Streaming refreshes are batched and kept separate from rendering the full conversation history.
+- **Tool calls no longer replace earlier reasoning.** Reasoning from each tool round is retained; the final “write the reply now” request no longer overwrites it.
+- **The title bar now shows the conversation title and a short note.** It says the content is AI-generated, for reference, and should be judged independently.
+- **Long API keys no longer stretch the settings field.** The key field stays on one line and scrolls horizontally. First-run setup checks the key after typing stops and only completes after a successful check.
+- **Provider errors are explained in plain language.** Common authentication, rate-limit, network, and service errors include a readable cause and next step instead of dumping raw provider text.
+- **The model list can refresh automatically or on demand.** Settings reads the provider's model list, puts Flash models first, and supports manual refresh and model IDs. Chat and auxiliary models can be chosen separately.
+- **Confirmation cards remain usable when the window is resized or maximized.** Long timeline and person descriptions can scroll while the action buttons stay visible.
+- **The model can ask for a missing detail with answer choices.** A compact inline card offers a few options and a free-text field. Submit a choice, custom text, or both; the answer joins the conversation and the model continues.
+- **Every response style follows the same cautious optimism.** Evidence determines the judgment. A warmer tone does not change the conclusion, and keywords do not trigger a canned crisis response.
 
-- Conversations organized into chapters, with summaries and retrieval of earlier context.
-- People and aliases, with user confirmation for uncertain identity matches.
-- Separate narrative-event and emotion timelines.
-- Evidence references and provisional analysis records, plus blind-spot and response-quality checks.
-- Separate workers for people, chapter summaries, and user profiles.
-- Rational, balanced, and warm response styles governed by shared judgment rules.
+## Current version
 
-Conversations and structured records use SQLite (`prism.sqlite3`). Source-message references and evidence status support traceability, but do not make every interpretation correct or every claim independently verified. The current client is SwiftUI; earlier Tauri and Windows instructions no longer describe this source tree.
+This repository currently contains **only the Swift version**: a native SwiftUI macOS app. Other client versions are not provided or maintained here.
+
+Prism organizes conversations into chapters and stores people and aliases, narrative-event and emotion timelines, and references to relevant messages. Conversations and structured records are stored in a local SQLite database. Those references help review the basis for an analysis; they do not guarantee that an interpretation is correct.
 
 ## Run
 
-Requirements: macOS 15 or later and a Swift 6 toolchain with the macOS SDK. The bundled app targets Apple Silicon. See the [package manifest](Prism/swift%20version/Package.swift) for build settings.
+Requirements: macOS 15 or later and a Swift 6 toolchain with the macOS SDK. The bundled app targets Apple Silicon.
 
 From the repository root:
 
@@ -42,30 +46,21 @@ cd "Prism/swift version"
 swift run -c release Prism
 ```
 
-If using the checked-in app, open `Prism/release/Prism-SwiftUI-macOS.app`. It may lag behind the source; running the command above builds the current checkout and does not install it in `/Applications`.
+On first launch, enter an API key, provider endpoint, and model in Settings. The default uses the DeepSeek endpoint and `deepseek-flash`. Prism does not include an API key or an offline model.
 
-On first launch, configure your API key, endpoint, and models in onboarding or Settings. The current defaults use the DeepSeek endpoint and `deepseek-flash`; Prism does not include an API key or an offline model.
+First-run setup checks the key after typing stops and reads the model list. This does not send chat content or generate a reply. You can refresh the list later in Settings. A successful list request does not prove that every model is available to your account; actual access depends on the provider.
 
-Settings automatically discovers models using the configured provider’s `GET /models` endpoint, with manual refresh and editable model IDs. Flash models appear first. Valid deliberate selections are preserved; unavailable selections prefer an available Flash model. Conversation and auxiliary models can be selected separately.
+## Limits
 
-During onboarding, verification starts after typing stops and saving requires a successful check. This reads the model list without sending chat content or generating model tokens. Key fields stay on one line and scroll horizontally. Provider failures show an explanation and next steps. Conversation controls apply to the current model; background auxiliary tasks use thinking disabled.
+Requests send the conversation needed for the current task, attachments you choose to add, and relevant analysis or retrieved context to the configured provider. Only send information you are authorized to share. Model output may be incomplete or wrong; Prism is not therapy, diagnosis, or emergency care.
 
-When a missing fact would change the analysis, the main model can request a compact inline clarification card with 2–4 options and a free-text field. Submit an option, a custom answer, or both; the answer becomes a user message and the model continues. The card can be collapsed and reopened. Pending questions persist with the conversation, while a new ordinary message supersedes an old question. The model decides when clarification is needed from context, without keyword triggers.
-
-Timeline and person confirmation cards bound their scrollable descriptions to the window height and keep actions outside that scroll region. Resizing or toggling full screen does not change pending decisions.
-
-Long drafts grow to approximately six lines and then scroll inside the composer with a mouse wheel or trackpad. Return sends; Shift+Return inserts a newline at the caret. Reasoning from every tool round is preserved rather than overwritten by the final subrequest.
-
-Safety decisions use context, including negation, quotations, past events and present danger. An unavailable or uncertain auxiliary check leaves the main model responsible for judging the context; keywords do not select a crisis template. Timeline writes require reviewing an event preview and clicking Save.
-
-Model requests send the required messages, supplied attachments, and relevant analysis or retrieved context to the configured provider. Only upload information you are authorized to share. Outputs can be incomplete or wrong; Prism is not a therapy, diagnostic, or emergency service.
-
-The source includes 42 automated regression tests covering safety routing, model discovery, isolated streaming updates, multi-round reasoning persistence, tool transcript replay, credential checks, and the shared response stance. Live model semantics still require integration testing.
+The Swift source includes **42 automated regression tests** for safety judgment, model discovery, input and streaming updates, reasoning across tool calls, credential checks, and the clarification flow. Automated tests do not replace end-to-end checks with a live provider.
 
 ## Source
 
 - [SwiftUI application](Prism/swift%20version/Sources/Prism/)
 - [Analysis and response rules](Prism/swift%20version/Sources/Prism/AgentPrompt.swift)
 - [Data models](Prism/swift%20version/Sources/Prism/Models.swift)
+- [MIT License](Prism/LICENSE)
 
-[MIT License](Prism/LICENSE) · [markbignews](https://github.com/markbignews)
+[markbignews](https://github.com/markbignews)

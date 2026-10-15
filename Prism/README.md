@@ -1,7 +1,5 @@
 # Prism
 
-An AI tool for analyzing complex relationships and personal narratives.
+Prism currently has only one client: the native SwiftUI macOS app. See the [English README](../README.md) for the project, today's fixes, and run instructions.
 
-See the [English README](../README.md) for principles, current implementation, and running instructions.
-
-[简体中文](../README_CN.md)
+[简体中文](README_CN.md)

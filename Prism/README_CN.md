@@ -1,7 +1,5 @@
 # Prism / 棱镜
 
-用于分析复杂关系与个人叙事的 AI 工具。
+Prism 当前只有 SwiftUI 原生 macOS 版本。项目介绍、今天修复的内容和运行方法见[中文 README](../README_CN.md)。
 
-分析原则、当前实现与运行说明见[中文 README](../README_CN.md)。
-
-[English](../README.md)
+[English](README.md)
