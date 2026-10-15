@@ -1,9 +1,7 @@
 name: Swift macOS
 on:
   push:
-    paths: ['Prism/**', '.github/workflows/swift.yml']
   pull_request:
-    paths: ['Prism/**', '.github/workflows/swift.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,8 +26,9 @@ jobs:
       - name: Regression tests
         working-directory: Prism/swift version
         run: swift test -Xswiftc -warnings-as-errors
-      - name: Release build
-        working-directory: Prism/swift version
-        run: swift build -c release --arch arm64 -Xswiftc -warnings-as-errors
+      - name: Packaging helper tests
+        run: python3 -m unittest discover -s Prism/scripts/tests -v
+      - name: Release build with actual SDK
+        run: python3 Prism/scripts/build_app.py
       - name: Package and verify ad hoc app
         run: python3 Prism/scripts/package_app.py --output "$RUNNER_TEMP/Prism.app"

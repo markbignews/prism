@@ -33,13 +33,37 @@ final class StorageWriter: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.prism.persistence", qos: .utility)
     init(database: SQLiteStore) { self.database = database }
 
+    /// Three attempts, with 250ms/750ms backoff, in addition to SQLite's
+    /// 250ms busy timeout per attempt (at most ~1.75s for a blocked batch).
+    /// Called on the writer queue; conflicts and non-lock failures propagate.
+    static func withBusyRetry<T>(
+        sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) },
+        operation: () throws -> T
+    ) throws -> T {
+        let delays: [TimeInterval] = [0.25, 0.75]
+        var retry = 0
+        while true {
+            do { return try operation() }
+            catch {
+                guard let failure = error as? SQLiteStore.Failure, failure.allowsAutomaticRetry,
+                      retry < delays.count else { throw error }
+                sleep(delays[retry]); retry += 1
+            }
+        }
+    }
+    private func commit(_ snapshot: StorageSnapshot, names: Set<String>) throws {
+        // Encode once. Only the rolled-back transaction is retried.
+        let encoded = try snapshot.encode(names: names)
+        try Self.withBusyRetry { try database.writeBatch(encoded) }
+    }
+
     func write(_ snapshot: StorageSnapshot, names: Set<String>) async -> Result<Void, Error> {
         await withCheckedContinuation { continuation in
-            queue.async { continuation.resume(returning: Result { try self.database.writeBatch(snapshot.encode(names: names)) }) }
+            queue.async { continuation.resume(returning: Result { try self.commit(snapshot, names: names) }) }
         }
     }
     func flush(_ snapshot: StorageSnapshot, names: Set<String>) throws {
-        try queue.sync { try database.writeBatch(snapshot.encode(names: names)) }
+        try queue.sync { try commit(snapshot, names: names) }
     }
     func backup(to target: URL) throws { try queue.sync { try database.backup(to: target) } }
 }

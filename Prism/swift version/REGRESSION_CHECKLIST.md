@@ -64,6 +64,6 @@ Manual acceptance: enter and edit wrapped text and explicit newlines, exceed six
 - Token-window selection preserves small conversations above 60 messages, compacts large input and retains recent originals.
 - Engineering strings have entries in all interface languages; tool execution state is not persisted or inferred from display text.
 
-The live collector is opt-in. It records raw model outputs locally and distinguishes successful requests from semantic approval. See [semantic acceptance](SEMANTIC_ACCEPTANCE.md) and [engineering repair report](../ENGINEERING_REPAIR_REPORT.md) for reviewed samples and remaining checks.
+The live collector is opt-in. It records raw model outputs locally and distinguishes successful requests from semantic approval. See [semantic acceptance](SEMANTIC_ACCEPTANCE.md) for reviewed sample summaries and remaining checks.
 
 Persistence tests that reload a store now explicitly call `flushStorage()` before reopening. Their data assertions remain; this exercises the new asynchronous save contract. The tool-placeholder regression now checks its semantic state flag instead of a Chinese display string.

@@ -36,8 +36,7 @@ Prism 通过你配置的模型服务生成回答，默认使用 DeepSeek 端点�
 在仓库根目录执行：
 
 ```sh
-cd "Prism/swift version"
-swift run -c release Prism
+python3 Prism/scripts/build_app.py --run
 ```
 
 ## 打包应用
@@ -45,12 +44,12 @@ swift run -c release Prism
 在仓库根目录执行：
 
 ```sh
-python3 Prism/scripts/package_app.py
+python3 Prism/scripts/package_app.py --sync-release
 ```
 
-版本号从 [Prism/VERSION](Prism/VERSION) 读取，生成并验证 arm64 的 `Prism/swift version/Prism.app`，替换前会保留旧包备份。`--help` 查看 Developer ID 签名与公证选项；`--digest` 可复核应用包内的源码摘要。源码摘要用于核对构建输入，不代表不同工具链下的二进制逐字节一致。
+版本号从 [Prism/VERSION](Prism/VERSION) 读取，生成并验证 arm64 的 `Prism/swift version/Prism.app`，并同步同一份应用到 `Prism/release/Prism-SwiftUI-macOS.app`。旧包保留在 `~/Documents/Prism-build-backups`，可通过 `--backup-dir` 改位置。`--help` 查看 Developer ID 签名与公证选项；`--digest` 可复核应用包内的源码摘要。摘要覆盖 Sources、Resources、Package.swift、VERSION 和两个构建脚本，不含 Tests 与文档；用于核对构建输入，不代表不同工具链下的二进制逐字节一致。若受限宿主禁止 SwiftPM manifest 沙箱，可为构建/打包脚本设置 `PRISM_DISABLE_MANIFEST_SANDBOX=1`；普通构建与 CI 无需设置。
 
-默认使用 **ad hoc 签名，未公证**。下载的应用可能需要按 [Apple 的说明](https://support.apple.com/zh-cn/102445)手动批准打开。仓库内 `Prism/release/` 是历史构建，本轮修复应从当前源码打包。
+默认使用 **ad hoc 签名，未公证**。下载的应用可能需要按 [Apple 的说明](https://support.apple.com/zh-cn/102445)手动批准打开。仓库内 `Prism/release/` 已同步本轮修复。
 
 GitHub Actions 已配置 macOS 26 与 Xcode 27 runner 的测试、构建和打包；要阻止失败的检查被合并，还需在分支保护中设置必需状态检查。实现与验证边界见[技术说明](Prism/swift%20version/TECHNICAL_SPEC.md)及[语义验收清单](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md)。
 

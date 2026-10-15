@@ -36,8 +36,7 @@ Conversations and structured records are stored in a local SQLite database. API 
 From the repository root:
 
 ```sh
-cd "Prism/swift version"
-swift run -c release Prism
+python3 Prism/scripts/build_app.py --run
 ```
 
 ## Build an app bundle
@@ -45,12 +44,12 @@ swift run -c release Prism
 From the repository root:
 
 ```sh
-python3 Prism/scripts/package_app.py
+python3 Prism/scripts/package_app.py --sync-release
 ```
 
-The version comes from [Prism/VERSION](Prism/VERSION). This builds and verifies an arm64 app at `Prism/swift version/Prism.app`, preserving an existing app in a temporary backup. Run with `--help` for Developer ID signing and notarization options, or `--digest` to recompute the source digest embedded in the bundle. A source digest identifies inputs; it is not a promise of byte-identical binaries across toolchains.
+The version comes from [Prism/VERSION](Prism/VERSION). This builds and verifies an arm64 app at `Prism/swift version/Prism.app`, and synchronizes the identical bundle to `Prism/release/Prism-SwiftUI-macOS.app`. Existing apps are preserved in `~/Documents/Prism-build-backups` (override with `--backup-dir`). Run with `--help` for Developer ID signing and notarization options, or `--digest` to recompute the source digest embedded in the bundle. The digest covers Sources, Resources, Package.swift, VERSION and both build scripts; Tests and documentation are excluded. It identifies build inputs, without promising byte-identical binaries across toolchains. On restricted hosts that deny SwiftPM manifest sandboxing, set `PRISM_DISABLE_MANIFEST_SANDBOX=1` for the build/package helper; normal builds and CI do not require it.
 
-The default build is **ad hoc signed and not notarized**. A downloaded build may require the explicit approval described in [Apple's opening instructions](https://support.apple.com/102445). The committed `Prism/release/` bundle is a historical build; build current source for these repairs.
+The default build is **ad hoc signed and not notarized**. A downloaded build may require the explicit approval described in [Apple's opening instructions](https://support.apple.com/102445). The committed `Prism/release/` bundle is refreshed with these repairs.
 
 GitHub Actions is configured to test, build, and package on macOS 26 and Xcode 27 runners. Required status checks must also be enabled in repository branch protection. See the [technical specification](Prism/swift%20version/TECHNICAL_SPEC.md) and [semantic acceptance checklist](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md) for verification boundaries.
 

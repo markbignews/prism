@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>English</string>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>Prism</string>
 	<key>CFBundleExecutable</key>
@@ -19,18 +19,14 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.22</string>
+	<string>1.0.23</string>
 	<key>CFBundleVersion</key>
-	<string>1.0.22</string>
-	<key>CSResourcesFileMapped</key>
-	<true/>
+	<string>1.0.23</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
-	<key>LSRequiresCarbon</key>
-	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>PrismBuildSourceDigest</key>
-	<string>b2f403f62f9b163f65c836f577f13f61f9c2f1a07767bc281fed6b6082494dd1</string>
+	<string>6277f9b5cf217ba62a026437da0b896492e8e19ba5056c037fb240b4d42bcb7d</string>
 </dict>
 </plist>

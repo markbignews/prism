@@ -14,6 +14,10 @@ final class SQLiteStore: @unchecked Sendable {
         let message: String
         var code: Int32? = nil
         var isConflict = false
+        // BUSY is competing activity on another connection. LOCKED can mean
+        // an unfinished statement on this connection; don't mask that by
+        // repeatedly replaying the same operation.
+        var allowsAutomaticRetry: Bool { !isConflict && code.map { ($0 & 0xff) == SQLITE_BUSY } == true }
         var isRetryable: Bool {
             guard let code else { return false }
             return [SQLITE_BUSY, SQLITE_LOCKED, SQLITE_FULL, SQLITE_IOERR, SQLITE_READONLY].contains(code & 0xff)

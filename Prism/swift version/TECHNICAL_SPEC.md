@@ -1,12 +1,12 @@
 # Prism SwiftUI 技术说明
 
-本文描述当前源码。版本号唯一来源为 `../VERSION`；打包脚本读取该文件。旧的仓库内应用包属于历史构建，源码更新不会自动替换它。
+本文描述当前源码。版本号唯一来源为 `../VERSION`；打包脚本读取该文件。仓库内应用包通过 `--sync-release` 同步；单独修改源码不会自动更新二进制。
 
 ## 运行与构建
 
 - 原生 SwiftUI + AppKit，Swift 6，运行最低 macOS 15。
 - 编译需要 Xcode 26 或更新的 macOS SDK，因为源码使用受 availability 保护的 macOS 26 Liquid Glass API；较早系统运行时使用 material 回退。
-- SwiftPM manifest 通过 `xcrun --sdk macosx --show-sdk-version` 读取实际 SDK 并传给链接器，修正 Swift Build 把 SDK 错记为 deployment target 的行为，不再硬编码 27.0。
+- SwiftPM manifest 仅声明包。`scripts/build_app.py` 与打包入口通过 `xcrun --sdk macosx --show-sdk-version` 查询实际 SDK 并传给链接器，修正 Swift Build 把 SDK 错记为 deployment target 的行为；SDK 缺失或过旧时明确报错，不伪造 SDK 版本。
 - 没有第三方依赖；`CSQLite` 是系统 SQLite 的模块映射，Security 是系统 Keychain 框架。
 - 当前打包目标为 Apple Silicon arm64；Intel 未列入本轮支持范围。
 
@@ -76,7 +76,7 @@ SQLite schema 保持 `user_version=1`，不改变现有 record payload 结构。
 
 切换目录、导入前、删除时、应用失去 active 状态与退出前强制 flush。正常退出遇到保存失败可导出快照后退出、取消退出，或明确选择不保存退出。强制终止进程/断电仍可能丢失尚未提交的防抖窗口内容。
 
-- 占锁、磁盘满、部分 IO/权限故障保留 dirty 状态，条件恢复后点击“重试保存”。锁等待上限 250ms。
+- 单次占锁等待上限 250ms；写入队列仅对 SQLITE_BUSY（含扩展码）额外自动重试两次，退避 250ms、750ms，持续占锁约 1.75 秒后上报。冲突、SQLITE_LOCKED、磁盘满、IO/权限故障不自动重放；保留 dirty，条件恢复后点击“重试保存”。
 - revision 冲突阻止盲目重试覆盖其他窗口：先导出当前窗口，确认后丢弃未保存改动并重新加载。
 - 格式损坏或新版本数据库拒绝写入；不把加载失败得到的空列表作为正常数据覆盖磁盘。
 
@@ -105,10 +105,12 @@ API Key 使用系统 Keychain generic password，设置文件只保存条目 ID�
 从仓库根目录一条命令打包：
 
 ```sh
-python3 Prism/scripts/package_app.py
+python3 Prism/scripts/package_app.py --sync-release
 ```
 
-默认生成 `swift version/Prism.app`，替换前把旧包移到临时备份。`../VERSION` 生成两个 bundle version 字段。源码摘要算法固定为按相对路径排序，对路径、NUL、文件字节、NUL 依次做 SHA-256；包括 Sources、Resources、Package.swift、VERSION 与打包脚本。`--digest` 可复核。
+默认生成 `swift version/Prism.app`；`--sync-release` 同步 `release/Prism-SwiftUI-macOS.app`。替换前把旧包移到仓库外 `~/Documents/Prism-build-backups`，可用 `--backup-dir` 指定。`../VERSION` 生成两个 bundle version 字段。源码摘要算法固定为按相对路径排序，对路径、NUL、文件字节、NUL 依次做 SHA-256；包括 Sources、Resources、Package.swift、VERSION、build_app.py 与 package_app.py；Tests 和文档不参与摘要。`--digest` 可复核。
+
+受限宿主若禁止 SwiftPM manifest 沙箱，可给构建/打包入口设置 `PRISM_DISABLE_MANIFEST_SANDBOX=1`；普通构建与 CI 无需此开关。
 
 这是来源摘要，不承诺不同工具链下的二进制逐字节相同。打包命令始终运行构建，前后核对源码摘要，并验证二进制的 arm64、最低 macOS 与实际 SDK 记录。
 
