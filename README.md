@@ -50,13 +50,15 @@ Settings automatically discovers models using the configured provider’s `GET /
 
 During onboarding, verification starts after typing stops and saving requires a successful check. This reads the model list without sending chat content or generating model tokens. Key fields stay on one line and scroll horizontally. Provider failures show an explanation and next steps. Conversation controls apply to the current model; background auxiliary tasks use thinking disabled.
 
+Timeline and person confirmation cards bound their scrollable descriptions to the window height and keep actions outside that scroll region. Resizing or toggling full screen does not change pending decisions.
+
 Long drafts grow to approximately six lines and then scroll inside the composer with a mouse wheel or trackpad. Return sends; Shift+Return inserts a newline at the caret. Reasoning from every tool round is preserved rather than overwritten by the final subrequest.
 
 Safety decisions use context, including negation, quotations, past events and present danger. An unavailable or uncertain auxiliary check leaves the main model responsible for judging the context; keywords do not select a crisis template. Timeline writes require reviewing an event preview and clicking Save.
 
 Model requests send the required messages, supplied attachments, and relevant analysis or retrieved context to the configured provider. Only upload information you are authorized to share. Outputs can be incomplete or wrong; Prism is not a therapy, diagnostic, or emergency service.
 
-The source includes 32 automated regression tests covering safety routing, model discovery, isolated streaming updates, multi-round reasoning persistence, tool transcript replay, credential checks, and the shared response stance. Live model semantics still require integration testing.
+The source includes 34 automated regression tests covering safety routing, model discovery, isolated streaming updates, multi-round reasoning persistence, tool transcript replay, credential checks, and the shared response stance. Live model semantics still require integration testing.
 
 ## Source
 

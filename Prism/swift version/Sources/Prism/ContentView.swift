@@ -708,77 +708,83 @@ struct ChatView: View {
     var body: some View {
         // ZStack lets messages render behind the input area so chat content
         // refracts through the Liquid Glass input box.
-        ZStack(alignment: .bottom) {
-            if isNewConversation {
-                emptyStateView
-            } else {
-                messageList
-            }
-
-            // Error + input floating above messages, no background bar
-            VStack(spacing: 0) {
-                if let error = chatStore.errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        GeometryReader { geometry in
+            let reviewCount = (pendingPersonLinkProposal == nil ? 0 : 1)
+                + ((!chatStore.isSending && chatStore.pendingNarrativeEvent != nil) ? 1 : 0)
+            let reviewBodyHeight = ConfirmationLayout.bodyHeight(availableHeight: geometry.size.height, cardCount: reviewCount)
+            ZStack(alignment: .bottom) {
+                if isNewConversation {
+                    emptyStateView
+                } else {
+                    messageList
                 }
 
-                if let proposal = pendingPersonLinkProposal,
-                   let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
-                   let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
-                    PersonLinkConfirmationBanner(
-                        source: source,
-                        candidate: candidate,
-                        evidence: proposal.evidence,
-                        language: settings.language,
-                        confirm: { chatStore.confirmPersonLinkProposal(id: proposal.id) },
-                        reject: { chatStore.rejectPersonLinkProposal(id: proposal.id) }
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 4)
-                }
+                // Error + input floating above messages, no background bar
+                VStack(spacing: 0) {
+                    if let error = chatStore.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
-                if !chatStore.isSending, let proposal = chatStore.pendingNarrativeEvent {
-                    NarrativeEventApprovalView(proposal: proposal)
+                    if let proposal = pendingPersonLinkProposal,
+                       let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
+                       let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
+                        PersonLinkConfirmationBanner(
+                            source: source,
+                            candidate: candidate,
+                            evidence: proposal.evidence,
+                            language: settings.language,
+                            maxBodyHeight: reviewBodyHeight,
+                            confirm: { chatStore.confirmPersonLinkProposal(id: proposal.id) },
+                            reject: { chatStore.rejectPersonLinkProposal(id: proposal.id) }
+                        )
                         .padding(.horizontal, 16)
                         .padding(.bottom, 4)
-                }
-
-                ComposerView(
-                    draft: $draft,
-                    attachments: $draftAttachments,
-                    isSending: chatStore.isSending,
-                    mode: chatStore.selectedConversation?.mode ?? settings.conversationMode,
-                    contextUsage: chatStore.contextUsage(settings: settings),
-                    language: settings.language,
-                    selectedModel: settings.model,
-                    onCycleMode: { cycleMode() },
-                    onStop: { chatStore.cancelSend() },
-                    onSend: { text, attachments in
-                        // `ComposerView` passes an immutable snapshot so the
-                        // empty-state → message-list transition cannot race a
-                        // second read from the shared draft binding.
-                        draft = ""
-                        draftAttachments = []
-                        let task = Task {
-                            if let msgID = editMessageID {
-                                editMessageID = nil
-                                await chatStore.editAndResend(userMessageID: msgID, newText: text, settings: settings)
-                            } else {
-                                await chatStore.send(text, attachments: attachments, settings: settings)
-                            }
-                        }
-                        chatStore.currentSendTask = task
                     }
-                )
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-            }
-            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in
-                composerHeight = height
+
+                    if !chatStore.isSending, let proposal = chatStore.pendingNarrativeEvent {
+                        NarrativeEventApprovalView(proposal: proposal, maxBodyHeight: reviewBodyHeight)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 4)
+                    }
+
+                    ComposerView(
+                        draft: $draft,
+                        attachments: $draftAttachments,
+                        isSending: chatStore.isSending,
+                        mode: chatStore.selectedConversation?.mode ?? settings.conversationMode,
+                        contextUsage: chatStore.contextUsage(settings: settings),
+                        language: settings.language,
+                        selectedModel: settings.model,
+                        onCycleMode: { cycleMode() },
+                        onStop: { chatStore.cancelSend() },
+                        onSend: { text, attachments in
+                            // `ComposerView` passes an immutable snapshot so the
+                            // empty-state → message-list transition cannot race a
+                            // second read from the shared draft binding.
+                            draft = ""
+                            draftAttachments = []
+                            let task = Task {
+                                if let msgID = editMessageID {
+                                    editMessageID = nil
+                                    await chatStore.editAndResend(userMessageID: msgID, newText: text, settings: settings)
+                                } else {
+                                    await chatStore.send(text, attachments: attachments, settings: settings)
+                                }
+                            }
+                            chatStore.currentSendTask = task
+                        }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
+                .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in
+                    composerHeight = height
+                }
             }
         }
         .navigationTitle(chatStore.selectedConversation?.title ?? "")
@@ -2137,6 +2143,7 @@ private struct PersonLinkConfirmationBanner: View {
     let candidate: PersonRecord
     let evidence: String
     let language: AppLanguage
+    var maxBodyHeight: CGFloat = 120
     let confirm: () -> Void
     let reject: () -> Void
 
@@ -2165,29 +2172,23 @@ private struct PersonLinkConfirmationBanner: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "person.badge.questionmark")
-                .foregroundStyle(.orange)
+        ConfirmationCard(maxBodyHeight: maxBodyHeight) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(question)
+                Label(question, systemImage: "person.badge.questionmark")
                     .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
                 Text(evidence)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                HStack(spacing: 7) {
-                    Button(confirmText, action: confirm)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                    Button(rejectText, action: reject)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
             }
-            Spacer(minLength: 0)
+        } actions: {
+            Button(confirmText, action: confirm)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            Button(rejectText, action: reject)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.orange.opacity(0.10)))
     }
 }
 

@@ -72,3 +72,19 @@ import Testing
         #expect(scroll.contentView.bounds.origin.y < 30)
     }
 }
+
+@Suite struct ConfirmationSizingTests {
+    @Test(arguments: [CGFloat(420), 560, 616, 680, 900, 1600], [1, 2])
+    func stackedReviewsLeaveRoomForComposer(height: CGFloat, count: Int) {
+        let body = ConfirmationLayout.bodyHeight(availableHeight: height, cardCount: count)
+        #expect(body >= 36 && body <= 160)
+        // 64 pt per card reserves padding, spacing and the horizontal actions.
+        #expect((body + 64) * CGFloat(count) + 160 <= height)
+    }
+    @Test func invalidOrTransitionalGeometryRemainsFinite() {
+        for height: CGFloat in [0, -1, .infinity, .nan] {
+            let body = ConfirmationLayout.bodyHeight(availableHeight: height, cardCount: 0)
+            #expect(body.isFinite && body >= 36 && body <= 160)
+        }
+    }
+}

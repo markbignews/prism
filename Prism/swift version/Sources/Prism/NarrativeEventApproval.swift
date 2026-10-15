@@ -70,21 +70,23 @@ struct NarrativeEventApprovalView: View {
     @EnvironmentObject private var settings: AppSettings
     let proposal: NarrativeEventProposal
 
+    var maxBodyHeight: CGFloat = 160
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(proposal.title).font(.headline)
-            Text([proposal.startLabel, proposal.endLabel].filter { !$0.isEmpty }.joined(separator: " → "))
-                .font(.subheadline)
-            ScrollView { Text(proposal.summary).frame(maxWidth: .infinity, alignment: .leading) }
-                .frame(maxHeight: 80)
-            Text(L10n.text(.timelineApprovalHint, settings.language)).font(.caption).foregroundStyle(.secondary)
-            HStack {
-                Button(L10n.text(.saveTimelineEvent, settings.language)) { chatStore.confirmNarrativeEvent(id: proposal.id) }
-                    .buttonStyle(.borderedProminent)
-                Button(L10n.text(.cancel, settings.language)) { chatStore.rejectNarrativeEvent(id: proposal.id) }
+        ConfirmationCard(maxBodyHeight: maxBodyHeight) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(proposal.title).font(.headline)
+                Text([proposal.startLabel, proposal.endLabel].filter { !$0.isEmpty }.joined(separator: " → "))
+                    .font(.subheadline)
+                Text(proposal.summary)
+                Text(L10n.text(.timelineApprovalHint, settings.language))
+                    .font(.caption).foregroundStyle(.secondary)
             }
+        } actions: {
+            Button(L10n.text(.saveTimelineEvent, settings.language)) { chatStore.confirmNarrativeEvent(id: proposal.id) }
+                .buttonStyle(.borderedProminent)
+            Button(L10n.text(.cancel, settings.language)) { chatStore.rejectNarrativeEvent(id: proposal.id) }
+                .buttonStyle(.bordered)
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }
