@@ -3,19 +3,13 @@ import Foundation
 
 /// Renders markdown text as SwiftUI views, including tables.
 ///
-/// Blocks are parsed once at init time and stored, so SwiftUI body re-evaluations
-/// don't re-parse the entire markdown string — critical for streaming performance.
+/// Parse in the body, after SwiftUI's Equatable check. Unchanged history and
+/// completed inline spans therefore avoid repeating markdown work during streaming.
 struct MarkdownText: View {
     let text: String
-    private let blocks: [MarkdownBlock]
-
-    init(text: String) {
-        self.text = text
-        self.blocks = MarkdownText.parseBlocks(text)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let blocks = MarkdownText.parseBlocks(text)
+        return VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .blank:
@@ -25,7 +19,7 @@ struct MarkdownText: View {
                         .frame(height: 4)
                         .accessibilityHidden(true)
                 case .heading(let level, let content):
-                    InlineMarkdownText(content)
+                    InlineMarkdownText(content).equatable()
                         .font(Self.headingFont(level))
                         .fontWeight(.semibold)
                         .padding(.top, level <= 2 ? 4 : 2)
@@ -33,7 +27,7 @@ struct MarkdownText: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
                             .font(.body)
-                        InlineMarkdownText(content)
+                        InlineMarkdownText(content).equatable()
                             .font(.body)
                     }
                 case .numbered(let marker, let content):
@@ -41,13 +35,13 @@ struct MarkdownText: View {
                         Text(marker)
                             .font(.body.monospacedDigit())
                             .foregroundStyle(.secondary)
-                        InlineMarkdownText(content)
+                        InlineMarkdownText(content).equatable()
                             .font(.body)
                     }
                 case .code(let content):
                     CodeBlockView(content: content)
                 case .paragraph(let content):
-                    InlineMarkdownText(content)
+                    InlineMarkdownText(content).equatable()
                         .font(.body)
                 case .listGroup(let items):
                     VStack(alignment: .leading, spacing: 4) {
@@ -57,7 +51,7 @@ struct MarkdownText: View {
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     Text("•")
                                         .font(.body)
-                                    InlineMarkdownText(content)
+                                    InlineMarkdownText(content).equatable()
                                         .font(.body)
                                 }
                             case .numbered(let marker, let content):
@@ -65,7 +59,7 @@ struct MarkdownText: View {
                                     Text(marker)
                                         .font(.body.monospacedDigit())
                                         .foregroundStyle(.secondary)
-                                    InlineMarkdownText(content)
+                                    InlineMarkdownText(content).equatable()
                                         .font(.body)
                                 }
                             default:
@@ -296,7 +290,7 @@ private struct TableView: View {
             // Header row
             GridRow {
                 ForEach(Array(headers.enumerated()), id: \.offset) { i, header in
-                    InlineMarkdownText(header)
+                    InlineMarkdownText(header).equatable()
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
@@ -315,7 +309,7 @@ private struct TableView: View {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 GridRow {
                     ForEach(Array(row.enumerated()), id: \.offset) { i, cell in
-                        InlineMarkdownText(cell)
+                        InlineMarkdownText(cell).equatable()
                             .font(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
@@ -345,7 +339,7 @@ extension MarkdownText: @MainActor Equatable {
 
 // MARK: - Inline Markdown
 
-private struct InlineMarkdownText: View {
+private struct InlineMarkdownText: View, Equatable {
     var content: String
 
     init(_ content: String) {

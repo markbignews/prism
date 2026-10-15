@@ -14,7 +14,7 @@ Prism is an AI tool for analyzing complex relationships and personal narratives.
 - **Message time is not event time.** Something described today may have happened years ago. An approximate period should stay approximate.
 - **People are not labels.** Patterns can be discussed with supporting examples; they do not justify personality or clinical diagnoses.
 - **Prism can disagree with the user.** It should check counterevidence and alternative explanations, including whether a wish has been treated as a fact. Sometimes there is not enough information to decide.
-- **Tone and judgment are separate.** Rational, balanced, and warm response styles share the same evidence standards. A warmer answer should not imply a more optimistic conclusion.
+- **Tone and judgment are separate.** Rational, balanced, and warm styles share the same evidence standards and cautious optimism: face reality honestly, keep hope grounded in evidence and actions the user can control, and never promise a relationship outcome.
 
 These are design constraints, not guarantees of model accuracy. **When the answer is unknown, it should stay unknown.** Prism cannot read another person's mind or decide what a relationship means on the user's behalf.
 
@@ -52,7 +52,7 @@ Safety decisions use context, including negation, quotations, past events and pr
 
 Model requests send the required messages, supplied attachments, and relevant analysis or retrieved context to the configured provider. Only upload information you are authorized to share. Outputs can be incomplete or wrong; Prism is not a therapy, diagnostic, or emergency service.
 
-This fix passed 18 automated regression tests, a Release build, and local signature verification. Live model and native UI integration checks have not been performed.
+The source includes 24 automated regression tests covering safety routing, model discovery, isolated streaming updates, and the shared response stance. Live model semantics still require integration testing.
 
 ## Source
 

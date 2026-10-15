@@ -3,7 +3,23 @@ import Combine
 
 @MainActor
 final class ChatStore: ObservableObject, ChatAgentDelegate {
-    private let agent = ChatAgent()
+    private let agent: ChatAgent
+    let stream = StreamingMessageState()
+    var streamingMessageID: UUID? { agent.streamingMessageID }
+    private var contextCache: (key: ContextCacheKey, value: ContextUsageSnapshot)?
+
+    private struct ContextCacheKey: Equatable {
+        var conversationID: UUID?
+        var revision: UInt
+        var model: String
+        var usesFlashParameters: Bool
+        var language: AppLanguage
+        var mode: ConversationMode
+        var length: ResponseLength
+        var parameters: ModelParameters
+        var flashParameters: ModelParameters
+        var summaryInterval: Int
+    }
     @Published private(set) var conversations: [Conversation] = []
     @Published var selectedConversationID: Conversation.ID? {
         didSet { agent.selectedConversationID = selectedConversationID }
@@ -43,14 +59,24 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
         set { agent.currentSendTask = newValue }
     }
 
-    init() {
+    init(agent: ChatAgent = ChatAgent()) {
+        self.agent = agent
         agent.delegate = self
         syncFromAgent()
     }
 
     private func syncFromAgent() {
         conversations = agent.conversations
-        selectedConversationID = agent.selectedConversationID
+        if selectedConversationID != agent.selectedConversationID { selectedConversationID = agent.selectedConversationID }
+        if let messageID = agent.streamingMessageID,
+           let conversation = conversations.first(where: { $0.messages.contains(where: { $0.id == messageID }) }),
+           let message = conversation.messages.first(where: { $0.id == messageID }) {
+            // Global turn/tool transitions can change a placeholder without an
+            // SSE delta. Keep the active row synchronized at those boundaries.
+            stream.receive(message, in: conversation.id)
+        } else {
+            stream.clear()
+        }
     }
 
     private func refreshAfterMutation() {
@@ -59,6 +85,9 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     }
 
     func agentStateDidChange() { refreshAfterMutation() }
+    func agentDidStream(_ message: ChatMessage, in conversationID: UUID) {
+        stream.receive(message, in: conversationID)
+    }
 
     func bootstrapIfNeeded(language: AppLanguage = .simplifiedChinese) {
         agent.bootstrapIfNeeded(language: language)
@@ -146,7 +175,15 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     func searchMemory(query: String, limit: Int = 10) -> [MemoryEntry] { agent.searchMemory(query: query, limit: limit) }
     func hasActiveSafetyCrisis(for id: UUID) -> Bool { agent.hasActiveSafetyCrisis(for: id) }
     func contextUsage(settings: AppSettings) -> ContextUsageSnapshot {
-        agent.contextUsage(for: selectedConversationID, settings: settings)
+        let key = ContextCacheKey(conversationID: selectedConversationID, revision: stateRevision,
+            model: settings.model, usesFlashParameters: settings.usesFlashParameters,
+            language: settings.language, mode: selectedConversation?.mode ?? settings.conversationMode,
+            length: settings.responseLength, parameters: settings.parameters,
+            flashParameters: settings.flashParameters, summaryInterval: settings.summaryDialogCount)
+        if let cached = contextCache, cached.key == key { return cached.value }
+        let value = agent.contextUsage(for: selectedConversationID, settings: settings)
+        contextCache = (key, value)
+        return value
     }
 
     func send(_ text: String, attachments: [MessageAttachment] = [], settings: AppSettings) async {

@@ -36,3 +36,14 @@ These are semantic acceptance scenarios, not claims that a live model has passed
 | Model endpoint fails or is unsupported | Keep current settings and allow manual model IDs. |
 
 The local keyword search, JSON/schema checks, numeric limits and explicit UI approval remain deterministic. They manage retrieval, data integrity and authorization; they do not infer psychological meaning from user words.
+
+## UI and streaming update
+
+- The first stream frame is immediate; subsequent content/reasoning deltas are batched at 50 ms intervals and update only the active message observable. Completion publishes the authoritative final content before notifying the rest of the app.
+- Automated regression covers a 10,000-delta burst, pending-frame cancellation, late tokens, history synchronization and context-estimate cache invalidation.
+- Completed inline Markdown spans skip reparsing when unchanged. Context estimates are cached across draft edits and stream frames.
+- Long drafts use a continuous rounded rectangle with a stable corner radius, grow naturally to six visible lines, then scroll inside the native input field. The chat's bottom clearance follows the composer height.
+- A native window subtitle states that content is AI-generated and requires independent judgment, in all three interface languages.
+- Rational, balanced and warm responses share the same cautious-optimism principle. This is a prompt contract, not proof that every model response follows it.
+
+Manual acceptance: enter and edit wrapped text and explicit newlines, exceed six lines, use the Chinese IME, attach a file, expand reasoning while streaming, switch conversations and stop/regenerate an output. Confirm the input, scrolling, mode switch and toolbar remain responsive. For response semantics, check both uncertain situations with genuine room for improvement and explicit rejection or danger; neither guarantees nor blanket pessimism are appropriate.

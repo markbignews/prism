@@ -2,6 +2,7 @@ import Foundation
 
 @MainActor protocol ChatAgentDelegate: AnyObject {
     func agentStateDidChange()
+    func agentDidStream(_ message: ChatMessage, in conversationID: UUID)
 }
 
 @MainActor
@@ -16,7 +17,10 @@ final class ChatAgent {
     var errorMessage: String?
     var isSummarizing = false
     var currentSendTask: Task<Void, Never>?
-    /// Throttles UI publishes during streaming to avoid layout thrashing.
+    private(set) var streamingMessageID: UUID?
+    private var pendingStreamFrame: PendingStreamFrame?
+    private var streamPublishTask: Task<Void, Never>?
+    private var hasPublishedStreamFrame = false
     /// Status of the last summarization attempt (empty = never run / nothing to report).
     var lastSummaryStatus: String = ""
 
@@ -319,6 +323,8 @@ final class ChatAgent {
             ? settings.flashParameters
             : settings.parameters
         let assistantID = messageID
+        beginStreamingMessage(assistantID)
+        delegate?.agentStateDidChange()
         save()
 
         do {
@@ -363,6 +369,7 @@ final class ChatAgent {
                 ) { [weak self] delta in
                     self?.append(delta, to: assistantID, in: conversationID)
                 }
+                flushPendingStream()
                 finalResult = result
                 pendingToolResults = []
                 if result.toolCalls.isEmpty || round == 2 { break }
@@ -820,6 +827,7 @@ final class ChatAgent {
             ChatMessage(id: assistantID, role: .assistant, content: "", reasoning: nil)
         )
         isSending = true
+        beginStreamingMessage(assistantID)
         save()
         // Publish only after the user message, assistant placeholder and
         // sending state form one coherent frame. Publishing before mutation
@@ -935,6 +943,7 @@ final class ChatAgent {
                     self?.append(delta, to: assistantID, in: id)
                 }
 
+                flushPendingStream()
                 pendingToolResults = []
 
                 // If the model responds with content and no more tool calls, we're done
@@ -970,8 +979,8 @@ final class ChatAgent {
                 // looks stuck between streaming and the next round).
                 if let msgIndex = conversations[index].messages.lastIndex(where: { $0.id == assistantID }),
                    conversations[index].messages[msgIndex].content.isEmpty {
-                    delegate?.agentStateDidChange()
                     conversations[index].messages[msgIndex].content = "🔧 正在查询…"
+                    delegate?.agentStateDidChange()
                 }
 
                 // Execute all tool calls — yield between each to keep UI responsive
@@ -991,8 +1000,8 @@ final class ChatAgent {
                 // Clear placeholder + save so UI sees the transition
                 if let msgIndex = conversations[index].messages.lastIndex(where: { $0.id == assistantID }),
                    conversations[index].messages[msgIndex].content == "🔧 正在查询…" {
-                    delegate?.agentStateDidChange()
                     conversations[index].messages[msgIndex].content = ""
+                    delegate?.agentStateDidChange()
                 }
                 save()
                 await Task.yield()
@@ -1482,34 +1491,70 @@ final class ChatAgent {
         L10n.text(.fallbackReasoning, language)
     }
 
-    /// Throttled publish for streaming — updates the data on every token but only
-    /// notifies SwiftUI at ~20 Hz to avoid layout thrashing and black screens.
-
-    private func append(_ delta: DeepSeekStreamDelta, to messageID: UUID, in conversationID: UUID) {
-        guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }),
-              let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
-
-        switch delta {
-        case .content(let token):
-            conversations[conversationIndex].messages[messageIndex].content += token
-        case .reasoning(let token):
-            conversations[conversationIndex].messages[messageIndex].reasoning =
-                (conversations[conversationIndex].messages[messageIndex].reasoning ?? "") + token
-        case .toolCall:
-            break
-        }
-        conversations[conversationIndex].updatedAt = Date()
-        delegate?.agentStateDidChange()
+    /// Buffer deltas and publish only the active message, at most every 50 ms.
+    /// The first frame is immediate and completion always publishes the full result.
+    func beginStreamingMessage(_ messageID: UUID) {
+        streamPublishTask?.cancel()
+        streamPublishTask = nil
+        pendingStreamFrame = nil
+        streamingMessageID = messageID
+        hasPublishedStreamFrame = false
     }
 
-    private func finishStreamingMessage(_ messageID: UUID, in conversationID: UUID, content: String, reasoning: String) {
+    func append(_ delta: DeepSeekStreamDelta, to messageID: UUID, in conversationID: UUID) {
+        guard isSending, streamingMessageID == messageID else { return }
+        if case .toolCall = delta { return }
+        if pendingStreamFrame == nil {
+            pendingStreamFrame = PendingStreamFrame(conversationID: conversationID, messageID: messageID)
+        }
+        guard pendingStreamFrame?.conversationID == conversationID,
+              pendingStreamFrame?.messageID == messageID else { return }
+        switch delta {
+        case .content(let token): pendingStreamFrame?.content += token
+        case .reasoning(let token): pendingStreamFrame?.reasoning += token
+        case .toolCall: return
+        }
+        if !hasPublishedStreamFrame {
+            flushPendingStream()
+        } else if streamPublishTask == nil {
+            streamPublishTask = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .milliseconds(50)) }
+                catch { return }
+                self?.streamPublishTask = nil
+                self?.flushPendingStream()
+            }
+        }
+    }
+
+    func flushPendingStream() {
+        streamPublishTask?.cancel()
+        streamPublishTask = nil
+        guard let frame = pendingStreamFrame else { return }
+        pendingStreamFrame = nil
+        guard streamingMessageID == frame.messageID,
+              let ci = conversations.firstIndex(where: { $0.id == frame.conversationID }),
+              let mi = conversations[ci].messages.firstIndex(where: { $0.id == frame.messageID }) else { return }
+        if !frame.content.isEmpty { conversations[ci].messages[mi].content += frame.content }
+        if !frame.reasoning.isEmpty {
+            conversations[ci].messages[mi].reasoning = (conversations[ci].messages[mi].reasoning ?? "") + frame.reasoning
+        }
+        conversations[ci].updatedAt = Date()
+        hasPublishedStreamFrame = true
+        delegate?.agentDidStream(conversations[ci].messages[mi], in: frame.conversationID)
+    }
+
+    func finishStreamingMessage(_ messageID: UUID, in conversationID: UUID, content: String, reasoning: String) {
+        streamPublishTask?.cancel()
+        streamPublishTask = nil
+        pendingStreamFrame = nil
+        streamingMessageID = nil
         guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }),
               let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
-
-        delegate?.agentStateDidChange()  // always publish final frame
         conversations[conversationIndex].messages[messageIndex].content = content
         conversations[conversationIndex].messages[messageIndex].reasoning = reasoning
         conversations[conversationIndex].updatedAt = Date()
+        // Publish after mutation: subscribers must receive the authoritative final frame.
+        delegate?.agentStateDidChange()
     }
 
     private func load() {

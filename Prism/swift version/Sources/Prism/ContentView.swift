@@ -185,6 +185,10 @@ struct ContentView: View {
     @State private var showMemoryPanel = false
     @State private var pendingDelete: PendingDelete?
 
+    init(initialDraft: String = "") {
+        _draft = State(initialValue: initialDraft)
+    }
+
     private var appToolbarGroup: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
@@ -681,6 +685,7 @@ struct ChatView: View {
     /// Tracking the ID avoids re-scrolling while assistant tokens stream in.
     @State private var pinnedUserMessageID: ChatMessage.ID?
     @State private var showScrollToLatest = false
+    @State private var composerHeight: CGFloat = 68
 
     /// A stable target immediately after the newest real message. The small
     /// spacer keeps the latest reply clear of the floating composer, while the
@@ -772,8 +777,12 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
             }
+            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in
+                composerHeight = height
+            }
         }
         .navigationTitle(chatStore.selectedConversation?.title ?? "")
+        .navigationSubtitle(Text(L10n.text(.aiGeneratedSubtitle, settings.language)))
         .sheet(item: $selectedChapter) { chapter in
             ChapterDetailView(
                 chapter: chapter,
@@ -946,7 +955,7 @@ struct ChatView: View {
 
             // Keep only enough permanent clearance for the floating composer.
             Color.clear
-                .frame(height: chatStore.pendingNarrativeEvent == nil ? 60 : 300)
+                .frame(height: composerHeight + 12)
                 .id(Self.latestMessageScrollTarget)
                 .accessibilityHidden(true)
 
@@ -970,35 +979,29 @@ struct ChatView: View {
 
     private func messageRow(_ message: ChatMessage) -> some View {
         let conversationID = chatStore.selectedConversationID ?? UUID()
-        let isLast = message.id == chatStore.selectedConversation?.messages.last?.id
-
-        return MessageBubble(
-            message: message,
-            isSelected: selectedMessageID == message.id,
-            conversationID: conversationID,
-            isStreaming: chatStore.isSending && isLast,
-            onEdit: {
-                editMessageID = message.id
-                draft = message.content
-            },
-            onDelete: {
-                pendingDelete = deletionTarget(for: message, conversationID: conversationID)
-            },
-            onRegenerate: { messageID in
-                let task = Task {
-                    await chatStore.regenerateAssistantMessage(
-                        in: conversationID,
-                        messageID: messageID,
-                        settings: settings
-                    )
-                }
-                chatStore.currentSendTask = task
+        let onEdit: () -> Void = {
+            editMessageID = message.id
+            draft = message.content
+        }
+        let onDelete: () -> Void = { pendingDelete = deletionTarget(for: message, conversationID: conversationID) }
+        let onRegenerate: (UUID) -> Void = { messageID in
+            let task = Task {
+                await chatStore.regenerateAssistantMessage(in: conversationID, messageID: messageID, settings: settings)
             }
-        )
-        .equatable()
-        // Make the scroll target begin slightly before the visible bubble.
-        // With the target aligned to `.top`, this leaves a 12 pt clearance
-        // below the window toolbar without changing normal row spacing.
+            chatStore.currentSendTask = task
+        }
+        return Group {
+            if chatStore.isSending && chatStore.streamingMessageID == message.id {
+                StreamingMessageBubble(stream: chatStore.stream, fallback: message,
+                    isSelected: selectedMessageID == message.id, conversationID: conversationID,
+                    onEdit: onEdit, onDelete: onDelete, onRegenerate: onRegenerate)
+            } else {
+                MessageBubble(message: message, isSelected: selectedMessageID == message.id,
+                    conversationID: conversationID, isStreaming: false,
+                    onEdit: onEdit, onDelete: onDelete, onRegenerate: onRegenerate)
+                    .equatable()
+            }
+        }
         .padding(.top, 12)
         .id(message.id)
     }
@@ -1399,7 +1402,7 @@ struct MessageBubble: View {
     var onDelete: () -> Void
     var onRegenerate: (UUID) -> Void
 
-    @State private var isReasoningExpanded = true
+    @State private var isReasoningExpanded = false
 
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
@@ -1428,11 +1431,9 @@ struct MessageBubble: View {
                                 }
                                 .foregroundStyle(.secondary)
                                 if isReasoningExpanded {
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        ForEach(Array(reasoningLines.enumerated()), id: \.offset) { _, line in
-                                            Text(verbatim: line.isEmpty ? " " : line).font(.callout).foregroundStyle(.secondary)
-                                        }
-                                    }
+                                    Text(verbatim: reasoning)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .transition(.move(edge: .top).combined(with: .opacity))
                                 }
@@ -1484,7 +1485,7 @@ struct MessageBubble: View {
                         ThinkingIndicator(language: settings.language)
                             .padding(.vertical, 2)
                     } else {
-                        MarkdownText(text: message.content)
+                        MarkdownText(text: message.content).equatable()
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1500,6 +1501,9 @@ struct MessageBubble: View {
                 if message.role != .user { Spacer(minLength: 80) }
             }
             .frame(maxWidth: .infinity)
+            .onChange(of: message.reasoning?.isEmpty ?? true) { _, isEmpty in
+                if !isEmpty && message.content.isEmpty && isStreaming { isReasoningExpanded = true }
+            }
             .onChange(of: message.content) { oldContent, newContent in
                 // Collapse reasoning when real response content starts flowing.
                 // Skip tool-status placeholders so reasoning stays visible during
@@ -1518,12 +1522,6 @@ struct MessageBubble: View {
                     .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
             }
         }
-    }
-
-    private var reasoningLines: [String] {
-        var trimmed = message.reasoning?.components(separatedBy: "\n") ?? []
-        while let last = trimmed.last, last.trimmingCharacters(in: .whitespaces).isEmpty { trimmed.removeLast() }
-        return trimmed
     }
 
     @ViewBuilder
@@ -1669,13 +1667,13 @@ struct AttachmentPreview: View {
 
 private enum ComposerMetrics {
     static let actionDiameter: CGFloat = 28
-    static let expandedCornerRadius: CGFloat = actionDiameter / 2
+    static let expandedCornerRadius: CGFloat = 22
 }
 
 /// Multi-line composer built entirely with SwiftUI.
 ///
 /// `TextField(axis: .vertical)` grows with wrapped text up to
-/// `lineLimit(1...5)` and scrolls internally beyond that. Return sends and
+/// `lineLimit(1...6)` and scrolls internally beyond that. Return sends and
 /// Shift+Return inserts a newline. Plain Return is observed through both
 /// `.onSubmit` and `.onKeyPress`: behavior differs slightly across macOS and
 /// input methods, so the two paths provide a reliable fallback for each other.
@@ -1783,7 +1781,7 @@ struct ComposerView: View {
                     .padding(.bottom, 2)
                 }
 
-                HStack(alignment: .center, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 8) {
                     Button { showFileImporter = true } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
@@ -1797,7 +1795,7 @@ struct ComposerView: View {
                     TextField(inputPlaceholder, text: $draft, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.body)
-                        .lineLimit(1...5)
+                        .lineLimit(1...6)
                         .focused($isFocused)
                         .submitLabel(.send)
                         .onSubmit { submit() }
@@ -1816,11 +1814,11 @@ struct ComposerView: View {
                             submit()
                             return .handled
                         }
-                        .padding(.vertical, 7)
-                        // Keep an empty composer to one line. A vertical
-                        // TextField otherwise reserves its full line-limit
-                        // height when an attachment row is present.
-                        .frame(maxWidth: .infinity, minHeight: 42, maxHeight: draft.isEmpty ? 42 : 140)
+                        .padding(.vertical, 4)
+                        // Let the native field own growth and scrolling. A
+                        // flexible maximum frame reserved excess height and
+                        // clipped the first line when the content wrapped.
+                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .topLeading)
 
                     ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
                     ContextUsageButton(snapshot: contextUsage, language: language)
@@ -1844,22 +1842,17 @@ struct ComposerView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
             .glassBackground(
                 cornerRadius: ComposerMetrics.expandedCornerRadius,
                 style: .deep,
-                shape: attachments.isEmpty ? .capsule : .rounded
+                shape: .rounded
             )
             .overlay {
-                if attachments.isEmpty {
-                    Capsule()
-                        .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
-                } else {
-                    RoundedRectangle(cornerRadius: ComposerMetrics.expandedCornerRadius, style: .continuous)
-                        .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
-                }
+                RoundedRectangle(cornerRadius: ComposerMetrics.expandedCornerRadius, style: .continuous)
+                    .stroke(isDropTargeted ? Color.accentColor : .clear, lineWidth: 1.5)
             }
             .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: handleDrop)
         }

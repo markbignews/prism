@@ -67,6 +67,7 @@ enum L10n {
         case manualAuxiliaryModel
         case saveTimelineEvent
         case timelineApprovalHint
+        case aiGeneratedSubtitle
         case newConversation
         case settings
         case delete
@@ -275,6 +276,7 @@ enum L10n {
     }
 
     private static let simplified: [Key: String] = [
+        .aiGeneratedSubtitle: "AI 生成，仅供参考，请独立判断",
         .fetchModels: "获取模型列表",
         .modelListHint: "填写 API Key 后自动获取。Flash 优先排列；保留仍可用的选择，也可手动填写模型 ID。",
         .modelListFailure: "模型列表获取失败，已保留当前设置；请检查连接、密钥和服务地址，或手动填写模型 ID。",
@@ -479,6 +481,7 @@ enum L10n {
     ]
 
     private static let traditional: [Key: String] = [
+        .aiGeneratedSubtitle: "AI 生成，僅供參考，請獨立判斷",
         .fetchModels: "取得模型列表",
         .modelListHint: "填寫 API Key 後自動取得。Flash 優先排列；保留仍可用的選擇，也可手動填寫模型 ID。",
         .modelListFailure: "無法取得模型列表，已保留目前設定；請檢查連線、金鑰與服務位址，或手動填寫模型 ID。",
@@ -683,6 +686,7 @@ enum L10n {
     ]
 
     private static let english: [Key: String] = [
+        .aiGeneratedSubtitle: "AI-generated · May be inaccurate · Use your judgment",
         .fetchModels: "Fetch models",
         .modelListHint: "Fetched automatically after entering an API key. Flash models appear first. Valid selections are kept; model IDs can also be entered manually.",
         .modelListFailure: "Could not fetch models. Your settings were kept. Check the connection, key and base URL, or enter a model ID manually.",
