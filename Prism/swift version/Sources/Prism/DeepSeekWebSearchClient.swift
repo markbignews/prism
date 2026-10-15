@@ -53,8 +53,8 @@ enum DeepSeekWebSearchClient {
             request.timeoutInterval = 90
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
             request.addValue("application/json", forHTTPHeaderField: "Accept")
-            request.addValue(settings.apiKey, forHTTPHeaderField: "x-api-key")
-            request.addValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
+            request.addValue(try APICredentials.normalized(settings.apiKey), forHTTPHeaderField: "x-api-key")
+            request.addValue("Bearer \(try APICredentials.normalized(settings.apiKey))", forHTTPHeaderField: "Authorization")
             request.addValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
             request.httpBody = body
 
@@ -63,14 +63,13 @@ enum DeepSeekWebSearchClient {
                 return errorJSON("DeepSeek 官方搜索返回了无效响应。")
             }
             guard (200..<300).contains(http.statusCode) else {
-                let detail = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
-                return errorJSON("DeepSeek 官方搜索失败：\(String(detail.prefix(240)))")
+                return errorJSON(ProviderFailure.httpMessage(http.statusCode, language: settings.language))
             }
             return parseResponse(data: data, query: normalizedQuery)
         } catch is CancellationError {
             return errorJSON("搜索已取消。")
         } catch {
-            return errorJSON("DeepSeek 官方搜索暂时不可用：\(error.localizedDescription)")
+            return errorJSON(ProviderFailure.message(error, language: settings.language))
         }
     }
 

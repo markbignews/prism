@@ -335,7 +335,7 @@ final class ChatAgent {
                 let response = await generateSafetyResponse(userMessage: userText, signals: preResult.safetySignals,
                     hint: preResult.safetyHint, resources: "", settings: settings)
                 try Task.checkCancellation()
-                finishStreamingMessage(assistantID, in: conversationID, content: response, reasoning: "当前现实危险：优先安全支持。")
+                finishStreamingMessage(assistantID, in: conversationID, content: response, reasoning: nil)
                 return
             }
             let effectiveMode = conversations[convIndex].mode ?? settings.conversationMode
@@ -353,23 +353,27 @@ final class ChatAgent {
                 includeReasoning: mainParameters.thinkingEnabled,
                 context: contextConversation
             )
-            var roundMessages = requestMessages
+            let roundMessages = requestMessages
+            var toolExchanges: [ToolExchange] = []
+            var reasoningRounds: [String] = []
             var pendingToolResults: [ToolResult] = []
             var earlierToolContext = ""
             var finalResult = DeepSeekResult(content: "", reasoning: nil, toolCalls: [])
 
             for round in 0...2 {
                 try Task.checkCancellation()
+                if round > 0, !reasoningRounds.isEmpty { append(.reasoning("\n\n"), to: assistantID, in: conversationID) }
                 let result = try await client.stream(
                     messages: roundMessages,
                     memoryContext: (memoryContext ?? "") + earlierToolContext,
                     supervisorHint: buildGuardHint(from: preResult),
                     tools: round == 2 ? nil : ToolRegistry.definitions,
-                    toolResults: pendingToolResults
+                    toolExchanges: toolExchanges
                 ) { [weak self] delta in
                     self?.append(delta, to: assistantID, in: conversationID)
                 }
                 flushPendingStream()
+                if let reasoning = result.reasoning { reasoningRounds.append(reasoning) }
                 finalResult = result
                 pendingToolResults = []
                 if result.toolCalls.isEmpty || round == 2 { break }
@@ -392,15 +396,7 @@ final class ChatAgent {
                         content: resultJSON
                     ))
                 }
-                if let assistant = conversations[convIndex].messages.first(where: { $0.id == assistantID }) {
-                    contextConversation.messages.removeAll { $0.id == assistantID }
-                    contextConversation.messages.append(assistant)
-                }
-                roundMessages = buildWindowedMessages(
-                    for: convIndex,
-                    includeReasoning: mainParameters.thinkingEnabled,
-                    context: contextConversation
-                )
+                toolExchanges.append(ToolExchange(response: result, results: pendingToolResults))
             }
             if let messageIndex = conversations[convIndex].messages.lastIndex(where: { $0.id == assistantID }) {
                 conversations[convIndex].messages[messageIndex].toolCalls = nil
@@ -409,7 +405,7 @@ final class ChatAgent {
                 assistantID,
                 in: conversationID,
                 content: finalResult.content,
-                reasoning: finalResult.reasoning ?? fallbackReasoningSummary(language: settings.language)
+                reasoning: reasoningRounds.isEmpty ? nil : reasoningRounds.joined(separator: "\n\n")
             )
         } catch is CancellationError {
             pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
@@ -417,17 +413,17 @@ final class ChatAgent {
                 assistantID,
                 in: conversationID,
                 content: "[Cancelled]",
-                reasoning: "[Cancelled]"
+                reasoning: nil
             )
         } catch {
             pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
-            errorMessage = error.localizedDescription
-            PrismLog.log("send_message failed (regenerate) — error=\(error.localizedDescription)")
+            errorMessage = ProviderFailure.message(error, language: settings.language)
+            PrismLog.log("send_message failed (regenerate) — error=\(ProviderFailure.message(error, language: settings.language))")
             finishStreamingMessage(
                 assistantID,
                 in: conversationID,
-                content: "[Request Failed] \(error.localizedDescription)",
-                reasoning: "Request failed: \(error.localizedDescription)"
+                content: ProviderFailure.message(error, language: settings.language),
+                reasoning: nil
             )
         }
     }
@@ -877,7 +873,6 @@ final class ChatAgent {
                     settings: settings
                 )
                 try Task.checkCancellation()
-                finalReasoning = "当前现实危险：优先安全支持。"
 
                 // Stream safety response to the UI chunk by chunk
                 let words = finalContent.map { String($0) }
@@ -899,7 +894,9 @@ final class ChatAgent {
                 responseLength: settings.responseLength
             )
 
-            var roundMessages = requestMessages
+            let roundMessages = requestMessages
+            var toolExchanges: [ToolExchange] = []
+            var reasoningRounds: [String] = []
             var pendingToolResults: [ToolResult] = []
             var earlierToolContext = ""
             // DeepSeek supports parallel function calls in one response.
@@ -932,18 +929,20 @@ final class ChatAgent {
             // rounds. This guarantees that hitting the cap still produces a
             // user-visible answer instead of leaving an empty assistant bubble.
             for round in 0...maxToolExecutionRounds {
+                if round > 0, !reasoningRounds.isEmpty { append(.reasoning("\n\n"), to: assistantID, in: id) }
                 let isFinalSynthesisRound = round == maxToolExecutionRounds
                 let result = try await client.stream(
                     messages: roundMessages,
                     memoryContext: (memoryContext ?? "") + earlierToolContext,
                     supervisorHint: guardHint,
                     tools: isFinalSynthesisRound ? nil : toolsForRound(round),
-                    toolResults: pendingToolResults
+                    toolExchanges: toolExchanges
                 ) { [weak self] delta in
                     self?.append(delta, to: assistantID, in: id)
                 }
 
                 flushPendingStream()
+                if let reasoning = result.reasoning { reasoningRounds.append(reasoning) }
                 pendingToolResults = []
 
                 // If the model responds with content and no more tool calls, we're done
@@ -951,7 +950,6 @@ final class ChatAgent {
                     hasCompletedAnalysis = !result.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     finalContent = !hasCompletedAnalysis
                         ? (settings.language == .english ? "The model returned no answer. Please retry." : settings.language == .traditionalChinese ? "模型沒有返回有效正文，請重試。" : "模型没有返回有效正文，请重试。") : result.content
-                    finalReasoning = result.reasoning
                     break
                 }
 
@@ -966,7 +964,6 @@ final class ChatAgent {
                     } else {
                         finalContent = result.content
                     }
-                    finalReasoning = result.reasoning
                     break
                 }
 
@@ -1008,12 +1005,11 @@ final class ChatAgent {
 
                 // Save last round's content; continue to next round with tool results
                 finalContent = result.content
-                finalReasoning = result.reasoning
-                roundMessages = buildWindowedMessages(
-                    for: index,
-                    includeReasoning: mainParameters.thinkingEnabled
-                )
-            }  // end tool execution and final synthesis rounds
+                toolExchanges.append(ToolExchange(response: result, results: pendingToolResults))
+            }
+            finalReasoning = reasoningRounds.isEmpty ? nil : reasoningRounds.joined(separator: "\n\n")
+
+            // end tool execution and final synthesis rounds
             }  // end else (non-safety path)
 
             // Clear toolCalls from the assistant message — they've been consumed by the model.
@@ -1026,7 +1022,7 @@ final class ChatAgent {
                 assistantID,
                 in: id,
                 content: finalContent,
-                reasoning: finalReasoning ?? fallbackReasoningSummary(language: settings.language)
+                reasoning: finalReasoning
             )
 
             // ── Step 3: Background specialist workers ──
@@ -1050,17 +1046,17 @@ final class ChatAgent {
                 assistantID,
                 in: id,
                 content: cancelMsg,
-                reasoning: cancelMsg
+                reasoning: nil
             )
         } catch {
             pendingNarrativeEvents.removeAll { $0.conversationID == activeToolConversationID }
-            errorMessage = error.localizedDescription
-            PrismLog.log("send_message failed — conv_id=\(id.uuidString) error=\(error.localizedDescription)")
+            errorMessage = ProviderFailure.message(error, language: settings.language)
+            PrismLog.log("send_message failed — conv_id=\(id.uuidString) error=\(ProviderFailure.message(error, language: settings.language))")
             finishStreamingMessage(
                 assistantID,
                 in: id,
-                content: "[Request Failed] \(error.localizedDescription)",
-                reasoning: "Request failed: \(error.localizedDescription)"
+                content: ProviderFailure.message(error, language: settings.language),
+                reasoning: nil
             )
         }
 
@@ -1487,10 +1483,6 @@ final class ChatAgent {
         conversations[index].title = String(compact.prefix(22))
     }
 
-    private func fallbackReasoningSummary(language: AppLanguage) -> String {
-        L10n.text(.fallbackReasoning, language)
-    }
-
     /// Buffer deltas and publish only the active message, at most every 50 ms.
     /// The first frame is immediate and completion always publishes the full result.
     func beginStreamingMessage(_ messageID: UUID) {
@@ -1543,7 +1535,8 @@ final class ChatAgent {
         delegate?.agentDidStream(conversations[ci].messages[mi], in: frame.conversationID)
     }
 
-    func finishStreamingMessage(_ messageID: UUID, in conversationID: UUID, content: String, reasoning: String) {
+    func finishStreamingMessage(_ messageID: UUID, in conversationID: UUID, content: String, reasoning: String?) {
+        flushPendingStream()
         streamPublishTask?.cancel()
         streamPublishTask = nil
         pendingStreamFrame = nil
@@ -1551,7 +1544,13 @@ final class ChatAgent {
         guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }),
               let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
         conversations[conversationIndex].messages[messageIndex].content = content
-        conversations[conversationIndex].messages[messageIndex].reasoning = reasoning
+        // Streamed reasoning is authoritative across every tool round. A final
+        // result may contain only the last subrequest (e.g. "Write the reply now.").
+        // Keep the full stream; use the result only when no reasoning was streamed.
+        let accumulated = conversations[conversationIndex].messages[messageIndex].reasoning ?? ""
+        if accumulated.isEmpty, let reasoning {
+            conversations[conversationIndex].messages[messageIndex].reasoning = reasoning
+        }
         conversations[conversationIndex].updatedAt = Date()
         // Publish after mutation: subscribers must receive the authoritative final frame.
         delegate?.agentStateDidChange()

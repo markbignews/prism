@@ -25,16 +25,8 @@ struct OnboardingView: View {
     @State private var apiKeyInput = ""
     @State private var apiKeySaved = false
 
-    /// API key validation state (onboarding validates the key
-    /// against the provider's /models endpoint before continuing).
-    private enum ValidationState: Equatable {
-        case idle
-        case checking
-        case success
-        case failure(String)
-    }
-
-    @State private var validationState: ValidationState = .idle
+    @StateObject private var credentialCheck = CredentialCheck()
+    private var validationState: CredentialCheck.State { credentialCheck.state }
 
     private let totalPages = 8
 
@@ -61,6 +53,9 @@ struct OnboardingView: View {
         .onAppear {
             apiKeyInput = settings.apiKey
         }
+        .onChange(of: apiKeyInput) { _, _ in scheduleValidation() }
+        .onChange(of: settings.baseURL) { _, _ in scheduleValidation() }
+        .onChange(of: currentPage) { _, page in if page == 4 { scheduleValidation() } }
     }
 
     @State private var showFolderImporter = false
@@ -141,9 +136,6 @@ struct OnboardingView: View {
             // Right: continue, save-key, or get-started
             if currentPage == totalPages - 1 {
                 Button(L10n.text(.onboardingGetStarted, settings.language)) {
-                    if !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        settings.apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                    }
                     finishOnboarding()
                 }
                 .buttonStyle(.borderedProminent)
@@ -162,7 +154,7 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .font(.body.weight(.medium))
-                .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || apiKeySaved)
+                .disabled(credentialCheck.validatedKey(for: apiKeyInput, baseURL: settings.baseURL) == nil || apiKeySaved)
             } else {
                 Button(L10n.text(.onboardingContinue, settings.language)) {
                     goToNextPage()
@@ -462,8 +454,8 @@ extension OnboardingView {
                 Text(L10n.text(.apiKey, settings.language))
                     .font(.subheadline.weight(.semibold))
 
-                SecureField("sk-...", text: $apiKeyInput)
-                    .textFieldStyle(.plain)
+                SingleLineSecretField(placeholder: "API Key", text: $apiKeyInput, onSubmit: saveAndAdvance)
+                    .frame(height: 24)
                     .font(.body.monospaced())
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -475,11 +467,10 @@ extension OnboardingView {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .stroke(apiKeySaved ? Color.green.opacity(0.5) : Color.secondary.opacity(0.2), lineWidth: 1)
                     )
-                    .onSubmit {
-                        saveAndAdvance()
-                    }
 
-                // Online validation — non-blocking.
+                Text(ProviderFailure.localized("输入停止后自动验证，通过后才能保存。仅获取模型列表，不发送聊天内容。", "輸入停止後自動驗證，通過後才能儲存。僅取得模型清單，不傳送聊天內容。", "Verification starts after you stop typing. Save is enabled after success. Only the model list is requested.", language: settings.language))
+                    .font(.caption).foregroundStyle(.secondary)
+                // Manual retry is useful after a transient network failure.
                 HStack(spacing: 8) {
                     Button {
                         validateAPIKey()
@@ -552,42 +543,21 @@ extension OnboardingView {
     }
 
     private func saveAndAdvance() {
-        guard !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        settings.apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let key = credentialCheck.validatedKey(for: apiKeyInput, baseURL: settings.baseURL), !apiKeySaved else { return }
+        settings.apiKey = key
         apiKeySaved = true
         Task { await settings.refreshModels() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            goToNextPage()
-        }
+        goToNextPage()
     }
 
-    /// Validate the entered key online. Failure does not block the flow —
-    /// the user can continue and fix it later in Settings.
+    private func scheduleValidation() {
+        apiKeySaved = false
+        guard currentPage == 4 else { return }
+        credentialCheck.schedule(key: apiKeyInput, baseURL: settings.baseURL, language: settings.language)
+    }
+
     private func validateAPIKey() {
-        let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty, validationState != .checking else { return }
-        validationState = .checking
-        Task {
-            let client = DeepSeekClient(
-                apiKey: key,
-                baseURL: settings.baseURL,
-                model: settings.model,
-                parameters: settings.parameters,
-                language: settings.language
-            )
-            do {
-                try await client.validateAPIKey(apiKey: key, baseURL: settings.baseURL)
-                if !Task.isCancelled {
-                    validationState = .success
-                    settings.apiKey = key
-                    await settings.refreshModels()
-                }
-            } catch {
-                if !Task.isCancelled {
-                    validationState = .failure(error.localizedDescription)
-                }
-            }
-        }
+        credentialCheck.schedule(key: apiKeyInput, baseURL: settings.baseURL, language: settings.language, delay: .zero)
     }
 
     private var apiKeyHelpTitle: String {

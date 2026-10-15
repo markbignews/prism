@@ -1663,24 +1663,14 @@ struct AttachmentPreview: View {
     }
 }
 
-// MARK: - Composer with Dynamic Height + Liquid Glass (pure SwiftUI)
+// MARK: - Composer with Dynamic Height + Liquid Glass
 
 private enum ComposerMetrics {
     static let actionDiameter: CGFloat = 28
     static let expandedCornerRadius: CGFloat = 22
 }
 
-/// Multi-line composer built entirely with SwiftUI.
-///
-/// `TextField(axis: .vertical)` grows with wrapped text up to
-/// `lineLimit(1...6)` and scrolls internally beyond that. Return sends and
-/// Shift+Return inserts a newline. Plain Return is observed through both
-/// `.onSubmit` and `.onKeyPress`: behavior differs slightly across macOS and
-/// input methods, so the two paths provide a reliable fallback for each other.
-///
-/// Note: during active Chinese/Japanese IME composition, Return is normally
-/// consumed by the input session before `.onKeyPress` (so candidate
-/// confirmation keeps working); verify on first use.
+/// Growing native text editor in a rounded glass composer.
 struct ComposerView: View {
     @Binding var draft: String
     @Binding var attachments: [MessageAttachment]
@@ -1693,7 +1683,6 @@ struct ComposerView: View {
     var onStop: () -> Void
     var onSend: (String, [MessageAttachment]) -> Void
 
-    @FocusState private var isFocused: Bool
     @State private var showFileImporter = false
     @State private var attachmentError: String?
     @State private var isDropTargeted = false
@@ -1792,33 +1781,16 @@ struct ComposerView: View {
                     .accessibilityLabel(addAttachmentText)
                     .help(addAttachmentText)
 
-                    TextField(inputPlaceholder, text: $draft, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .lineLimit(1...6)
-                        .focused($isFocused)
-                        .submitLabel(.send)
-                        .onSubmit { submit() }
-                        .onAppear {
-                            // Defer until the new-conversation view is attached to the
-                            // key window; immediate focus can be dropped on first load.
-                            DispatchQueue.main.async { isFocused = true }
+                    ZStack(alignment: .topLeading) {
+                        ScrollableComposer(text: $draft, placeholder: inputPlaceholder, onSubmit: submit)
+                        if draft.isEmpty {
+                            Text(inputPlaceholder)
+                                .font(.body).foregroundStyle(.tertiary)
+                                .padding(.top, 4)
+                                .allowsHitTesting(false)
                         }
-                        .onKeyPress(keys: [.return]) { press in
-                            if press.modifiers.contains(.shift) {
-                                // Shift+Return → newline
-                                draft += "\n"
-                                return .handled
-                            }
-                            // Return → send
-                            submit()
-                            return .handled
-                        }
-                        .padding(.vertical, 4)
-                        // Let the native field own growth and scrolling. A
-                        // flexible maximum frame reserved excess height and
-                        // clipped the first line when the content wrapped.
-                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .topLeading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
 
                     ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
                     ContextUsageButton(snapshot: contextUsage, language: language)

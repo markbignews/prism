@@ -58,6 +58,7 @@ final class AppSettings: ObservableObject {
     @Published private(set) var availableModels: [ProviderModel] = []
     @Published private(set) var isFetchingModels = false
     @Published private(set) var modelCatalogError: String?
+    @Published private(set) var credentialsVerified = false
     // An opaque revision lets SwiftUI debounce changes without exposing keys as task IDs.
     @Published private(set) var modelCatalogRevision = UUID()
     private var catalogRequestID = UUID()
@@ -80,6 +81,7 @@ final class AppSettings: ObservableObject {
 
     private func invalidateModelCatalog() {
         catalogRequestID = UUID()
+        credentialsVerified = false
         availableModels = []
         modelCatalogError = nil
         isFetchingModels = false
@@ -104,12 +106,14 @@ final class AppSettings: ObservableObject {
             guard !Task.isCancelled, catalogRequestID == requestID,
                   apiKey == requestKey, baseURL == requestBase else { return }
             availableModels = models
+            credentialsVerified = true
             // Keep a valid deliberate selection. Missing/default models choose Flash first.
             if model == requestModel { model = ProviderModel.selection(current: model, from: models) }
             if flashModel == requestAuxiliary { flashModel = ProviderModel.selection(current: flashModel, from: models) }
         } catch {
             guard !Task.isCancelled, catalogRequestID == requestID else { return }
-            modelCatalogError = L10n.text(.modelListFailure, language)
+            credentialsVerified = false
+            modelCatalogError = ProviderFailure.message(error, language: language)
         }
     }
 

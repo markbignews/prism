@@ -27,20 +27,19 @@ struct ProviderModel: Decodable, Identifiable, Equatable, Sendable {
 struct ModelCatalogClient: Sendable {
     var session: URLSession = .shared
 
-    static func endpoint(baseURL: String) throws -> URL {
+    static func endpoint(baseURL: String, suffix: String = "models") throws -> URL {
         guard var parts = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = parts.scheme?.lowercased(), ["https", "http"].contains(scheme),
               parts.host?.isEmpty == false, parts.user == nil, parts.password == nil,
               parts.query == nil, parts.fragment == nil else { throw DeepSeekError.invalidBaseURL }
         parts.path = parts.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        parts.path = "/" + (parts.path.isEmpty ? "models" : parts.path + "/models")
+        parts.path = "/" + (parts.path.isEmpty ? suffix : parts.path + "/" + suffix)
         guard let url = parts.url else { throw DeepSeekError.invalidBaseURL }
         return url
     }
 
     func fetch(apiKey: String, baseURL: String) async throws -> [ProviderModel] {
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { throw DeepSeekError.missingAPIKey }
+        let key = try APICredentials.normalized(apiKey)
         var request = URLRequest(url: try Self.endpoint(baseURL: baseURL))
         request.httpMethod = "GET"
         request.timeoutInterval = 15
@@ -51,7 +50,7 @@ struct ModelCatalogClient: Sendable {
         guard let http = response as? HTTPURLResponse else { throw DeepSeekError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             // Do not echo provider bodies: some gateways include request credentials.
-            throw DeepSeekError.api("Model list: HTTP \(http.statusCode)")
+            throw DeepSeekError.http(http.statusCode)
         }
         struct Response: Decodable { var data: [ProviderModel] }
         let models = ProviderModel.sorted(try JSONDecoder().decode(Response.self, from: data).data)

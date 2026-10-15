@@ -22,8 +22,10 @@ struct SettingsView: View {
             }
 
             Section(L10n.text(.deepSeek, settings.language)) {
-                SecureField(L10n.text(.apiKey, settings.language), text: $settings.apiKey)
-                    .textFieldStyle(.roundedBorder)
+                SingleLineSecretField(placeholder: L10n.text(.apiKey, settings.language), text: $settings.apiKey)
+                    .frame(height: 24)
+                    .padding(6)
+                    .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
 
                 TextField(L10n.text(.baseURL, settings.language), text: $settings.baseURL)
                     .textFieldStyle(.roundedBorder)
@@ -35,21 +37,16 @@ struct SettingsView: View {
             Section(L10n.text(.proParameters, settings.language)) {
                 ModelParameterSection(
                     parameters: Binding(
-                        get: { settings.parameters },
-                        set: { settings.parameters = $0 }
+                        get: { settings.usesFlashParameters ? settings.flashParameters : settings.parameters },
+                        set: { if settings.usesFlashParameters { settings.flashParameters = $0 } else { settings.parameters = $0 } }
                     ),
                     showThinking: true
                 )
             }
 
             Section(L10n.text(.flashParameters, settings.language)) {
-                ModelParameterSection(
-                    parameters: Binding(
-                        get: { settings.flashParameters },
-                        set: { settings.flashParameters = $0 }
-                    ),
-                    showThinking: true
-                )
+                Text(ProviderFailure.localized("辅助模型用于摘要、章节整理和后台检查，不负责直接回复。后台任务固定关闭深度思考；对话的思考设置以上方为准。", "輔助模型用於摘要、章節整理和背景檢查，不負責直接回覆。背景任務固定關閉深度思考；對話的思考設定以上方為準。", "The auxiliary model handles summaries, chapters and background checks. These tasks use thinking disabled; the controls above apply to conversation replies.", language: settings.language))
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section(L10n.text(.interface, settings.language)) {

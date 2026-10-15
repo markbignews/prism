@@ -19,6 +19,10 @@ struct ModelDiscoverySection: View {
             Text(L10n.text(.modelListHint, settings.language))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if settings.credentialsVerified {
+                Label(L10n.text(.validationSuccess, settings.language), systemImage: "checkmark.circle.fill")
+                    .font(.caption).foregroundStyle(.green)
+            }
             if let error = settings.modelCatalogError {
                 Text(error).font(.caption).foregroundStyle(.orange)
             }

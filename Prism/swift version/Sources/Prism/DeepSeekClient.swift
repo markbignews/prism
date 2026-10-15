@@ -71,6 +71,7 @@ struct DeepSeekClient {
     var language: AppLanguage
     var mode: ConversationMode = .balanced
     var responseLength: ResponseLength = .standard
+    var session: URLSession = .shared
 
     private func contentValue(for message: ChatMessage, text: String, includeAttachments: Bool) -> APIMessageContent {
         guard includeAttachments, message.role == .user, !message.attachments.isEmpty else {
@@ -91,17 +92,15 @@ struct DeepSeekClient {
         return .blocks(blocks)
     }
 
-    func stream(
+    func makeStreamRequest(
         messages: [ChatMessage],
         memoryContext: String?,
         supervisorHint: String? = nil,
         tools: [ToolDef]? = nil,
         toolResults: [ToolResult] = [],
-        onDelta: @MainActor @Sendable @escaping (DeepSeekStreamDelta) -> Void
-    ) async throws -> DeepSeekResult {
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DeepSeekError.missingAPIKey
-        }
+        toolExchanges: [ToolExchange] = []
+    ) throws -> URLRequest {
+        let key = try APICredentials.normalized(apiKey)
         let modelName = DeepSeekModels.canonical(model.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: baseURL)
         guard !modelName.isEmpty else {
             throw DeepSeekError.invalidModel
@@ -111,9 +110,7 @@ struct DeepSeekClient {
            latestUserMessage?.attachments.contains(where: { $0.kind == .image }) == true {
             throw DeepSeekError.api("DeepSeek V4 Pro 不支持图片输入，请切换到 DeepSeek V4.1 Flash 后重试。")
         }
-        guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/chat/completions") else {
-            throw DeepSeekError.invalidBaseURL
-        }
+        let url = try ModelCatalogClient.endpoint(baseURL: baseURL, suffix: "chat/completions")
 
         // Keep the system prefix stable for DeepSeek's prefix cache. Dynamic
         // memory/supervisor context belongs on the current user turn; putting
@@ -134,7 +131,7 @@ struct DeepSeekClient {
             let keepToolCalls = !toolResults.isEmpty && i == lastAssistantInTail
             // Tool-enabled thinking requires reasoning from every assistant turn,
             // including final answers. Legacy records may have no saved reasoning.
-            let reasoning: String? = parameters.thinkingEnabled && tools?.isEmpty == false && msg.role == .assistant
+            let reasoning: String? = parameters.thinkingEnabled && (tools?.isEmpty == false || !toolExchanges.isEmpty || !toolResults.isEmpty) && msg.role == .assistant
                 ? (msg.reasoning ?? "") : nil
             var content = msg.role == .user
                 ? "[sentAt=\(AgentPrompt.transcriptTimestamp(msg.createdAt))]\n\(msg.content)"
@@ -156,6 +153,18 @@ struct DeepSeekClient {
         // Inject tool results from previous round as role:"tool" messages
         for tr in toolResults {
             requestMessages.append(APIMessage(role: "tool", content: .text(tr.content), toolCallID: tr.toolCallID, name: tr.name))
+        }
+
+        // Replay each subturn separately. Combining all reasoning/tool calls into
+        // one assistant message loses earlier tool results on the next request.
+        for exchange in toolExchanges {
+            requestMessages.append(APIMessage(role: "assistant", content: .text(exchange.response.content),
+                reasoningContent: parameters.thinkingEnabled ? (exchange.response.reasoning ?? "") : nil,
+                toolCalls: exchange.response.toolCalls))
+            for result in exchange.results {
+                requestMessages.append(APIMessage(role: "tool", content: .text(result.content),
+                    toolCallID: result.toolCallID, name: result.name))
+            }
         }
 
         // Response style must never change the model's sampling distribution.
@@ -183,15 +192,25 @@ struct DeepSeekClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 300
-        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
+        return request
+    }
+
+    func stream(
+        messages: [ChatMessage], memoryContext: String?, supervisorHint: String? = nil,
+        tools: [ToolDef]? = nil, toolResults: [ToolResult] = [], toolExchanges: [ToolExchange] = [],
+        onDelta: @MainActor @Sendable @escaping (DeepSeekStreamDelta) -> Void
+    ) async throws -> DeepSeekResult {
+        let request = try makeStreamRequest(messages: messages, memoryContext: memoryContext,
+            supervisorHint: supervisorHint, tools: tools, toolResults: toolResults, toolExchanges: toolExchanges)
         try Task.checkCancellation()
 
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
         do {
-            (bytes, response) = try await URLSession.shared.bytes(for: request)
+            (bytes, response) = try await session.bytes(for: request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         }
@@ -200,14 +219,7 @@ struct DeepSeekClient {
             throw DeepSeekError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            var detail = ""
-            for try await line in bytes.lines {
-                detail += line
-            }
-            if detail.isEmpty {
-                detail = "HTTP \(http.statusCode)"
-            }
-            throw DeepSeekError.api(detail)
+            throw DeepSeekError.http(http.statusCode)
         }
 
         var content = ""
@@ -266,7 +278,7 @@ struct DeepSeekClient {
         }
         return DeepSeekResult(
             content: content.trimmingCharacters(in: .whitespacesAndNewlines),
-            reasoning: reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : reasoning.trimmingCharacters(in: .whitespacesAndNewlines),
+            reasoning: hasReasoning ? reasoning : nil,
             toolCalls: allToolCalls
         )
     }
@@ -291,51 +303,40 @@ struct DeepSeekClient {
     /// Read the provider balance without invoking a model or consuming model
     /// tokens. DeepSeek returns one entry per currency.
     func fetchBalance() async throws -> DeepSeekBalanceResponse {
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DeepSeekError.missingAPIKey
-        }
-        guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/user/balance") else {
-            throw DeepSeekError.invalidBaseURL
-        }
+        let key = try APICredentials.normalized(apiKey)
+        let url = try ModelCatalogClient.endpoint(baseURL: baseURL, suffix: "user/balance")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 10
-        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
-        } catch {
-            throw DeepSeekError.api("Network error: \(error.localizedDescription)")
-        }
+        } catch { throw error }
         guard let http = response as? HTTPURLResponse else {
             throw DeepSeekError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw DeepSeekError.api("Balance API error (HTTP \(http.statusCode)): \(String(body.prefix(200)))")
+            throw DeepSeekError.http(http.statusCode)
         }
         do {
             return try JSONDecoder().decode(DeepSeekBalanceResponse.self, from: data)
         } catch {
-            throw DeepSeekError.api("Invalid balance response: \(error.localizedDescription)")
+            throw DeepSeekError.invalidResponse
         }
     }
 
     private func summarizeRequest(systemPrompt: String, userContent: String, maxTokens: Int, timeout: Double) async throws -> String {
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DeepSeekError.missingAPIKey
-        }
+        let key = try APICredentials.normalized(apiKey)
         let modelName = DeepSeekModels.canonical(model.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: baseURL)
         guard !modelName.isEmpty else {
             throw DeepSeekError.invalidModel
         }
-        guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/chat/completions") else {
-            throw DeepSeekError.invalidBaseURL
-        }
+        let url = try ModelCatalogClient.endpoint(baseURL: baseURL, suffix: "chat/completions")
 
         let messages = [
             APIMessage(role: "system", content: .text(systemPrompt)),
@@ -360,14 +361,14 @@ struct DeepSeekClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
-        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
         try Task.checkCancellation()
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         }
@@ -377,8 +378,7 @@ struct DeepSeekClient {
             throw DeepSeekError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let detail = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
-            throw DeepSeekError.api(detail)
+            throw DeepSeekError.http(http.statusCode)
         }
 
         let result = try JSONDecoder().decode(ChatResponse.self, from: data)
@@ -395,7 +395,12 @@ enum DeepSeekStreamDelta: Sendable {
     case toolCall(ToolCallDelta)
 }
 
-struct DeepSeekResult {
+struct ToolExchange: Sendable {
+    var response: DeepSeekResult
+    var results: [ToolResult]
+}
+
+struct DeepSeekResult: Sendable {
     var content: String
     var reasoning: String?
     var toolCalls: [ToolCall] = []
@@ -403,6 +408,8 @@ struct DeepSeekResult {
 
 enum DeepSeekError: LocalizedError {
     case missingAPIKey
+    case malformedAPIKey
+    case http(Int)
     case invalidModel
     case invalidBaseURL
     case invalidResponse
@@ -411,8 +418,9 @@ enum DeepSeekError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey:
-            "DeepSeek API Key is missing."
+        case .missingAPIKey: "请先在设置中填写 API Key。"
+        case .malformedAPIKey: "API Key 格式不正确。请只粘贴密钥本身，不要包含空格、引号或 Bearer 前缀。"
+        case .http(let status): ProviderFailure.httpMessage(status, language: .simplifiedChinese)
         case .invalidModel:
             "DeepSeek model name is missing."
         case .invalidBaseURL:

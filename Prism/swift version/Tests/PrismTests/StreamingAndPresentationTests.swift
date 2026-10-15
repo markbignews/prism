@@ -66,7 +66,7 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
         #expect(fixture.agent.streamingMessageID == nil)
     }
 
-    @Test func finishingCancelsPendingFramesAndLateTokensCannotOverwriteResult() async throws {
+    @Test func finishingFlushesPendingFramesAndLateTokensCannotOverwriteResult() async throws {
         let fixture = try streamingFixture()
         defer { try? FileManager.default.removeItem(at: fixture.folder) }
         let recorder = StreamRecorder()
@@ -78,8 +78,27 @@ private func streamingFixture(historyCount: Int = 0) throws -> (folder: URL, age
         fixture.agent.finishStreamingMessage(fixture.replyID, in: fixture.conversationID, content: "[已取消生成]", reasoning: "")
         fixture.agent.append(.content("迟到片段"), to: fixture.replyID, in: fixture.conversationID)
         try await Task.sleep(for: .milliseconds(90))
-        #expect(recorder.streamedMessages.count == 1)
+        #expect(recorder.streamedMessages.count == 2)
         #expect(fixture.agent.selectedConversation?.messages.last?.content == "[已取消生成]")
+        #expect(fixture.agent.selectedConversation?.messages.last?.reasoning == "先核对")
+    }
+
+    @Test func toolRoundReasoningSurvivesFinalShortReasoningAndReload() throws {
+        let fixture = try streamingFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.folder) }
+        fixture.agent.isSending = true
+        fixture.agent.beginStreamingMessage(fixture.replyID)
+        let original = "第一轮：核对事实。\n保留原文。\n\n第二轮：检查工具证据。\n\nWrite the reply now."
+        for part in ["第一轮：核对事实。\n保留原文。", "\n\n", "第二轮：检查工具证据。", "\n\n", "Write the reply now."] {
+            fixture.agent.append(.reasoning(part), to: fixture.replyID, in: fixture.conversationID)
+        }
+        // Reproduce the original overwrite: only the final subrequest is supplied.
+        fixture.agent.finishStreamingMessage(fixture.replyID, in: fixture.conversationID,
+            content: "最终答复", reasoning: "Write the reply now.")
+        #expect(fixture.agent.selectedConversation?.messages.last?.reasoning == original)
+        fixture.agent.save()
+        let restored = ChatAgent(storagePath: fixture.folder.path)
+        #expect(restored.selectedConversation?.messages.last?.reasoning == original)
     }
 
     @Test func toolPlaceholderBoundaryRefreshesTheActiveMessage() throws {

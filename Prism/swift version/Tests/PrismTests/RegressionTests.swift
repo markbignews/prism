@@ -186,6 +186,76 @@ private final class CatalogURLProtocol: URLProtocol, @unchecked Sendable {
         #expect(!settings.isFetchingModels)
     }
 
+    @Test func streamingAndSummaryErrorsUseStatusWithoutEchoingProviderSecrets() async {
+        let transport = client { request in
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer placeholder")
+            return (401, Data(#"{"error":{"message":"Authentication Fails (governor) secret-echo"}}"#.utf8))
+        }
+        let chat = DeepSeekClient(apiKey: " placeholder ", baseURL: "https://provider.test", model: "model", parameters: ModelParameters(), language: .simplifiedChinese, session: transport.session)
+        do {
+            _ = try await chat.stream(messages: [.init(role: .user, content: "测试")], memoryContext: nil) { _ in }
+            Issue.record("Expected authentication rejection")
+        } catch {
+            let message = ProviderFailure.message(error, language: .simplifiedChinese)
+            #expect(message.contains("密钥验证失败"))
+            #expect(!message.contains("secret-echo"))
+        }
+        do {
+            _ = try await chat.summarize(systemPrompt: "测试", userContent: "测试")
+            Issue.record("Expected authentication rejection")
+        } catch {
+            #expect(ProviderFailure.message(error, language: .simplifiedChinese).contains("密钥验证失败"))
+        }
+    }
+
+    @MainActor
+    @Test func onboardingRequiresSuccessfulValidationOfTheExactKeyAndEndpoint() async throws {
+        let check = CredentialCheck()
+        let success = client { _ in (200, Data(#"{"data":[{"id":"vendor-flash"}]}"#.utf8)) }
+        #expect(check.validatedKey(for: "placeholder", baseURL: "https://provider.test") == nil)
+        check.schedule(key: " placeholder ", baseURL: "https://provider.test", language: .simplifiedChinese, client: success, delay: .zero)
+        for _ in 0..<100 {
+            if check.state == .success { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(check.validatedKey(for: "placeholder", baseURL: "https://provider.test") == "placeholder")
+        #expect(check.validatedKey(for: "different", baseURL: "https://provider.test") == nil)
+        #expect(check.validatedKey(for: "placeholder", baseURL: "https://other.test") == nil)
+        let failure = client { _ in (401, Data(#"{"error":"secret-echo"}"#.utf8)) }
+        check.schedule(key: "rejected", baseURL: "https://provider.test", language: .simplifiedChinese, client: failure, delay: .zero)
+        #expect(check.validatedKey(for: "placeholder", baseURL: "https://provider.test") == nil)
+        for _ in 0..<100 {
+            if case .failure = check.state { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .failure(let message) = check.state else { Issue.record("Expected authentication failure"); return }
+        #expect(message.contains("密钥验证失败"))
+        #expect(!message.contains("secret-echo"))
+        #expect(check.validatedKey(for: "rejected", baseURL: "https://provider.test") == nil)
+    }
+
+    @MainActor
+    @Test func changedOrClearedKeyCancelsPendingOnboardingValidation() async throws {
+        let check = CredentialCheck()
+        let started = Mutex(false)
+        let slow = client { _ in
+            started.withLock { $0 = true }
+            Thread.sleep(forTimeInterval: 0.08)
+            return (200, Data(#"{"data":[{"id":"old-model"}]}"#.utf8))
+        }
+        check.schedule(key: "old-placeholder", baseURL: "https://provider.test", language: .english, client: slow, delay: .zero)
+        for _ in 0..<100 {
+            if started.withLock({ $0 }) { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(started.withLock { $0 })
+        check.schedule(key: "", baseURL: "https://provider.test", language: .english, client: slow, delay: .zero)
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(check.state == .idle)
+        #expect(check.models.isEmpty)
+        #expect(check.validatedKey(for: "old-placeholder", baseURL: "https://provider.test") == nil)
+    }
+
     @Test(arguments: [401, 403, 429, 500])
     func serverErrorDoesNotLeakProviderBody(status: Int) async {
         let client = client { _ in (status, Data("sensitive-provider-body".utf8)) }
