@@ -104,7 +104,7 @@ A prebuilt bundle is committed at [`Prism/release/Prism-SwiftUI-macOS.app`](Pris
 
 Honest version of where this is:
 
-- **v1.0.23**, 60 automated tests covering safety routing, model setup, streaming, confirmation flows, storage recovery, transaction rollback, migration and snapshot round trips. GitHub Actions is configured to run them on `macos-26` and `xcode-27` runners alongside the packaging scripts — but the workflow has **not run remotely yet**, and required status checks are not enabled, so "tests pass" currently rests on local runs.
+- **v1.0.23**, 60 automated tests covering safety routing, model setup, streaming, confirmation flows, storage recovery, transaction rollback, migration and snapshot round trips. GitHub Actions is configured to run them on `macos-26` and `xcode-27` runners alongside the packaging scripts, and `main` is protected by two required status checks — but the workflow has **not produced a remote run yet**, so "tests pass" currently rests on local runs.
 - **Passing automated tests does not mean the model is right.** Semantic and UI acceptance is *not* finished: [`SEMANTIC_ACCEPTANCE.md`](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md) lists 12 scenarios, 4 with real model samples recorded (including one genuine failure — negation was over-interpreted as crisis) and the rest still to be verified by a human.
 - **Not a medical service.** No diagnosis, no therapy, no emergency response. If you or someone else is in immediate danger, contact local emergency services — do not rely on this app.
 - **macOS 15+ and arm64 only.** No Windows or Linux build; the earlier Tauri/Rust client was removed.
