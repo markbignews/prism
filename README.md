@@ -8,7 +8,7 @@
 
 `macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local SQLite` · `v1.0.23` · [MIT](LICENSE)
 
-[What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout) · [Known limits](#known-limits)
+[What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout)
 
 ---
 
@@ -386,20 +386,6 @@ Key modules, in reading order:
 | `MarkdownText.swift` / `ScrollableComposer.swift` | Markdown rendering and the native composer |
 | `ClarificationCard.swift` / `NarrativeEventApproval.swift` / `ConfirmationCard.swift` | Clarification card, timeline preview, and card container (the merge banner lives in `ContentView`) |
 | `L10n.swift` | Three-language strings |
-
-## Known limits
-
-- **Semantic acceptance is unfinished.** Only some of the 12 scenarios have real model samples; the rest still need human review. One real deviation occurred (explicit negation over-read as crisis); a tightened prompt did not reproduce it, but repeated sampling and human approval are still pending.
-- **Psychology search has no live acceptance yet.** Routing, de-identification, and parsing are covered by automation, but no online search has been run with a real API key; result quality, latency, and provider quota behaviour are unverified.
-- **Sidebar search is not full-text.** It matches chapter titles, chapter summaries, and conversation titles; a message-level full-text function exists but is not wired to the UI.
-- **Edit-and-resend truncates.** Everything after the edited user message is deleted and resent; this is not branching.
-- **macOS 15+ / arm64 only.** No Windows, Linux, or Intel build; the earlier Tauri/Rust client was removed.
-- **The default bundle is not notarized.** Gatekeeper will stop it once; distribution needs your own Developer ID and notary account.
-- **No multi-device sync.** Move between machines with snapshot export/import, and configure an API key on each.
-- **The database is not encrypted.** It relies on FileVault and folder permissions.
-- **Each turn costs more than one request.** Pre-analysis + reply, plus optional tool rounds and background summaries; latency and cost scale with thinking and context length.
-- **No telemetry.** Diagnosing a problem usually means exporting `prism.log`.
-- **Single maintainer, no support commitment.**
 
 ## Documentation
 
