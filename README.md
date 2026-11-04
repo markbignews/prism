@@ -1,4 +1,4 @@
-<p align="right"><img src="Prism/assets/icon.png" width="96" alt="Prism icon"></p>
+<p align="right"><img src="assets/icon.png" width="96" alt="Prism icon"></p>
 
 # Prism
 
@@ -6,7 +6,7 @@
 
 **English** · [简体中文](README.zh-Hans.md) · [繁體中文](README.zh-Hant.md)
 
-`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local SQLite` · `v1.0.23` · [MIT](Prism/LICENSE)
+`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local SQLite` · `v1.0.23` · [MIT](LICENSE)
 
 [What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout) · [Known limits](#known-limits)
 
@@ -24,9 +24,9 @@ It does not diagnose, provide therapy, or handle emergencies, and it will not de
 
 | Main window: conversations settle into chapters | Memory panel: timeline, people, emotions, findings | Reasoning: an expandable chain of thought |
 |---|---|---|
-| ![Main window](Prism/assets/1.png) | ![Memory panel](Prism/assets/3.png) | ![Reasoning](Prism/assets/2.png) |
+| ![Main window](assets/1.png) | ![Memory panel](assets/3.png) | ![Reasoning](assets/2.png) |
 
-*Interface available in Simplified Chinese, Traditional Chinese, and English. Shots are from the current build; replacement conventions are in [`assets/screenshots/README.md`](Prism/assets/screenshots/README.md).*
+*Interface available in Simplified Chinese, Traditional Chinese, and English. Shots are from the current build; replacement conventions are in [`assets/screenshots/README.md`](assets/screenshots/README.md).*
 
 ## Features
 
@@ -195,7 +195,7 @@ Nothing else escalates:
 - **Last turn's risk does not carry over.** Crisis context is background only; each turn is re-evaluated, and your explicit correction wins.
 - **Short messages are checked too.** A first turn or a two-character input still runs the pre-analysis — a brief "help me" can carry an urgent signal.
 
-The boundaries are recorded item by item in [`SEMANTIC_ACCEPTANCE.md`](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md), including one real failure (negation over-read as crisis) and the prompt tightening that followed — **passing automation does not mean the semantics pass**.
+The boundaries are recorded item by item in [`SEMANTIC_ACCEPTANCE.md`](swift%20version/SEMANTIC_ACCEPTANCE.md), including one real failure (negation over-read as crisis) and the prompt tightening that followed — **passing automation does not mean the semantics pass**.
 
 ## Memory and retrieval
 
@@ -291,10 +291,10 @@ To reclaim free pages left by history, quit the app and run the maintenance scri
 
 ```sh
 # report only
-python3 Prism/scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3
+python3 scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3
 
 # back up, prune, and vacuum (quit Prism first)
-python3 Prism/scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3 --apply --vacuum
+python3 scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3 --apply --vacuum
 ```
 
 ## Quick start
@@ -303,18 +303,17 @@ Prism runs on **macOS 15 or later** on Apple Silicon (arm64). You can download a
 
 **Option 1 — download**
 
-Download [`Prism-SwiftUI-macOS-1.0.23.dmg`](Prism/release/Prism-SwiftUI-macOS-1.0.23.dmg), open it, and drag **Prism** into **Applications**.
+Download [`Prism-SwiftUI-macOS-1.0.23.dmg`](release/Prism-SwiftUI-macOS-1.0.23.dmg), open it, and drag **Prism** into **Applications**.
 
 **Option 2 — build from source**
 
-Requires **Xcode 26+ with the macOS 26 SDK**. Run from the repository root (the level containing `Prism/`):
+Requires **Xcode 26+ with the macOS 26 SDK**. Run from the repository root:
 
 ```sh
 git clone https://github.com/markbignews/prism && cd prism
-python3 Prism/scripts/build_app.py --run
+python3 scripts/build_app.py --run
 ```
 
-If you are already inside `Prism/`, drop the `Prism/` prefix.
 
 **First launch** runs an eight-page onboarding flow (skippable, with Back):
 
@@ -350,12 +349,12 @@ Open the DMG, drag **Prism** into **Applications**, then launch it from Applicat
 
 The build is **ad hoc signed and not notarized**. On first launch macOS may block it: open System Settings → Privacy & Security, click "Open Anyway", and confirm. Do not disable Gatekeeper globally.
 
-You can also run the committed `Prism/release/Prism-SwiftUI-macOS.app` directly, or build your own with `build_app.py`. Intel Macs are not supported.
+You can also run the committed `release/Prism-SwiftUI-macOS.app` directly, or build your own with `build_app.py`. Intel Macs are not supported.
 
 ## Project layout
 
 ```
-Prism/
+.
 ├── assets/          screenshots and icon
 ├── release/         DMG and committed arm64 bundle
 ├── scripts/         build, package, database maintenance
@@ -404,12 +403,12 @@ Key modules, in reading order:
 
 ## Documentation
 
-- [Technical spec](Prism/swift%20version/TECHNICAL_SPEC.md): storage, concurrency, context, packaging, and their boundaries
-- [Regression checklist](Prism/swift%20version/REGRESSION_CHECKLIST.md): what automation covers and what still needs a human
-- [Semantic acceptance](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md): status of the 12 scenarios with real samples
+- [Technical spec](swift%20version/TECHNICAL_SPEC.md): storage, concurrency, context, packaging, and their boundaries
+- [Regression checklist](swift%20version/REGRESSION_CHECKLIST.md): what automation covers and what still needs a human
+- [Semantic acceptance](swift%20version/SEMANTIC_ACCEPTANCE.md): status of the 12 scenarios with real samples
 - Engineering review, repair report, and handoff live in local `ENGINEERING_*.md` files and are not part of the public repository.
 
 ## License
 
-[MIT](Prism/LICENSE) © 2026 markbignews
+[MIT](LICENSE) © 2026 markbignews
 

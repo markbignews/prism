@@ -24,7 +24,7 @@
 在 Mac 的本地终端安全设置 `PRISM_TEST_API_KEY` 后运行；不要将 Key 写进命令历史、仓库或报告：
 
 ```sh
-cd "Prism/swift version"
+cd "swift version"
 PRISM_RUN_LIVE_ACCEPTANCE=1 swift test --filter LiveAcceptanceTests
 ```
 

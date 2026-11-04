@@ -1,9 +1,0 @@
-# macOS system files
-.DS_Store
-**/.DS_Store
-
-# Swift build outputs
-**/.build/
-
-# Packaged apps are kept only in release/
-swift version/Prism.app/

@@ -1,4 +1,4 @@
-<p align="right"><img src="Prism/assets/icon.png" width="96" alt="Prism icon"></p>
+<p align="right"><img src="assets/icon.png" width="96" alt="Prism icon"></p>
 
 # Prism / 稜鏡
 
@@ -6,7 +6,7 @@
 
 [English](README.md) · [简体中文](README.zh-Hans.md) · **繁體中文**
 
-`macOS 15+` · `Swift 6 / SwiftUI` · `零第三方依賴` · `本機 SQLite` · `v1.0.23` · [MIT](Prism/LICENSE)
+`macOS 15+` · `Swift 6 / SwiftUI` · `零第三方依賴` · `本機 SQLite` · `v1.0.23` · [MIT](LICENSE)
 
 [這是什麼](#這是什麼) · [功能](#功能) · [它如何運作](#它如何運作) · [安全判定](#安全判定) · [記憶與檢索](#記憶與檢索) · [上下文與串流](#上下文與串流) · [設定](#設定) · [資料與隱私](#資料與隱私) · [快速開始](#快速開始) · [專案結構](#專案結構) · [已知限制](#已知限制)
 
@@ -24,9 +24,9 @@
 
 | 主介面：對話沉澱為章節 | 記憶面板：時間軸、人物、情緒、洞察 | 思考鏈：可展開的推理過程 |
 |---|---|---|
-| ![主介面](Prism/assets/1.png) | ![記憶面板](Prism/assets/3.png) | ![思考鏈](Prism/assets/2.png) |
+| ![主介面](assets/1.png) | ![記憶面板](assets/3.png) | ![思考鏈](assets/2.png) |
 
-*介面支援簡體中文、繁體中文、英文。截圖取自目前建置；替換說明見 [`assets/screenshots/README.md`](Prism/assets/screenshots/README.md)。*
+*介面支援簡體中文、繁體中文、英文。截圖取自目前建置；替換說明見 [`assets/screenshots/README.md`](assets/screenshots/README.md)。*
 
 ## 功能
 
@@ -195,7 +195,7 @@
 - **上一輪的風險不會自動延續。** 危機上下文只作為歷史背景，本輪重新判斷；使用者的明確糾正優先。
 - **短訊息也會過安全檢查。** 首輪對話或只有一兩個字的輸入同樣會跑前置分析——「救我」這種短句也可能包含緊急訊號。
 
-這套規則的邊界在 [`SEMANTIC_ACCEPTANCE.md`](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md) 裡有逐條驗收記錄，包括一次真實失敗（否定被過度解讀成危機）以及之後的提示詞收緊——**自動化測試通過不代表語意合格**。
+這套規則的邊界在 [`SEMANTIC_ACCEPTANCE.md`](swift%20version/SEMANTIC_ACCEPTANCE.md) 裡有逐條驗收記錄，包括一次真實失敗（否定被過度解讀成危機）以及之後的提示詞收緊——**自動化測試通過不代表語意合格**。
 
 ## 記憶與檢索
 
@@ -291,10 +291,10 @@
 
 ```sh
 # 只看統計
-python3 Prism/scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3
+python3 scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3
 
 # 備份後裁剪並回收（先結束 Prism）
-python3 Prism/scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3 --apply --vacuum
+python3 scripts/storage_maintenance.py --database ~/Documents/Prism/prism.sqlite3 --apply --vacuum
 ```
 
 ## 快速開始
@@ -303,18 +303,17 @@ Prism 執行於 **macOS 15 或更高** 的 Apple Silicon（arm64）。可以直�
 
 **方式一：下載**
 
-下載 [`Prism-SwiftUI-macOS-1.0.23.dmg`](Prism/release/Prism-SwiftUI-macOS-1.0.23.dmg)，開啟後把 **Prism** 拖進 **Applications**。
+下載 [`Prism-SwiftUI-macOS-1.0.23.dmg`](release/Prism-SwiftUI-macOS-1.0.23.dmg)，開啟後把 **Prism** 拖進 **Applications**。
 
 **方式二：從原始碼編譯**
 
-需要 **帶 macOS 26+ SDK 的 Xcode 26+**。以下命令在儲存庫根目錄（包含 `Prism/` 的那一層）執行：
+需要 **帶 macOS 26+ SDK 的 Xcode 26+**。以下命令在儲存庫根目錄執行：
 
 ```sh
 git clone https://github.com/markbignews/prism && cd prism
-python3 Prism/scripts/build_app.py --run
+python3 scripts/build_app.py --run
 ```
 
-已經進入 `Prism/` 目錄的話，去掉命令裡的 `Prism/` 前綴即可。
 
 **首次啟動**會走 8 頁引導（可跳過，也可返回上一頁）：
 
@@ -350,12 +349,12 @@ python3 Prism/scripts/build_app.py --run
 
 應用是 **ad hoc 簽名、未公證** 的。首次啟動若被 macOS 攔截，開啟「系統設定 → 隱私與安全性」，點「仍要開啟」並確認；不要全域關閉 Gatekeeper。
 
-也可以直接執行儲存庫裡的 `Prism/release/Prism-SwiftUI-macOS.app`，或用 `build_app.py` 自行建置。不支援 Intel Mac。
+也可以直接執行儲存庫裡的 `release/Prism-SwiftUI-macOS.app`，或用 `build_app.py` 自行建置。不支援 Intel Mac。
 
 ## 專案結構
 
 ```
-Prism/
+.
 ├── assets/          截圖與圖示
 ├── release/         DMG 與已提交的 arm64 應用包
 ├── scripts/         建置、封裝、資料庫維護
@@ -404,12 +403,12 @@ Prism/
 
 ## 相關文件
 
-- [技術說明](Prism/swift%20version/TECHNICAL_SPEC.md)：儲存、並行、上下文、封裝的具體實作與邊界
-- [回歸清單](Prism/swift%20version/REGRESSION_CHECKLIST.md)：自動化涵蓋範圍，以及仍需人工驗證的場景
-- [語意驗收](Prism/swift%20version/SEMANTIC_ACCEPTANCE.md)：12 個場景的逐條狀態與真實樣本記錄
+- [技術說明](swift%20version/TECHNICAL_SPEC.md)：儲存、並行、上下文、封裝的具體實作與邊界
+- [回歸清單](swift%20version/REGRESSION_CHECKLIST.md)：自動化涵蓋範圍，以及仍需人工驗證的場景
+- [語意驗收](swift%20version/SEMANTIC_ACCEPTANCE.md)：12 個場景的逐條狀態與真實樣本記錄
 - 工程審查、修復記錄與交接清單保存在本機 `ENGINEERING_*.md`，未納入公開儲存庫。
 
 ## 授權
 
-[MIT](Prism/LICENSE) © 2026 markbignews
+[MIT](LICENSE) © 2026 markbignews
 

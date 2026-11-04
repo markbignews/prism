@@ -3,18 +3,16 @@
 **/.DS_Store
 
 # Build artifacts
-Prism/swift version/.build/
-Prism/swift version/.dsh-*/
-Prism/scripts/__pycache__/
-Prism/scripts/tests/__pycache__/
-Prism/swift version/Prism.app/
-Prism/Tauri Version/macOS Version/Prism.app/
-note/.build/
-Prism/**/src-tauri/target/
+.build/
+**/.build/
+swift version/.dsh-*/
+scripts/__pycache__/
+scripts/tests/__pycache__/
+swift version/Prism.app/
 
 # Icon working files
 assets/Untitled.icon/
-Prism/swift version/Untitled.icon/
+swift version/Untitled.icon/
 
 # Other platform versions (not mature)
 Qt Version/

@@ -11,7 +11,7 @@
 - 当前打包目标为 Apple Silicon arm64；Intel 未列入本轮支持范围。
 
 ```sh
-cd "Prism/swift version"
+cd "swift version"
 swift test -Xswiftc -warnings-as-errors
 swift run -c release Prism
 ```
@@ -105,7 +105,7 @@ API Key 使用系统 Keychain generic password，设置文件只保存条目 ID�
 从仓库根目录一条命令打包：
 
 ```sh
-python3 Prism/scripts/package_app.py --sync-release
+python3 scripts/package_app.py --sync-release
 ```
 
 默认生成 `swift version/Prism.app`；`--sync-release` 同步 `release/Prism-SwiftUI-macOS.app`。替换前把旧包移到仓库外 `~/Documents/Prism-build-backups`，可用 `--backup-dir` 指定。`../VERSION` 生成两个 bundle version 字段。源码摘要算法固定为按相对路径排序，对路径、NUL、文件字节、NUL 依次做 SHA-256；包括 Sources、Resources、Package.swift、VERSION、build_app.py 与 package_app.py；Tests 和文档不参与摘要。`--digest` 可复核。
