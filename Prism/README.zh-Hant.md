@@ -8,7 +8,7 @@
 
 `macOS 15+` · `Swift 6 / SwiftUI` · `零第三方依賴` · `本機 SQLite` · `v1.0.23` · [MIT](LICENSE)
 
-[這是什麼](#這是什麼) · [功能](#功能) · [它如何運作](#它如何運作) · [安全判定](#安全判定) · [記憶與檢索](#記憶與檢索) · [上下文與串流](#上下文與串流) · [設定](#設定) · [資料與隱私](#資料與隱私) · [快速開始](#快速開始) · [專案結構](#專案結構) · [測試與驗收](#測試與驗收) · [已知限制](#已知限制)
+[這是什麼](#這是什麼) · [功能](#功能) · [它如何運作](#它如何運作) · [安全判定](#安全判定) · [記憶與檢索](#記憶與檢索) · [上下文與串流](#上下文與串流) · [設定](#設定) · [資料與隱私](#資料與隱私) · [快速開始](#快速開始) · [專案結構](#專案結構) · [已知限制](#已知限制)
 
 ---
 
@@ -299,19 +299,19 @@ python3 Prism/scripts/storage_maintenance.py --database ~/Documents/Prism/prism.
 
 ## 快速開始
 
-需要 **macOS 15 或更高**、**帶 macOS 26+ SDK 的 Xcode 26+**；封裝目標為 Apple Silicon（arm64）。以下命令在儲存庫根目錄（包含 `Prism/` 的那一層）執行：
+Prism 執行於 **macOS 15 或更高** 的 Apple Silicon（arm64）。可以直接下載現成版本，也可以從原始碼編譯。
+
+**方式一：下載**
+
+下載 [`Prism-SwiftUI-macOS-1.0.23.dmg`](release/Prism-SwiftUI-macOS-1.0.23.dmg)，開啟後把 **Prism** 拖進 **Applications**。
+
+**方式二：從原始碼編譯**
+
+需要 **帶 macOS 26+ SDK 的 Xcode 26+**。以下命令在儲存庫根目錄（包含 `Prism/` 的那一層）執行：
 
 ```sh
 git clone https://github.com/markbignews/prism && cd prism
-
-# 建置並執行
 python3 Prism/scripts/build_app.py --run
-
-# 自動化測試（60 項；暫存目錄 + mock HTTP，不讀真實 Key）
-(cd "Prism/swift version" && swift test -Xswiftc -warnings-as-errors)
-
-# 建置、校驗並封裝 .app，同時同步到 Prism/release/
-python3 Prism/scripts/package_app.py --sync-release
 ```
 
 已經進入 `Prism/` 目錄的話，去掉命令裡的 `Prism/` 前綴即可。
@@ -344,45 +344,23 @@ python3 Prism/scripts/package_app.py --sync-release
 
 **附件**：單則訊息最多 5 個；單張圖片 ≤10MB，單個文字檔 ≤1MB，合計 ≤20MB。支援 `png/jpeg/gif/webp` 與常見純文字/程式碼/資料格式；內容只在當次請求的記憶體中，不寫入會話檔案。
 
-### 封裝、簽名與發佈
+### 如何開啟
 
-`release/Prism-SwiftUI-macOS.app` 是提交在儲存庫裡的建置產物，**ad hoc 簽名、未公證**，首次開啟需要在「系統設定 → 隱私與安全性」裡手動放行（[Apple 說明](https://support.apple.com/102445)）。
+雙擊 DMG 掛載，把 **Prism** 拖進 **Applications**，然後從「應用程式」或 Spotlight 啟動。
 
-```sh
-# 正式簽名 + 已存在的公證設定
-python3 Prism/scripts/package_app.py --identity "Developer ID Application: ..." \
-  --notary-profile <keychain-profile> --sync-release
+應用是 **ad hoc 簽名、未公證** 的。首次啟動若被 macOS 攔截，開啟「系統設定 → 隱私與安全性」，點「仍要開啟」並確認；不要全域關閉 Gatekeeper。
 
-# 只印出來源摘要（與 Info.plist 中的 PrismBuildSourceDigest 對照）
-python3 Prism/scripts/package_app.py --digest
-```
-
-- 版本號唯一來源是 `VERSION`，封裝腳本讀取它寫入兩個 bundle version 欄位。
-- 來源摘要把路徑、檔案和順序都固定下來（Sources、Resources、`Package.swift`、`VERSION` 與封裝腳本參與；Tests 與文件不參與），用於核對「這個二進位對應哪份原始碼」，但不承諾跨工具鏈逐位元組重現。
-- 封裝前後各算一次摘要；二進位必須是 arm64、最低系統 15.0、SDK 與 `xcrun` 實際值一致，否則直接失敗。
-- 替換舊包前會把它移到儲存庫外的 `~/Documents/Prism-build-backups`（可用 `--backup-dir` 改）。
-- 受限沙箱裡建置可設 `PRISM_DISABLE_MANIFEST_SANDBOX=1`；一般建置與 CI 不需要。
+也可以直接執行儲存庫裡的 `release/Prism-SwiftUI-macOS.app`，或用 `build_app.py` 自行建置。不支援 Intel Mac。
 
 ## 專案結構
 
 ```
 Prism/
-├── assets/                    截圖、圖示
-├── release/                   已提交的 arm64 應用包（ad hoc 簽名）
-├── scripts/
-│   ├── build_app.py           查詢真實 SDK 並編譯
-│   ├── package_app.py         建置 → 組裝 .app → 摘要 → 簽名 → 安裝
-│   ├── storage_maintenance.py 唯讀檢查 / 備份後裁剪歷史
-│   └── tests/                 封裝腳本的 Python 單元測試
-├── VERSION                    版本號唯一來源
-└── swift version/
-    ├── Package.swift          SwiftPM 清單（僅宣告套件）
-    ├── Sources/Prism/         37 個 Swift 檔案，約 1.3 萬行
-    ├── Sources/CSQLite/       系統 SQLite 的模組對應
-    ├── Tests/PrismTests/      10 個檔案、60 項測試、19 個 suite
-    ├── TECHNICAL_SPEC.md      架構與實作細節
-    ├── REGRESSION_CHECKLIST.md 自動化涵蓋了什麼、沒涵蓋什麼
-    └── SEMANTIC_ACCEPTANCE.md 語意與 UI 驗收狀態
+├── assets/          截圖與圖示
+├── release/         DMG 與已提交的 arm64 應用包
+├── scripts/         建置、封裝、資料庫維護
+├── VERSION          版本號唯一來源
+└── swift version/   原始碼、測試與文件
 ```
 
 關鍵模組（依閱讀順序）：
@@ -409,24 +387,6 @@ Prism/
 | `MarkdownText.swift` / `ScrollableComposer.swift` | Markdown 渲染與原生輸入框 |
 | `ClarificationCard.swift` / `NarrativeEventApproval.swift` / `ConfirmationCard.swift` | 追問卡、時間軸預覽卡與卡片容器（人物合併橫幅在 `ContentView`） |
 | `L10n.swift` | 三語言文案 |
-
-## 測試與驗收
-
-```sh
-cd "Prism/swift version"
-swift test -Xswiftc -warnings-as-errors
-```
-
-- **60 項測試、19 個 suite**，編譯帶 `-warnings-as-errors`。預設只用暫存目錄、注入的憑證儲存和 mock HTTP，不讀真實鑰匙圈、不呼叫真實模型。
-- 涵蓋範圍包括：安全路由的否定/不確定/殘缺輸入、模型探索與憑證切換、串流合併與遲到 token、時間軸與追問的授權邊界、儲存鎖復原與跨集合回滾、舊資料匯入與備份、history 收斂、孤兒對帳、快照往返、刪除串聯、人物/畫像解析的欄位截斷、章節邊界。
-- **預設跳過**一項真實模型採集測試（`LiveAcceptanceTests`）：需要明確開啟，會消耗你的額度。憑證只從環境變數 `PRISM_TEST_API_KEY` 讀取；報告落在暫存目錄，狀態是 `awaiting-human-review` 或 `request-failed`——它只證明「請求通了」，不會自動判定語意合格。
-- 儲存庫根目錄的 GitHub Actions 在 `macos-26` 與 `xcode-27` 兩個 runner 上跑測試、封裝腳本單元測試、release 建置與 ad hoc 封裝。是否作為合併閘門取決於儲存庫的分支保護設定。
-
-真實模型採集需要手動執行：
-
-```sh
-PRISM_RUN_LIVE_ACCEPTANCE=1 swift test --filter LiveAcceptanceTests
-```
 
 ## 已知限制
 

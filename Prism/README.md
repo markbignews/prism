@@ -8,7 +8,7 @@
 
 `macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local SQLite` · `v1.0.23` · [MIT](LICENSE)
 
-[What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout) · [Tests and acceptance](#tests-and-acceptance) · [Known limits](#known-limits)
+[What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout) · [Known limits](#known-limits)
 
 ---
 
@@ -299,19 +299,19 @@ python3 Prism/scripts/storage_maintenance.py --database ~/Documents/Prism/prism.
 
 ## Quick start
 
-Requires **macOS 15 or later** and **Xcode 26+ with the macOS 26 SDK**; the packaged app targets Apple Silicon (arm64). Run these from the repository root (the level containing `Prism/`):
+Prism runs on **macOS 15 or later** on Apple Silicon (arm64). You can download a ready build or compile from source.
+
+**Option 1 — download**
+
+Download [`Prism-SwiftUI-macOS-1.0.23.dmg`](release/Prism-SwiftUI-macOS-1.0.23.dmg), open it, and drag **Prism** into **Applications**.
+
+**Option 2 — build from source**
+
+Requires **Xcode 26+ with the macOS 26 SDK**. Run from the repository root (the level containing `Prism/`):
 
 ```sh
 git clone https://github.com/markbignews/prism && cd prism
-
-# build and run
 python3 Prism/scripts/build_app.py --run
-
-# automated tests (60; temporary storage + mock HTTP, no real key)
-(cd "Prism/swift version" && swift test -Xswiftc -warnings-as-errors)
-
-# build, verify, package, and sync into Prism/release/
-python3 Prism/scripts/package_app.py --sync-release
 ```
 
 If you are already inside `Prism/`, drop the `Prism/` prefix.
@@ -344,45 +344,23 @@ Then enter your key and endpoint in Settings (default `https://api.deepseek.com`
 
 **Attachments**: up to five per message; images ≤10MB each, text ≤1MB each, 20MB total. Supports `png/jpeg/gif/webp` plus common plain-text, code, and data formats. Bytes stay in memory for the request and are never written to the conversation file.
 
-### Packaging, signing, and distribution
+### How to open
 
-`release/Prism-SwiftUI-macOS.app` is the bundle committed to the repository. It is **ad hoc signed and not notarized**, so the first open requires approval under System Settings → Privacy & Security ([Apple's instructions](https://support.apple.com/102445)).
+Open the DMG, drag **Prism** into **Applications**, then launch it from Applications or Spotlight.
 
-```sh
-# Developer ID signing with an existing notary profile
-python3 Prism/scripts/package_app.py --identity "Developer ID Application: ..." \
-  --notary-profile <keychain-profile> --sync-release
+The build is **ad hoc signed and not notarized**. On first launch macOS may block it: open System Settings → Privacy & Security, click "Open Anyway", and confirm. Do not disable Gatekeeper globally.
 
-# print the source digest only (compare with PrismBuildSourceDigest in Info.plist)
-python3 Prism/scripts/package_app.py --digest
-```
-
-- `VERSION` is the single source of the version number; the script writes both bundle version fields.
-- The source digest fixes paths, files, and order (Sources, Resources, `Package.swift`, `VERSION`, and the packaging scripts; tests and docs do not participate). It identifies which source a binary came from, but does not promise byte-identical rebuilds across toolchains.
-- The digest is computed before and after the build; the binary must be arm64, macOS 15.0 minimum, and the SDK must match `xcrun`, or packaging fails.
-- Replaced bundles are moved outside the repo to `~/Documents/Prism-build-backups` (change with `--backup-dir`).
-- In restricted sandboxes set `PRISM_DISABLE_MANIFEST_SANDBOX=1`; normal builds and CI do not need it.
+You can also run the committed `release/Prism-SwiftUI-macOS.app` directly, or build your own with `build_app.py`. Intel Macs are not supported.
 
 ## Project layout
 
 ```
 Prism/
-├── assets/                    screenshots and icon
-├── release/                   committed arm64 bundle (ad hoc signed)
-├── scripts/
-│   ├── build_app.py           query the real SDK and build
-│   ├── package_app.py         build → assemble .app → digest → sign → install
-│   ├── storage_maintenance.py read-only check / backed-up history pruning
-│   └── tests/                 Python tests for packaging
-├── VERSION                    single source of the version
-└── swift version/
-    ├── Package.swift          SwiftPM manifest (declaration only)
-    ├── Sources/Prism/         37 Swift files, ~13k lines
-    ├── Sources/CSQLite/       module map for system SQLite
-    ├── Tests/PrismTests/      10 files, 60 tests, 19 suites
-    ├── TECHNICAL_SPEC.md      architecture and implementation details
-    ├── REGRESSION_CHECKLIST.md what automation covers and does not
-    └── SEMANTIC_ACCEPTANCE.md semantic and UI acceptance status
+├── assets/          screenshots and icon
+├── release/         DMG and committed arm64 bundle
+├── scripts/         build, package, database maintenance
+├── VERSION          single source of the version
+└── swift version/   sources, tests, and docs
 ```
 
 Key modules, in reading order:
@@ -409,24 +387,6 @@ Key modules, in reading order:
 | `MarkdownText.swift` / `ScrollableComposer.swift` | Markdown rendering and the native composer |
 | `ClarificationCard.swift` / `NarrativeEventApproval.swift` / `ConfirmationCard.swift` | Clarification card, timeline preview, and card container (the merge banner lives in `ContentView`) |
 | `L10n.swift` | Three-language strings |
-
-## Tests and acceptance
-
-```sh
-cd "Prism/swift version"
-swift test -Xswiftc -warnings-as-errors
-```
-
-- **60 tests across 19 suites**, compiled with `-warnings-as-errors`. By default they use temporary folders, an injected credential store, and mock HTTP; no real Keychain and no live model.
-- Coverage includes: negation/uncertain/malformed safety inputs, model discovery and credential switching, stream batching and late tokens, authorization boundaries for timeline and clarification, storage lock recovery and cross-collection rollback, legacy import and backup, history convergence, orphan reconciliation, snapshot round trips, deletion cascades, field clamping in people/profile parsing, and chapter boundaries.
-- **One live collection test is skipped by default** (`LiveAcceptanceTests`). It needs explicit opt-in and spends your quota. Credentials come only from `PRISM_TEST_API_KEY`; reports land in a temporary folder with status `awaiting-human-review` or `request-failed` — it proves the request worked, not that the semantics are right.
-- GitHub Actions at the repository root runs tests, packaging tests, a release build, and ad-hoc packaging on `macos-26` and `xcode-27` runners. Whether it gates merges depends on branch protection.
-
-Run the live collection manually:
-
-```sh
-PRISM_RUN_LIVE_ACCEPTANCE=1 swift test --filter LiveAcceptanceTests
-```
 
 ## Known limits
 
