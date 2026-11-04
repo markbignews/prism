@@ -44,6 +44,13 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     var isSummarizing: Bool { agent.isSummarizing }
     var lastSummarySucceeded: Bool? { agent.lastSummarySucceeded }
     var lastSummaryStatus: String { agent.lastSummaryStatus }
+    var isRebuildingMemory: Bool { agent.isRebuildingMemory }
+    var memoryRebuildStatus: String { agent.memoryRebuildStatus }
+    var memoryRebuildConversationID: UUID? { agent.memoryRebuildConversationID }
+    func rebuildMemory(conversationID: UUID, settings: AppSettings) async {
+        await agent.rebuildMemory(conversationID: conversationID, settings: settings)
+        refreshAfterMutation()
+    }
     var selectedConversation: Conversation? {
         guard let id = selectedConversationID else { return nil }
         return conversations.first(where: { $0.id == id })
@@ -176,6 +183,11 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
 
     func removeBlindspot(id: UUID) {
         agent.removeBlindspot(id: id)
+        refreshAfterMutation()
+    }
+
+    func removeBlindspotGroup(id: UUID) {
+        agent.removeBlindspotGroup(id: id)
         refreshAfterMutation()
     }
 

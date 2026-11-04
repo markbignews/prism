@@ -309,9 +309,10 @@ struct UserProfileObservation: Identifiable, Codable, Equatable {
     var evidence: String
     var confidence: Double
     var sourceConversationID: UUID
-    var sourceChapterID: UUID
+    var sourceChapterID: UUID?
     var createdAt = Date()
     var updatedAt = Date()
+    var sourceMessageIDs: [UUID]? = nil
 }
 
 // MARK: - Smart Search Results
@@ -360,6 +361,9 @@ struct BlindspotRecord: Identifiable, Codable, Equatable {
     var counterQuestion: String
     var severity: String = "new"  // new / recurring / persistent
     var createdAt = Date()
+    /// Optional so older archives remain readable. A retry of this same user
+    /// message must not create another occurrence under a different paraphrase.
+    var sourceMessageID: UUID? = nil
 }
 
 /// A time node from the user's story. These labels describe when the event

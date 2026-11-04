@@ -37,6 +37,26 @@ These are semantic acceptance scenarios, not claims that a live model has passed
 
 The local keyword search, JSON/schema checks, numeric limits and explicit UI approval remain deterministic. They manage retrieval, data integrity and authorization; they do not infer psychological meaning from user words.
 
+## Compact blindspot memory
+
+- The auxiliary prompt permits no new finding, asks for at most one observation grounded in the latest user message, and targets a short evidence sentence plus an optional question.
+- Parsing accepts at most one nonempty finding when the flag is `warning`; evidence/questions have defensive length limits.
+- Identical evidence (ignoring spacing/punctuation) and retries of the same source message do not add an occurrence or escalate severity. Distinct evidence, including changed negation, remains separate and conversation-scoped.
+- The memory panel groups observations under one card per pattern, previews two lines, and puts full evidence and questions behind disclosure. Old archive rows remain intact; duplicate evidence appears once in details. Removing a card removes its pattern history in that conversation.
+- Model history uses a bounded, grouped evidence context rather than replaying every duplicate row and question. Legacy records without a source-message ID still decode.
+
+Automated coverage: `BlindspotMemoryTests`. Live model paraphrase deduplication, latest-message grounding, and disclosure layout remain manual acceptance checks; deterministic tests do not establish those semantics.
+
+## Complete memory replacement and natural-language timeline entry
+
+- The memory panel has an independent "Regenerate complete memory" action for the current conversation's profile observations, insights and tentative blindspots. It reads all original user messages, merges repeated content by theme, applies explicit corrections and replaces the old sections only after a complete result validates and one SQLite transaction commits. Chapters, original messages, timeline and other conversations are preserved.
+- Every generated item must cite valid user-message indices and an exact supporting quotation. A missing section, invalid source, malformed/truncated response, cancellation, changed conversation/archive or failed save leaves existing cards intact. Empty arrays explicitly remove unsupported older observations. The model still needs semantic review; valid citations alone cannot prove its conclusions.
+- A successful chapter summary also triggers this consolidation when existing rows contain same-pattern blindspots or exactly repeated insight/profile content. Broader paraphrases can be rebuilt using the independent button. Background profile work started before a rebuild cannot re-add old observations afterward.
+- The reply composer is disabled during replacement and retains drafts. Memory generation and chapter synthesis cannot run over one another.
+- Prism proactively identifies key experiences and meaningful changes in ordinary conversation and asks whether to add them to the timeline. Users need not request an addition first. The prompt supports multiple nodes and relative phases, lists existing nodes to avoid repeated proposals, respects refusal, keeps descriptions short, and preserves the native per-node Save action. No keyword router or fixed input phrase is used.
+
+Automated coverage: `MemoryRebuildTests` checks replacement, provenance, failures, concurrent edits/deletion, cross-conversation isolation, SQLite conflict rollback and multiple timeline reviews. Live-model merge quality, natural-language node extraction and native button/preview interactions still need end-to-end acceptance.
+
 ## UI and streaming update
 
 - The first stream frame is immediate; subsequent content/reasoning deltas are batched at 50 ms intervals and update only the active message observable. Completion publishes the authoritative final content before notifying the rest of the app.

@@ -394,7 +394,7 @@ struct ToolDef: Encodable, Sendable {
 
     static let manageNarrativeTimeline = ToolDef(function: .init(
         name: "manage_narrative_timeline",
-        description: "读取或写入用户叙述中事件实际发生的时间轴，不使用消息发送时间。用户给出明确的具体日期、时间段（如高二期间）或两者混合时使用。若时间归属不清且会影响排序，先向用户提一个澄清问题，不要写入。写入或修改会生成待用户点击确认的原生预览卡片，点击前不得声称已保存；补充旧事件前先 action=list，再用 eventId 更新。",
+        description: "从用户自然讲述的对话中识别关键经历、阶段转折或重要更正，主动提出是否加入时间轴，无需用户先要求添加。发现有明确时间归属的新关键节点时，从原话提取标题、一两句简短事件描述和时间阶段；多个关键经历分别生成节点。先list去重，没有新事实的旧节点不重复提议，已有节点用eventId更新。保留高二期间、后来等明确的相对阶段，不使用消息发送时间补日期。时间归属不清且影响排序时先澄清。upsert仅生成待确认的原生预览，必须由用户点击保存才写入；尊重用户拒绝记录的选择。",
         parameters: .init(properties: [
             "action": .init(type: "string", description: "list 或 upsert"),
             "eventId": .init(type: "string", description: "更新已有节点时填写 list 返回的 ID；新增留空"),

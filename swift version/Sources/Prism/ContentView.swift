@@ -553,7 +553,7 @@ struct SidebarView: View {
                             }
                             .buttonStyle(.plain)
                             .help(L10n.text(.reSummarize, settings.language))
-                            .disabled(chatStore.isSummarizing)
+                            .disabled(chatStore.isSummarizing || chatStore.isRebuildingMemory)
                         }
                     }
                 }
@@ -798,6 +798,7 @@ struct ChatView: View {
                         onCycleMode: { cycleMode() },
                         onStop: { chatStore.cancelSend() },
                         onSend: { text, attachments in
+                            guard !chatStore.isRebuildingMemory else { return }
                             // `ComposerView` passes an immutable snapshot so the
                             // empty-state → message-list transition cannot race a
                             // second read from the shared draft binding.
@@ -814,6 +815,7 @@ struct ChatView: View {
                             chatStore.currentSendTask = task
                         }
                     )
+                    .disabled(chatStore.isRebuildingMemory)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                 }
@@ -2248,7 +2250,8 @@ struct MemoryPanelView: View {
     }
 
     private var currentUserProfile: [UserProfileObservation] {
-        chatStore.userProfileObservations.sorted { $0.updatedAt > $1.updatedAt }
+        guard let id = chatStore.selectedConversationID else { return [] }
+        return chatStore.userProfileObservations.filter { $0.sourceConversationID == id }.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     private var currentEmotions: [EmotionEntry] {
@@ -2256,9 +2259,9 @@ struct MemoryPanelView: View {
         return chatStore.emotionTimeline.filter { $0.conversationID == id }
     }
 
-    private var currentBlindspots: [BlindspotRecord] {
+    private var currentBlindspots: [BlindspotMemory.Group] {
         guard let id = chatStore.selectedConversationID else { return [] }
-        return chatStore.blindspots.filter { $0.conversationID == id }
+        return BlindspotMemory.groups(chatStore.blindspots.filter { $0.conversationID == id })
     }
 
     private var currentMemories: [MemoryEntry] {
@@ -2285,6 +2288,26 @@ struct MemoryPanelView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            guard let id = chatStore.selectedConversationID else { return }
+                            Task { await chatStore.rebuildMemory(conversationID: id, settings: settings) }
+                        } label: {
+                            Label(L10n.text(.rebuildMemory, settings.language), systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(chatStore.selectedConversationID == nil || chatStore.isSending || chatStore.isSummarizing || chatStore.isRebuildingMemory || chatStore.hasStorageFailure)
+                        Text(L10n.text(.memoryRebuildHint, settings.language))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if chatStore.memoryRebuildConversationID == chatStore.selectedConversationID,
+                           !chatStore.memoryRebuildStatus.isEmpty {
+                            HStack(spacing: 6) {
+                                if chatStore.isRebuildingMemory { ProgressView().controlSize(.small) }
+                                Text(chatStore.memoryRebuildStatus).font(.caption)
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+
                     MemorySection(title: L10n.text(.modelUsage, settings.language), icon: "gauge.with.dots.needle.50percent", color: .teal) {
                         usageBlock
                     }
@@ -2299,6 +2322,8 @@ struct MemoryPanelView: View {
                     // The narrative timeline follows when events happened in
                     // the user's story, not when messages were sent.
                     MemorySection(title: L10n.text(.memoryTimeline, settings.language), icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", color: .indigo) {
+                        Text(L10n.text(.timelineNaturalLanguageHint, settings.language))
+                            .font(.caption).foregroundStyle(.secondary)
                         let events = chatStore.narrativeTimeline
                             .filter { $0.conversationID == chatStore.selectedConversationID }
                             .sorted { $0.sortIndex < $1.sortIndex }
@@ -2478,29 +2503,10 @@ struct MemoryPanelView: View {
                     // 盲点
                     if !currentBlindspots.isEmpty {
                         MemorySection(title: L10n.text(.memoryBlindspots, settings.language), icon: "eye.slash.fill", color: .red) {
-                            ForEach(currentBlindspots.suffix(10).reversed()) { spot in
-                                VStack(alignment: .leading, spacing: 3) {
-                                    HStack {
-                                        Text(spot.pattern).font(.headline)
-                                        Spacer()
-                                          Text(spot.severity == "persistent" ? L10n.text(.memoryPersistent, settings.language) : spot.severity == "recurring" ? L10n.text(.memoryRecurring, settings.language) : L10n.text(.memoryNew, settings.language))
-                                              .font(.caption2).foregroundStyle(spot.severity == "persistent" ? .red : .secondary)
-                                              .padding(.horizontal, 6).padding(.vertical, 1)
-                                              .background(Capsule().fill(.quaternary))
-                                          Button {
-                                              chatStore.removeBlindspot(id: spot.id)
-                                          } label: {
-                                              Image(systemName: "xmark.circle.fill")
-                                          }
-                                          .buttonStyle(.plain)
-                                          .foregroundStyle(.secondary)
-                                          .help(L10n.text(.removeInferredObservation, settings.language))
-                                          .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
-                                      }
-                                    Text(spot.evidence).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                                    Text("\(L10n.text(.memoryCounterQuestion, settings.language))：\(spot.counterQuestion)").font(.caption).foregroundStyle(.blue)
+                            ForEach(currentBlindspots) { group in
+                                BlindspotMemoryCard(group: group, language: settings.language) {
+                                    chatStore.removeBlindspotGroup(id: group.latest.id)
                                 }
-                                .padding(.vertical, 3)
                             }
                         }
                     }

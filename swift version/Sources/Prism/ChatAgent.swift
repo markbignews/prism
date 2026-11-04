@@ -24,6 +24,11 @@ final class ChatAgent {
     /// Status of the last summarization attempt (empty = never run / nothing to report).
     var lastSummaryStatus: String = ""
     var lastSummarySucceeded: Bool? = nil
+    var isRebuildingMemory = false
+    var memoryRebuildStatus = ""
+    var memoryRebuildSucceeded: Bool?
+    var memoryRebuildConversationID: UUID?
+    var memoryRebuildRevisions: [UUID: Int] = [:]
 
     private var database: SQLiteStore?
     private var storageFailure = false
@@ -300,7 +305,7 @@ final class ChatAgent {
     }
 
     func regenerateAssistantMessage(in conversationID: UUID, messageID: UUID, settings: AppSettings) async {
-        guard !isSending,
+        guard !isSending, !isRebuildingMemory,
               let convIndex = conversations.firstIndex(where: { $0.id == conversationID }),
               let msgIndex = conversations[convIndex].messages.firstIndex(where: { $0.id == messageID }),
               msgIndex > 0 else { return }
@@ -459,6 +464,7 @@ final class ChatAgent {
     }
 
     func editAndResend(userMessageID: UUID, newText: String, settings: AppSettings) async {
+        guard !isRebuildingMemory else { return }
         guard !isSending,
               let convID = selectedConversationID,
               let convIndex = conversations.firstIndex(where: { $0.id == convID }),
@@ -813,7 +819,7 @@ final class ChatAgent {
             clarificationResponse = response
         } else { clarificationResponse = nil }
         let trimmed = (clarificationResponse ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!trimmed.isEmpty || !attachments.isEmpty), !isSending, !isSummarizing, !storageFailure else { return }
+        guard (!trimmed.isEmpty || !attachments.isEmpty), !isSending, !isSummarizing, !isRebuildingMemory, !storageFailure else { return }
         let effectiveText = trimmed.isEmpty && !attachments.isEmpty
             ? L10n.text(.analyzeAttachment, settings.language)
             : trimmed
@@ -1276,11 +1282,15 @@ final class ChatAgent {
                 for ch in chapters {
                     upsertMemory(from: ch, conversationID: convID)
                 }
-                scheduleProfileAnalysis(for: chapters, conversationID: convID, settings: settings)
                 save()
                 lastSummarySucceeded = true
                 lastSummaryStatus = L10n.format(.summaryGenerated, settings.language, String(chapters.count))
                 NotificationCenter.default.post(name: .prismChaptersUpdated, object: nil)
+
+                let rebuilt = await consolidateMemoryAfterSummary(conversationID: convID, settings: settings)
+                if !rebuilt {
+                    scheduleProfileAnalysis(for: chapters, conversationID: convID, settings: settings)
+                }
 
                 // Conversation Manager: update title to reflect full narrative
                 await updateConversationTitle(for: index, settings: settings)
@@ -1299,6 +1309,7 @@ final class ChatAgent {
     /// Manual re‑summarize with explicit conversation ID — avoids racing on
     /// selectedConversationID when the user clicks a sidebar button.
     func fullReSummarize(conversationID: UUID, settings: AppSettings) async {
+        guard !isRebuildingMemory else { return }
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
             lastSummarySucceeded = false
             lastSummaryStatus = L10n.text(.summaryConversationMissing, settings.language)
@@ -1320,6 +1331,7 @@ final class ChatAgent {
     }
 
     func fullReSummarize(settings: AppSettings) async {
+        guard !isRebuildingMemory else { return }
         guard let id = selectedConversationID,
               let index = conversations.firstIndex(where: { $0.id == id }) else {
             lastSummarySucceeded = false
@@ -1440,15 +1452,16 @@ final class ChatAgent {
             conversations[index].incrementalChapterCount += 1
             conversations[index].updatedAt = Date()
             upsertMemory(from: chapter, conversationID: conversations[index].id)
-            scheduleProfileAnalysis(
-                for: [chapter],
-                conversationID: conversations[index].id,
-                settings: settings
-            )
             save()
             lastSummarySucceeded = true
             lastSummaryStatus = L10n.format(.summaryAdded, settings.language, title)
             NotificationCenter.default.post(name: .prismChaptersUpdated, object: nil)
+
+            let convID = conversations[index].id
+            let rebuilt = await consolidateMemoryAfterSummary(conversationID: convID, settings: settings)
+            if !rebuilt {
+                scheduleProfileAnalysis(for: [chapter], conversationID: convID, settings: settings)
+            }
 
             // Conversation Manager: update title to reflect new chapters
             await updateConversationTitle(for: index, settings: settings)
@@ -1688,6 +1701,37 @@ final class ChatAgent {
         StorageSnapshot(conversations: conversations, people: personArchive, links: personLinkProposals,
             profile: userProfileObservations, emotions: emotionTimeline, blindspots: blindspots,
             memory: memoryStore, timeline: narrativeTimeline)
+    }
+
+    /// Commit all replacement sections in one SQLite transaction before
+    /// publishing them. Other conversations and source messages survive.
+    @discardableResult
+    func commitRebuiltMemory(_ rebuilt: RebuiltMemory, conversationID: UUID) -> Bool {
+        guard conversations.contains(where: { $0.id == conversationID }),
+              rebuilt.insights.allSatisfy({ $0.sourceConversationID == conversationID }),
+              rebuilt.observations.allSatisfy({ $0.sourceConversationID == conversationID }),
+              rebuilt.blindspots.allSatisfy({ $0.conversationID == conversationID }),
+              flushStorage(), let writer = storageWriter else { return false }
+        var replacement = storageSnapshot()
+        replacement.memory.removeAll { $0.sourceConversationID == conversationID }
+        replacement.profile.removeAll { $0.sourceConversationID == conversationID }
+        replacement.blindspots.removeAll { $0.conversationID == conversationID }
+        replacement.memory.append(contentsOf: rebuilt.insights)
+        replacement.profile.append(contentsOf: rebuilt.observations)
+        replacement.blindspots.append(contentsOf: rebuilt.blindspots)
+        do {
+            try writer.flush(replacement, names: ["conversations.json", "memory.json", "user_profile.json", "blindspots.json"])
+            writeSequence &+= 1
+            appliedWriteSequence = writeSequence
+            memoryStore = replacement.memory
+            userProfileObservations = replacement.profile
+            blindspots = replacement.blindspots
+            delegate?.agentStateDidChange()
+            return true
+        } catch {
+            reportStorageFailure(error)
+            return false
+        }
     }
     private func markDirty(_ name: String) {
         guard storageLoaded else { return }
@@ -1934,6 +1978,18 @@ final class ChatAgent {
         delegate?.agentStateDidChange()
     }
 
+    /// The panel presents one card per tentative pattern. Removing that card
+    /// also removes its older rows so the same hypothesis cannot reappear.
+    func removeBlindspotGroup(id: UUID) {
+        guard let record = blindspots.first(where: { $0.id == id }) else { return }
+        let key = BlindspotMemory.patternKey(record.pattern)
+        blindspots.removeAll {
+            $0.conversationID == record.conversationID && BlindspotMemory.patternKey($0.pattern) == key
+        }
+        saveJSON(blindspots, to: blindspotsURL)
+        delegate?.agentStateDidChange()
+    }
+
     func removeMemoryEntry(id: UUID) {
         guard memoryStore.contains(where: { $0.id == id }) else { return }
         memoryStore.removeAll { $0.id == id }
@@ -2013,8 +2069,7 @@ final class ChatAgent {
 
     /// Add a blindspot record from an external tool integration.
     func addBlindspot(_ record: BlindspotRecord) {
-        blindspots.append(record)
-        if blindspots.count > 300 { blindspots = Array(blindspots.suffix(300)) }
+        BlindspotMemory.insert(record, into: &blindspots)
         saveArchives()
     }
 

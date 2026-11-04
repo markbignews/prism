@@ -37,15 +37,18 @@ extension ChatAgent {
     func scheduleProfileAnalysis(for chapters: [StoryChapter], conversationID: UUID, settings: AppSettings) {
         guard !chapters.isEmpty else { return }
         let generation = storageGeneration
+        let rebuildRevision = memoryRebuildRevisions[conversationID, default: 0]
         Task { @MainActor [weak self] in
             guard let self, self.storageGeneration == generation else { return }
             for chapter in chapters {
-                guard self.storageGeneration == generation else { return }
+                guard self.storageGeneration == generation,
+                      self.memoryRebuildRevisions[conversationID, default: 0] == rebuildRevision else { return }
                 let result = await self.runProfilePipeline(
                     for: chapter,
                     conversationID: conversationID,
                     settings: settings
                 )
+                guard self.memoryRebuildRevisions[conversationID, default: 0] == rebuildRevision else { return }
                 self.applyProfileResults(result, from: chapter, conversationID: conversationID, generation: generation)
             }
         }

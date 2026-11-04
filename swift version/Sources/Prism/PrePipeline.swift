@@ -154,8 +154,11 @@ extension ChatAgent {
            a) 解释循环：反复用不同措辞解释同一件事
            b) 回避自我：大量描述他人行为，很少描述自己的感受和行动
            c) 意图-行动差距：反复表达意图但缺乏具体行动描述
-           每项发现含 pattern / evidence / counter_question / severity(new|recurring|persistent)。不要诊断、不要给用户贴标签；历史结果只能作为待验证假设。
-           比对历史盲点判断 severity。无盲点则 flag = ok。
+           每轮最多保留1项最有价值的新观察，允许 findings = []。最近对话只是背景，只有用户最新一条消息提供了新的具体依据，才新增发现。
+           先比对历史：同一证据被重述、用户再次问同一个问题、或只是换了一个反问，都不算新发现；此时 findings = []，flag = ok。不要把历史假设反过来当作本轮证据。
+           pattern 固定使用上述三个名称之一；evidence 用一句话指出本轮新增依据（尽量60字以内），不复述整个关系背景；counter_question 只留一个必要问题（尽量40字以内），没有必要则留空，不重复已问过的问题。
+           每项发现含 pattern / evidence / counter_question / severity(new|recurring|persistent)。不要诊断、不要给用户贴标签；历史结果只能作为待验证假设。用户的纠正、新行动和反证优先，不能因未谈行动就断定没有行动，也不能因没有回答追问就判定回避。
+           比对历史盲点判断 severity，不得仅因重复扫描同一段对话升级。无新盲点则 flag = ok。
 
         4. ingratiation — 只检查助手(assistant)最近一轮回复：
            - 过度赞同（连续多个绝对赞同词）
@@ -229,9 +232,7 @@ extension ChatAgent {
         // Build supervisor context without entity records. Person resolution is
         // intentionally a separate background pipeline.
         let currentBlindspots = blindspots.filter { $0.conversationID == conversationID }
-        let blindspotsHistory = currentBlindspots.isEmpty
-            ? "（无历史盲点记录）"
-            : currentBlindspots.map { "- [暂定-\($0.severity)] \($0.pattern): \($0.evidence)" }.joined(separator: "\n")
+        let blindspotsHistory = BlindspotMemory.historyContext(currentBlindspots)
 
         // Check for active safety crisis context from previous turns
         let safetyContext: String
@@ -315,27 +316,18 @@ extension ChatAgent {
         }
         if emotionTimeline.count > 200 { emotionTimeline = Array(emotionTimeline.suffix(200)) }
 
-        // Merge blindspots
+        // Repeated evidence is a no-op, including a rephrased question.
+        let sourceMessageID = conversations.first(where: { $0.id == conversationID })?.messages
+            .last(where: { $0.role == .user && $0.createdAt == requestSentAt })?.id
         for f in result.blindspotFindings {
-            var severity = "new"
-            if let existing = blindspots.first(where: {
-                $0.conversationID == conversationID && $0.pattern == f.pattern
-            }) {
-                severity = existing.severity == "persistent" ? "persistent" : "recurring"
-            }
-            blindspots.append(BlindspotRecord(
+            BlindspotMemory.insert(BlindspotRecord(
                 conversationID: conversationID,
                 pattern: f.pattern,
                 evidence: f.evidence,
                 counterQuestion: f.counterQuestion,
-                severity: severity,
-                createdAt: requestSentAt
-            ))
-        }
-        // Trim: keep 300 most recent blindspots
-        if blindspots.count > 300 {
-            blindspots.sort { $0.createdAt > $1.createdAt }
-            blindspots = Array(blindspots.prefix(300))
+                createdAt: requestSentAt,
+                sourceMessageID: sourceMessageID
+            ), into: &blindspots)
         }
 
         saveSupervisorObservations()
@@ -429,13 +421,19 @@ extension ChatAgent {
         // ── Parse blindspot findings from guard ──
         if let guardObj = obj["guard"] as? [String: Any],
            let blindspotsObj = guardObj["blindspots"] as? [String: Any],
+           blindspotsObj["flag"] as? String == "warning",
            let findings = blindspotsObj["findings"] as? [[String: Any]] {
             result.blindspotFindings = findings.compactMap { f in
                 guard let p = f["pattern"] as? String,
                       let e = f["evidence"] as? String,
                       let q = f["counter_question"] as? String else { return nil }
-                return (p, e, q)
-            }
+                let pattern = p.trimmingCharacters(in: .whitespacesAndNewlines)
+                let evidence = e.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !pattern.isEmpty, !evidence.isEmpty else { return nil }
+                return (String(pattern.prefix(32)), String(evidence.prefix(160)), String(q.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80)))
+            }.prefix(1).map { $0 }
+        } else {
+            result.blindspotFindings = []
         }
 
         print("[SupervisorPipeline] guard:\(result.guardWarningDimensions.count)warnings emotions:\(result.emotions.count) blindspots:\(result.blindspotFindings.count) safetyUncertain:\(result.safetyUncertain)")
