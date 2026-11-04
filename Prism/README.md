@@ -447,7 +447,7 @@ PRISM_RUN_LIVE_ACCEPTANCE=1 swift test --filter LiveAcceptanceTests
 - [Technical spec](swift%20version/TECHNICAL_SPEC.md): storage, concurrency, context, packaging, and their boundaries
 - [Regression checklist](swift%20version/REGRESSION_CHECKLIST.md): what automation covers and what still needs a human
 - [Semantic acceptance](swift%20version/SEMANTIC_ACCEPTANCE.md): status of the 12 scenarios with real samples
-- [Engineering review](ENGINEERING_REVIEW.md) / [repair report](ENGINEERING_REPAIR_REPORT.md) / [handoff](ENGINEERING_HANDOFF.md): issues, outcomes, and leftovers
+- Engineering review, repair report, and handoff live in local `ENGINEERING_*.md` files and are not part of the public repository.
 
 ## License
 

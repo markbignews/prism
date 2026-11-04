@@ -447,7 +447,7 @@ PRISM_RUN_LIVE_ACCEPTANCE=1 swift test --filter LiveAcceptanceTests
 - [技術說明](swift%20version/TECHNICAL_SPEC.md)：儲存、並行、上下文、封裝的具體實作與邊界
 - [回歸清單](swift%20version/REGRESSION_CHECKLIST.md)：自動化涵蓋範圍，以及仍需人工驗證的場景
 - [語意驗收](swift%20version/SEMANTIC_ACCEPTANCE.md)：12 個場景的逐條狀態與真實樣本記錄
-- [工程審查](ENGINEERING_REVIEW.md) / [修復記錄](ENGINEERING_REPAIR_REPORT.md) / [交接清單](ENGINEERING_HANDOFF.md)：問題、處理結果與遺留項
+- 工程審查、修復記錄與交接清單保存在本機 `ENGINEERING_*.md`，未納入公開儲存庫。
 
 ## 授權
 
