@@ -2,11 +2,11 @@
 
 # Prism
 
-**A local-first macOS app for thinking through a relationship — not a companion that agrees with you.**
+**A macOS app for thinking through a relationship — local archive, remote inference, and no companion that simply agrees with you.**
 
 **English** · [简体中文](README.zh-Hans.md) · [繁體中文](README.zh-Hant.md)
 
-`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local SQLite` · `v1.0.23` · [MIT](LICENSE)
+`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local archive` · `v1.0.23` · [MIT](LICENSE)
 
 [What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout)
 
@@ -19,6 +19,8 @@ Most relationship questions cannot be settled by one quick answer. What happened
 Companion-style AI makes it worse: it agrees with you, feels good in the moment, and leaves you more certain of a story you never checked. Prism goes the other way: it remembers what you said, tests explanations against evidence, and says so when the evidence is thin. **The judgment stays yours.**
 
 It does not diagnose, provide therapy, or handle emergencies, and it will not decide for you whether to end a relationship. These are not marketing lines; they are prompt contracts in `AgentPrompt.swift`: always separate observable facts / your interpretation / emotional experience / model inference / unknown, and name the gap instead of filling it with reassurance.
+
+Prism does not run a model on this Mac. Messages you send, attachments you add, and archive entries retrieved for the turn go to the provider you configure; this Mac handles storage, chapter splitting, and retrieval ranking. There is no offline mode.
 
 ## Screenshots
 
@@ -113,7 +115,7 @@ Manage context by token budget, not by deleting messages.
 The model can consult its own archive, but only what it needs.
 
 - Eight tools: person, emotions, chapters, chapter text, cross-conversation memory, psychology search, timeline, and structured clarification.
-- Retrieval is ranked locally by title, keywords, and summary, with Chinese/English synonym expansion; no second model call re-ranks results.
+- Retrieval is ranked locally by title, keywords, and summary, with Chinese/English synonym expansion; no second model call re-ranks results. The ranked candidates still travel with the turn to the model.
 - At most two tool rounds, then a forced tool-free synthesis, so a capped turn still produces a visible answer.
 - Person lookup is scoped to the current conversation; cross-conversation memory must be retrieved explicitly and is never injected every turn.
 
@@ -137,9 +139,9 @@ Two models, split by job, with visible cost.
 
 ### Data and recovery
 
-Data stays local, with exits for moving and restoring it.
+The archive stays on this Mac; inference requests leave it. Export, import, and snapshots keep it portable and recoverable.
 
-- Conversations and archives live in local SQLite; the API key lives in the Keychain. Writes are transactional with revision checks; failures can be retried and conflicts exported before reloading.
+- Conversations and archives live in SQLite on this Mac; the API key lives in the Keychain. Writes are transactional with revision checks; failures can be retried and conflicts exported before reloading.
 - Full JSON snapshots can be exported and imported (without the key); imports back up first and reject incomplete or incompatible files.
 - Legacy `conversations.json`, `settings.json`, and UserDefaults migrate automatically; a maintenance script can prune history and reclaim space after backing up.
 
@@ -224,7 +226,7 @@ The main model can call eight tools (`Tools.swift`):
 | `manage_narrative_timeline` | `list` reads; `upsert` only creates a preview awaiting confirmation |
 | `request_user_input` | Structured clarification with one question and 2–4 options |
 
-**Retrieval is ranked locally**: title hits weigh most, then keywords, then summary. Queries expand through a Chinese/English synonym table covering emotions, family, romance, work, and inner patterns. No second model call re-ranks; candidate originals go back to the main model to read.
+**Retrieval is ranked locally**: title hits weigh most, then keywords, then summary. Queries expand through a Chinese/English synonym table covering emotions, family, romance, work, and inner patterns. No second model call re-ranks; the ranked candidates are then sent to the main model with the turn.
 
 **Recalls are counted**: each hit records a recall time and count, shown in the memory panel so you can tell which insights actually matter.
 
@@ -271,6 +273,8 @@ The default data folder is `~/Documents/Prism/`; you can change it in Settings (
 ├── Data/*.json            legacy data, import-compatible only
 └── *.pre-sqlite.bak       pre-migration / pre-import backups
 ```
+
+**Storage is local; inference is not.** The archive lives in SQLite on this Mac, but every reply requires sending the turn's content to your provider.
 
 **What each request actually sends**: the conversation needed for this turn (older parts already replaced by chapter summaries), attachments you added, archive entries retrieved for this turn, and a locally generated random installation ID (`user_id`). Nothing else — no telemetry, no analytics, no crash reporting.
 
