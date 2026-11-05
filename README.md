@@ -6,7 +6,7 @@
 
 **English** · [简体中文](README.zh-Hans.md) · [繁體中文](README.zh-Hant.md)
 
-`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local archive` · `v1.0.23` · [MIT](LICENSE)
+`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local archive` · `v1.0.24` · [MIT](LICENSE)
 
 [What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout)
 
@@ -47,7 +47,8 @@ Turn long conversations into chapters you can return to, instead of one endless 
 Turn people, emotions, events, and conclusions scattered across chats into structured records.
 
 - Seven record types: chapters, cross-conversation memory, people, narrative timeline, emotion timeline, blind spots, and user profile.
-- The memory panel shows them together; traits, emotions, blind spots, insights, and profile observations can be removed one by one.
+- The memory panel shows them together; traits, emotions, blind spots, insights, and profile observations can be removed. “Rebuild memory” at the bottom regenerates observations, insights and blind spots from the current conversation’s originals, replacing old cards only on success.
+- Token usage, cache hit rate and account balance appear at the top of Settings.
 - Cross-conversation memory is derived from chapter summaries, with source chapter and time span; capped at 500 entries and trimmed to the most recent 300.
 - Recalls are counted, so you can see which insights actually get used.
 
@@ -65,7 +66,7 @@ Keep "who this is" separate from "what they did".
 Separate when something happened from when it was mentioned.
 
 - Nodes can be exact dates, fuzzy periods ("sophomore year"), or a mix, ordered by lived sequence rather than message order.
-- The model can only propose; nothing is written until you click Save. Proposals are bound to the source turn and expire when you send a new message or switch conversations.
+- Prism identifies key experiences in ordinary conversation and asks whether to add them to the timeline. The model can only propose; nothing is written until you click Save. Proposals are bound to the source turn and expire when you send a new message or switch conversations.
 - When the time is unclear and would change the conclusion, Prism asks one clarifying question before writing.
 
 ### User profile
@@ -74,7 +75,7 @@ Record only what you explicitly said about yourself, over time.
 
 - Four categories: stated preferences, stated goals, stable context, communication preferences; each with evidence and confidence.
 - No personality, attachment style, or diagnosis is inferred from emotion, conflict, or a single event.
-- Updated only after a chapter is generated, so a brief exchange cannot produce a biography; observations can be removed individually and apply across conversations.
+- Usually updated after a chapter is generated; “Rebuild memory” can also regenerate observations from the complete original user messages. Observations can be removed individually and apply across conversations.
 
 ### Emotions and blind spots
 
@@ -82,7 +83,7 @@ Make emotional shifts and narrative blind spots reviewable.
 
 - Each turn labels 1–3 emotional segments (nine emotions, intensity, optional confidence); the panel groups them by emotion with intensity and frequency.
 - Blind spots cover only three testable patterns: explanation loops, avoidance of the self, and intention–action gaps; each comes with evidence and a counter-question.
-- Severity escalates with repetition: new → recurring → persistent. Keep the latest 200 emotion entries and 300 blind spots.
+- Observations of the same blind-spot pattern share one card with a two-line preview; expand it for questions and history. Repeated evidence does not add another occurrence or escalate through rescanning. Keep the latest 200 emotion entries and 300 blind spots.
 
 ### Questions and confirmations
 
@@ -307,7 +308,7 @@ Prism runs on **macOS 15 or later** on Apple Silicon (arm64). You can download a
 
 **Option 1 — download**
 
-Download [`Prism-SwiftUI-macOS-1.0.23.dmg`](release/Prism-SwiftUI-macOS-1.0.23.dmg), open it, and drag **Prism** into **Applications**.
+Download [`Prism-SwiftUI-macOS-1.0.24.dmg`](release/Prism-SwiftUI-macOS-1.0.24.dmg), open it, and drag **Prism** into **Applications**.
 
 **Option 2 — build from source**
 

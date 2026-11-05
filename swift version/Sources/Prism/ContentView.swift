@@ -2235,7 +2235,6 @@ struct MemoryPanelView: View {
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var usageStatsStore = UsageStatsStore.shared
 
     private var currentPeople: [PersonRecord] {
         guard let id = chatStore.selectedConversationID else { return [] }
@@ -2288,30 +2287,6 @@ struct MemoryPanelView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            guard let id = chatStore.selectedConversationID else { return }
-                            Task { await chatStore.rebuildMemory(conversationID: id, settings: settings) }
-                        } label: {
-                            Label(L10n.text(.rebuildMemory, settings.language), systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .disabled(chatStore.selectedConversationID == nil || chatStore.isSending || chatStore.isSummarizing || chatStore.isRebuildingMemory || chatStore.hasStorageFailure)
-                        Text(L10n.text(.memoryRebuildHint, settings.language))
-                            .font(.caption).foregroundStyle(.secondary)
-                        if chatStore.memoryRebuildConversationID == chatStore.selectedConversationID,
-                           !chatStore.memoryRebuildStatus.isEmpty {
-                            HStack(spacing: 6) {
-                                if chatStore.isRebuildingMemory { ProgressView().controlSize(.small) }
-                                Text(chatStore.memoryRebuildStatus).font(.caption)
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    MemorySection(title: L10n.text(.modelUsage, settings.language), icon: "gauge.with.dots.needle.50percent", color: .teal) {
-                        usageBlock
-                    }
-
                     Text(L10n.text(.inferredDataHint, settings.language))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2555,17 +2530,32 @@ struct MemoryPanelView: View {
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 60)
                     }
+
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            guard let id = chatStore.selectedConversationID else { return }
+                            Task { await chatStore.rebuildMemory(conversationID: id, settings: settings) }
+                        } label: {
+                            Label(L10n.text(.rebuildMemory, settings.language), systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(chatStore.selectedConversationID == nil || chatStore.isSending || chatStore.isSummarizing || chatStore.isRebuildingMemory || chatStore.hasStorageFailure)
+                        Text(L10n.text(.memoryRebuildHint, settings.language))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if chatStore.memoryRebuildConversationID == chatStore.selectedConversationID,
+                           !chatStore.memoryRebuildStatus.isEmpty {
+                            HStack(spacing: 6) {
+                                if chatStore.isRebuildingMemory { ProgressView().controlSize(.small) }
+                                Text(chatStore.memoryRebuildStatus).font(.caption)
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .padding()
             }
         }
         .frame(minWidth: 480, idealWidth: 560, minHeight: 420, idealHeight: 600)
-        .onAppear {
-            usageStatsStore.reload()
-            if settings.providerBalance == nil {
-                Task { await settings.refreshProviderBalance() }
-            }
-        }
     }
 }
 
@@ -2646,58 +2636,6 @@ private extension MemoryPanelView {
         case .traditionalChinese: return "建議比對：\(percent)%"
         default: return "建议匹配：\(percent)%"
         }
-    }
-
-    var usageBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                usageMetric(L10n.text(.inputTokens, settings.language), tokenText(usageStatsStore.stats.inputTokens))
-                usageMetric(L10n.text(.outputTokens, settings.language), tokenText(usageStatsStore.stats.outputTokens))
-                usageMetric(
-                    L10n.text(.cacheHitRate, settings.language),
-                    usageStatsStore.stats.cacheHitRate.map { String(format: "%.1f%%", $0 * 100) } ?? "—"
-                )
-            }
-
-            if let providerBalance = settings.providerBalance, !providerBalance.balanceInfos.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.text(.accountBalance, settings.language))
-                        .font(.caption.weight(.semibold))
-                    ForEach(providerBalance.balanceInfos) { info in
-                        HStack {
-                            Text(info.currency).font(.caption.monospaced())
-                            Spacer()
-                            Text("\(info.totalBalance)  ·  \(L10n.text(.grantedBalance, settings.language)): \(info.grantedBalance)  ·  \(L10n.text(.toppedUpBalance, settings.language)): \(info.toppedUpBalance)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary))
-            } else if settings.balanceUnavailable {
-                Text(L10n.text(.balanceUnavailable, settings.language))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    func usageMetric(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary))
-    }
-
-    func tokenText(_ value: Int64) -> String {
-        if value >= 1_000_000 { return String(format: "%.2fM", Double(value) / 1_000_000) }
-        if value >= 1_000 { return String(format: "%.1fK", Double(value) / 1_000) }
-        return String(value)
     }
 
     /// Vertical event chronology derived from the user's account.

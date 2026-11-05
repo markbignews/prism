@@ -49,7 +49,7 @@ Automated coverage: `BlindspotMemoryTests`. Live model paraphrase deduplication,
 
 ## Complete memory replacement and natural-language timeline entry
 
-- The memory panel has an independent "Regenerate complete memory" action for the current conversation's profile observations, insights and tentative blindspots. It reads all original user messages, merges repeated content by theme, applies explicit corrections and replaces the old sections only after a complete result validates and one SQLite transaction commits. Chapters, original messages, timeline and other conversations are preserved.
+- The memory panel has an independent "Rebuild memory" action at the bottom of the panel for the current conversation's profile observations, insights and tentative blindspots. It reads all original user messages, merges repeated content by theme, applies explicit corrections and replaces the old sections only after a complete result validates and one SQLite transaction commits. Chapters, original messages, timeline and other conversations are preserved.
 - Every generated item must cite valid user-message indices and an exact supporting quotation. A missing section, invalid source, malformed/truncated response, cancellation, changed conversation/archive or failed save leaves existing cards intact. Empty arrays explicitly remove unsupported older observations. The model still needs semantic review; valid citations alone cannot prove its conclusions.
 - A successful chapter summary also triggers this consolidation when existing rows contain same-pattern blindspots or exactly repeated insight/profile content. Broader paraphrases can be rebuilt using the independent button. Background profile work started before a rebuild cannot re-add old observations afterward.
 - The reply composer is disabled during replacement and retains drafts. Memory generation and chapter synthesis cannot run over one another.
@@ -87,3 +87,8 @@ Manual acceptance: enter and edit wrapped text and explicit newlines, exceed six
 The live collector is opt-in. It records raw model outputs locally and distinguishes successful requests from semantic approval. See [semantic acceptance](SEMANTIC_ACCEPTANCE.md) for reviewed sample summaries and remaining checks.
 
 Persistence tests that reload a store now explicitly call `flushStorage()` before reopening. Their data assertions remain; this exercises the new asynchronous save contract. The tool-placeholder regression now checks its semantic state flag instead of a Chinese display string.
+
+## Settings and memory layout (v1.0.24)
+
+- Token usage, cache hit rate and provider balance moved from the memory panel to the first Settings section; their observation and refresh behavior moved with them.
+- The memory replacement action is named "Rebuild memory" and follows all memory sections and the empty state.
