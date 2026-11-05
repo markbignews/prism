@@ -19,14 +19,14 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.24</string>
+	<string>1.0.25</string>
 	<key>CFBundleVersion</key>
-	<string>1.0.24</string>
+	<string>1.0.25</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>PrismBuildSourceDigest</key>
-	<string>e0db0cbef79e9d5d2296d62a17e76521dc5513ffce40ef8f477c44fecc9c4035</string>
+	<string>b76176c282d5dbfd0e62c33b234860251a648dc1d457f9bc4be2f71f8575a052</string>
 </dict>
 </plist>

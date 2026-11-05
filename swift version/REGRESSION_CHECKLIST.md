@@ -92,3 +92,11 @@ Persistence tests that reload a store now explicitly call `flushStorage()` befor
 
 - Token usage, cache hit rate and provider balance moved from the memory panel to the first Settings section; their observation and refresh behavior moved with them.
 - The memory replacement action is named "Rebuild memory" and follows all memory sections and the empty state.
+
+## Consistent wording for individual timeline nodes (v1.0.25)
+
+- The timeline remains a sequence of individual nodes. Each uses the same natural sentence style, preserving its original time phase, subject, facts, uncertainty and any explicitly stated change. It is not collapsed into one timeline-wide paragraph.
+- Existing nodes are automatically rewritten when the memory panel opens. “Unify node wording” can refresh them. Original title, summary, dates, order and source-message IDs are retained; only display wording is cached. Original nodes can be expanded for comparison.
+- The display cache is scoped by source fingerprint and language. Changing an event invalidates its wording; switching language rewrites it. Display wording is omitted from the timeline retrieval tool so it cannot become independent source evidence.
+- Responses must map one-to-one to input node IDs, retain the exact time labels, stay within one or two short sentences and preserve node count. Inputs are batched by eight; a later failure cannot publish a partial rewrite. Source edits, deletion and newer requests reject stale responses.
+- `TimelineWordingTests` covers old archives, source preservation, caching/reload, changed time/content/language, invalid/missing/duplicate nodes, failed batches and late responses. These checks establish data and request boundaries; live-model wording, factual entailment and full UI interaction remain separate acceptance work.

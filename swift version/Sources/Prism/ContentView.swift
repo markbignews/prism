@@ -2301,13 +2301,12 @@ struct MemoryPanelView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         let events = chatStore.narrativeTimeline
                             .filter { $0.conversationID == chatStore.selectedConversationID }
-                            .sorted { $0.sortIndex < $1.sortIndex }
                         if events.isEmpty {
                             Text(L10n.text(.narrativeNoEvents, settings.language))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            timelineBlock(events: events)
+                            TimelineWordingView(events: events)
                         }
                     }
 
@@ -2636,57 +2635,6 @@ private extension MemoryPanelView {
         case .traditionalChinese: return "建議比對：\(percent)%"
         default: return "建议匹配：\(percent)%"
         }
-    }
-
-    /// Vertical event chronology derived from the user's account.
-    @ViewBuilder
-    func timelineBlock(events: [NarrativeEvent]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
-                let timeText = event.endLabel.isEmpty
-                    ? event.startLabel
-                    : "\(event.startLabel) – \(event.endLabel)"
-                timelineRow(
-                    icon: event.timeKind == "date" ? "calendar" : "calendar.badge.clock",
-                    color: event.timeKind == "date" ? .blue : .indigo,
-                    title: event.title,
-                    value: timeText,
-                    detail: event.summary,
-                    isLast: index == events.count - 1
-                )
-            }
-        }
-    }
-
-    func timelineRow(icon: String, color: Color, title: String, value: String, detail: String = "", isLast: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(spacing: 0) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                    .foregroundStyle(color)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(color.opacity(0.12)))
-                if !isLast {
-                    Rectangle()
-                        .fill(.quaternary)
-                        .frame(width: 2, height: 22)
-                }
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.callout)
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-        }
-        .padding(.vertical, 2)
     }
 
     func memoryDateText(_ date: Date) -> String {

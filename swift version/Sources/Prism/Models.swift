@@ -380,6 +380,7 @@ struct NarrativeEvent: Identifiable, Codable, Equatable {
     var sortIndex: Int = 10
     var sourceMessageIDs: [UUID] = []
     var updatedAt = Date()
+    var wording: TimelineNodeWording? = nil
 }
 
 // MARK: - Tool Call / Response (Function Calling wire format)

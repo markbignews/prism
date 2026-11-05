@@ -29,6 +29,10 @@ final class ChatAgent {
     var memoryRebuildSucceeded: Bool?
     var memoryRebuildConversationID: UUID?
     var memoryRebuildRevisions: [UUID: Int] = [:]
+    var timelineWordingRequestID: UUID?
+    var timelineWordingConversationID: UUID?
+    var timelineWordingIsLoading = false
+    var timelineWordingFailed = false
 
     private var database: SQLiteStore?
     private var storageFailure = false
@@ -2004,6 +2008,22 @@ final class ChatAgent {
                 if $0.sortIndex == $1.sortIndex { return $0.updatedAt < $1.updatedAt }
                 return $0.sortIndex < $1.sortIndex
             }
+    }
+
+    /// Cache display-only prose without rewriting any approved event fields.
+    func storeTimelineWording(_ replacements: [UUID: TimelineNodeWording], conversationID: UUID, sourceFingerprint: String) -> Bool {
+        let current = narrativeTimeline.filter { $0.conversationID == conversationID }
+        guard !hasStorageFailure, conversations.contains(where: { $0.id == conversationID }),
+              TimelineWording.fingerprint(current) == sourceFingerprint,
+              replacements.allSatisfy({ id, wording in
+                  current.contains { $0.id == id && wording.sourceFingerprint == TimelineWording.fingerprint([$0]) }
+              }) else { return false }
+        for index in narrativeTimeline.indices where narrativeTimeline[index].conversationID == conversationID {
+            if let wording = replacements[narrativeTimeline[index].id] { narrativeTimeline[index].wording = wording }
+        }
+        saveJSON(narrativeTimeline, to: narrativeTimelineURL)
+        delegate?.agentStateDidChange()
+        return true
     }
 
     /// Insert or revise a user-story time node. Message timestamps are only

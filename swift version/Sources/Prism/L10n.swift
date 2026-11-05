@@ -253,6 +253,11 @@ enum L10n {
         case memoryRebuildChanged
         case memoryRebuildNoSource
         case timelineNaturalLanguageHint
+        case timelineUnifyWording
+        case timelineUnifyingWording
+        case timelineWordingFailed
+        case timelineOriginalNodes
+        case timelineSourceWording
         case memoryEmptyTitle
         case memoryEmptyHint
         case memoryMentions
@@ -519,6 +524,11 @@ enum L10n {
         .memoryRebuildChanged: "整理期间对话或记忆有变化，已保留当前内容，请重试。",
         .memoryRebuildNoSource: "当前对话还没有可用于整理的用户原文。",
         .timelineNaturalLanguageHint: "Prism 会从对话中识别关键经历，询问是否加入时间轴；由你确认后保存。",
+        .timelineUnifyWording: "统一节点措辞",
+        .timelineUnifyingWording: "正在统一各节点的描述…",
+        .timelineWordingFailed: "暂时无法统一措辞，原始节点已保留，可重试。",
+        .timelineOriginalNodes: "查看原始节点",
+        .timelineSourceWording: "原始措辞",
         .memoryEmptyTitle: "暂无记忆数据",
         .memoryEmptyHint: "当对话中形成可复用的人物、情绪、盲点或叙事事件后，会在这里呈现。",
         .memoryMentions: "提及",
@@ -775,6 +785,11 @@ enum L10n {
         .memoryRebuildChanged: "整理期間對話或記憶有變化，已保留目前內容，請重試。",
         .memoryRebuildNoSource: "目前對話還沒有可用於整理的使用者原文。",
         .timelineNaturalLanguageHint: "Prism 會從對話中識別關鍵經歷，詢問是否加入時間軸；由你確認後儲存。",
+        .timelineUnifyWording: "統一節點措辭",
+        .timelineUnifyingWording: "正在統一各節點的描述…",
+        .timelineWordingFailed: "暫時無法統一措辭，原始節點已保留，可重試。",
+        .timelineOriginalNodes: "檢視原始節點",
+        .timelineSourceWording: "原始措辭",
         .memoryEmptyTitle: "暫無記憶資料",
         .memoryEmptyHint: "當對話中形成可重用的人物、情緒、盲點或敘事事件後，會在這裡呈現。",
         .memoryMentions: "提及",
@@ -1031,6 +1046,11 @@ enum L10n {
         .memoryRebuildChanged: "The conversation or memory changed during the rebuild. Current content was kept; please retry.",
         .memoryRebuildNoSource: "This conversation has no original user messages to rebuild from yet.",
         .timelineNaturalLanguageHint: "Prism identifies key experiences in conversation and asks whether to add them to the timeline. Events are saved after you confirm.",
+        .timelineUnifyWording: "Unify node wording",
+        .timelineUnifyingWording: "Unifying the wording of each node…",
+        .timelineWordingFailed: "Could not unify the wording. Original nodes were kept; you can retry.",
+        .timelineOriginalNodes: "View original nodes",
+        .timelineSourceWording: "Original wording",
         .memoryEmptyTitle: "No Memory Data",
         .memoryEmptyHint: "Reusable people, emotions, blind spots, and narrative events appear here as they emerge from the conversation.",
         .memoryMentions: "mentioned",

@@ -6,7 +6,7 @@
 
 **English** · [简体中文](README.zh-Hans.md) · [繁體中文](README.zh-Hant.md)
 
-`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local archive` · `v1.0.24` · [MIT](LICENSE)
+`macOS 15+` · `Swift 6 / SwiftUI` · `Zero third-party dependencies` · `Local archive` · `v1.0.25` · [MIT](LICENSE)
 
 [What this is](#what-this-is) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Memory and retrieval](#memory-and-retrieval) · [Context and streaming](#context-and-streaming) · [Settings](#settings) · [Data and privacy](#data-and-privacy) · [Quick start](#quick-start) · [Project layout](#project-layout)
 
@@ -68,6 +68,7 @@ Separate when something happened from when it was mentioned.
 - Nodes can be exact dates, fuzzy periods ("sophomore year"), or a mix, ordered by lived sequence rather than message order.
 - Prism identifies key experiences in ordinary conversation and asks whether to add them to the timeline. The model can only propose; nothing is written until you click Save. Proposals are bound to the source turn and expire when you send a new message or switch conversations.
 - When the time is unclear and would change the conclusion, Prism asks one clarifying question before writing.
+- Each node uses the same natural sentence style: its time phase, who did what, and any explicit change. Existing nodes are rewritten automatically, or through “Unify node wording”; original nodes remain available in the expandable details.
 
 ### User profile
 
@@ -308,7 +309,7 @@ Prism runs on **macOS 15 or later** on Apple Silicon (arm64). You can download a
 
 **Option 1 — download**
 
-Download [`Prism-SwiftUI-macOS-1.0.24.dmg`](release/Prism-SwiftUI-macOS-1.0.24.dmg), open it, and drag **Prism** into **Applications**.
+Download [`Prism-SwiftUI-macOS-1.0.25.dmg`](release/Prism-SwiftUI-macOS-1.0.25.dmg), open it, and drag **Prism** into **Applications**.
 
 **Option 2 — build from source**
 

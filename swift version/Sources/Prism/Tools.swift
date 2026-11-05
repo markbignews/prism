@@ -113,7 +113,11 @@ enum ToolRegistry {
     @MainActor private static func manageNarrativeTimeline(args: [String: String], store: ChatAgent) -> String {
         let action = args["action"] ?? "list"
         if action == "list" {
-            let events = store.narrativeEvents(for: store.activeToolConversationID ?? store.selectedConversationID)
+            let events = store.narrativeEvents(for: store.activeToolConversationID ?? store.selectedConversationID).map { original in
+                var event = original
+                event.wording = nil // Display rewrites are not new source evidence.
+                return event
+            }
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             guard let data = try? encoder.encode(events),
@@ -399,7 +403,7 @@ struct ToolDef: Encodable, Sendable {
             "action": .init(type: "string", description: "list 或 upsert"),
             "eventId": .init(type: "string", description: "更新已有节点时填写 list 返回的 ID；新增留空"),
             "title": .init(type: "string", description: "事件标题，最多24字"),
-            "summary": .init(type: "string", description: "去重后的简短事实摘要，最多80字"),
+            "summary": .init(type: "string", description: "统一写成原有时间阶段＋谁做了什么＋明确变化的一到两句自然句，用户本人的经历称你，保留主体及不确定性，不补动机或因果，最多80字"),
             "startLabel": .init(type: "string", description: "用户表达的开始时间或单一时间节点，如 高二期间、2024年3月12日"),
             "endLabel": .init(type: "string", description: "可选结束时间；单点事件留空"),
             "timeKind": .init(type: "string", description: "period、date 或 mixed"),
