@@ -62,18 +62,11 @@ struct ClarificationCard: View {
                 .frame(maxHeight: maxBodyHeight)
                 .scrollBounceBehavior(.basedOnSize)
 
-                ZStack(alignment: .topLeading) {
-                    TextEditor(text: $draft.customText)
-                        .font(.caption)
-                        .scrollContentBackground(.hidden)
-                        .accessibilityLabel(text("手动回答或补充", "手動回答或補充", "Your answer or additional detail"))
-                    if draft.customText.isEmpty {
-                        Text(text("也可直接手动回答，或补充选项…", "也可直接手動回答，或補充選項…", "Type your answer or add detail…"))
-                            .font(.caption).foregroundStyle(.tertiary)
-                            .padding(.horizontal, 5).padding(.top, 1)
-                            .allowsHitTesting(false)
+                ScrollableComposer(text: $draft.customText,
+                    placeholder: text("也可直接手动回答，或补充选项…", "也可直接手動回答，或補充選項…", "Type your answer or add detail…")) {
+                        guard canSubmit else { return }
+                        onSubmit(.init(requestID: request.id, selectedOption: draft.selectedOption, customText: draft.customText))
                     }
-                }
                 .frame(height: 36)
                 .padding(5)
                 .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))

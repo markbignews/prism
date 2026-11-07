@@ -88,3 +88,35 @@ import Testing
         }
     }
 }
+
+@Suite @MainActor struct ComposerCompositionTests {
+    @Test func placeholderHidesDuringMarkedTextAndReturnsAfterCancellation() {
+        let editor = ComposerTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
+        editor.isRichText = false
+        editor.placeholder = "输入消息…"
+        #expect(editor.shouldShowPlaceholder)
+        editor.setMarkedText("shi", selectedRange: NSRange(location: 3, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(editor.hasMarkedText())
+        #expect(!editor.shouldShowPlaceholder)
+        editor.setMarkedText("", selectedRange: NSRange(location: 0, length: 0), replacementRange: editor.markedRange())
+        editor.unmarkText()
+        #expect(editor.string.isEmpty)
+        #expect(editor.shouldShowPlaceholder)
+    }
+
+    @Test func committingCompositionAndClearingTextKeepPlaceholderCorrect() {
+        let editor = ComposerTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
+        editor.isRichText = false
+        editor.setMarkedText("shi", selectedRange: NSRange(location: 3, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+        editor.insertText("是", replacementRange: editor.markedRange())
+        #expect(!editor.hasMarkedText())
+        #expect(editor.string == "是")
+        #expect(!editor.shouldShowPlaceholder)
+        editor.string = ""
+        #expect(editor.shouldShowPlaceholder)
+        editor.string = "\n"
+        #expect(!editor.shouldShowPlaceholder)
+    }
+}

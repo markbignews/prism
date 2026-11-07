@@ -585,11 +585,11 @@ extension OnboardingView {
     private var apiKeyFooterNote: String {
         switch settings.language {
         case .traditionalChinese:
-            return "你也可以稍後在「設定 → DeepSeek」中配置 API Key、Base URL 和模型參數。"
+            return "API Key 會以明文保存在本機設定檔，不存取鑰匙圈。也可稍後在「設定 → DeepSeek」配置。"
         case .english:
-            return "You can also configure the API key, base URL, and model parameters later in Settings → DeepSeek."
+            return "The API key is saved locally in plaintext, without Keychain access. You can configure it later in Settings → DeepSeek."
         default:
-            return "你也可以稍后在「设置 → DeepSeek」中配置 API Key、Base URL 和模型参数。"
+            return "API Key 会明文保存在本机配置文件，不访问钥匙串。也可稍后在「设置 → DeepSeek」配置。"
         }
     }
 }

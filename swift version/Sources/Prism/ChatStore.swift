@@ -63,13 +63,7 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
     var blindspots: [BlindspotRecord] { agent.blindspots }
     var memoryStore: [MemoryEntry] { agent.memoryStore }
     var narrativeTimeline: [NarrativeEvent] { agent.narrativeTimeline }
-    var timelineWordingConversationID: UUID? { agent.timelineWordingConversationID }
-    var timelineWordingIsLoading: Bool { agent.timelineWordingIsLoading }
-    var timelineWordingFailed: Bool { agent.timelineWordingFailed }
-    func unifyTimelineWording(conversationID: UUID, settings: AppSettings, force: Bool = false) async {
-        await agent.unifyTimelineWording(conversationID: conversationID, settings: settings, force: force)
-        refreshAfterMutation()
-    }
+
     var pendingNarrativeEvent: NarrativeEventProposal? {
         agent.pendingNarrativeEvents.first {
             $0.isCurrent(conversationID: selectedConversationID,
@@ -195,6 +189,11 @@ final class ChatStore: ObservableObject, ChatAgentDelegate {
 
     func removeBlindspotGroup(id: UUID) {
         agent.removeBlindspotGroup(id: id)
+        refreshAfterMutation()
+    }
+
+    func removeMemoryEntries(conversationID: UUID) {
+        agent.removeMemoryEntries(conversationID: conversationID)
         refreshAfterMutation()
     }
 

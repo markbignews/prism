@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class AppSettings: ObservableObject {
-    private let credentialStore: any CredentialStore
+    private let credentialStore: (any CredentialStore)?
     private let migratesUserDefaults: Bool
     private var credentialID = UUID().uuidString
     private var persistedCredential: String?
@@ -13,7 +13,7 @@ final class AppSettings: ObservableObject {
         didSet {
             if oldValue != apiKey {
                 invalidateModelCatalog()
-                if !isLoadingConfig { credentialReadFailed = false }
+                if !isLoadingConfig { credentialReadFailed = false; needsCredentialReentry = false }
             }
             saveConfig()
         }
@@ -126,6 +126,7 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published private(set) var needsCredentialReentry = false
     @Published var storageError: String?
     var canChangeStorage: () -> Bool = { true }
 
@@ -137,7 +138,7 @@ final class AppSettings: ObservableObject {
                 guard canChangeStorage() else { throw SQLiteStore.Failure(message: "Wait for the active reply or summary before changing folders.") }
                 guard !dataPath.contains("/Library/Mobile Documents/") else { throw SQLiteStore.Failure(message: "Choose a local folder; iCloud storage has been removed.") }
                 if !oldValue.isEmpty { try migrateData(from: oldValue, to: dataPath) }
-                UserDefaults.standard.set(dataPath, forKey: "storage.dataPath")
+                if migratesUserDefaults { UserDefaults.standard.set(dataPath, forKey: "storage.dataPath") }
                 PrismLog.configure(dataPath: dataPath)
                 UsageStatsStore.shared.configure(dataPath: dataPath)
                 storageError = nil
@@ -154,7 +155,7 @@ final class AppSettings: ObservableObject {
 
     // MARK: - Init
 
-    init(storagePath: String? = nil, credentialStore: any CredentialStore = KeychainCredentials()) {
+    init(storagePath: String? = nil, credentialStore: (any CredentialStore)? = nil) {
         self.credentialStore = credentialStore
         migratesUserDefaults = storagePath == nil
         let defaultDataPath = Self.localDefaultPath
@@ -213,7 +214,7 @@ final class AppSettings: ObservableObject {
     }
 
     private struct ConfigFile: Codable {
-        // Decode old plaintext only; new saves leave this nil (omitted in JSON).
+        // Test/distribution builds persist the key locally, without Keychain access.
         var apiKey: String? = nil
         var credentialID: String? = nil
         var baseURL = "https://api.deepseek.com"
@@ -256,14 +257,21 @@ final class AppSettings: ObservableObject {
             return
         }
         credentialID = config.credentialID ?? credentialID
-        do {
-            let stored = try credentialStore.read(account: credentialID)
-            persistedCredential = stored
-            apiKey = stored ?? config.apiKey ?? legacyAPIKey
-        } catch {
+        if let credentialStore {
+            do {
+                let stored = try credentialStore.read(account: credentialID)
+                persistedCredential = stored
+                apiKey = stored ?? config.apiKey ?? legacyAPIKey
+            } catch {
+                apiKey = config.apiKey ?? legacyAPIKey
+                credentialReadFailed = true
+                storageError = error.localizedDescription
+            }
+        } else {
             apiKey = config.apiKey ?? legacyAPIKey
-            credentialReadFailed = true
-            storageError = error.localizedDescription
+            persistedCredential = apiKey
+            // Deliberately do not read the old Keychain entry, even to migrate.
+            needsCredentialReentry = apiKey.isEmpty && config.apiKey == nil && config.credentialID != nil
         }
         baseURL = config.baseURL
         model = config.model
@@ -339,11 +347,11 @@ final class AppSettings: ObservableObject {
         guard canChangeStorage() else { storageError = "Wait for the active operation before resetting."; return false }
         do {
             try SQLiteStore(root: folder).clear()
-            try credentialStore.remove(account: credentialID)
+            try credentialStore?.remove(account: credentialID)
             persistedCredential = ""
         }
         catch { storageError = error.localizedDescription; return false }
-        credentialReadFailed = false; configurationLoadFailed = false
+        credentialReadFailed = false; configurationLoadFailed = false; needsCredentialReentry = false
         // Original JSON and migration backups are retained; the database's
         // import markers prevent them from being re-imported after reset.
 
@@ -413,7 +421,8 @@ final class AppSettings: ObservableObject {
         }
 
         let config = ConfigFile(
-            credentialID: credentialID,
+            apiKey: credentialStore == nil && !needsCredentialReentry ? apiKey : nil,
+            credentialID: credentialStore != nil || needsCredentialReentry ? credentialID : nil,
             baseURL: baseURL,
             model: model,
             flashModel: flashModel,
@@ -428,21 +437,21 @@ final class AppSettings: ObservableObject {
             responseLength: responseLength.rawValue
         )
         do {
-            if persistedCredential != apiKey {
+            if let credentialStore, persistedCredential != apiKey {
                 if apiKey.isEmpty { try credentialStore.remove(account: credentialID) }
                 else { try credentialStore.write(apiKey, account: credentialID) }
                 guard (try credentialStore.read(account: credentialID) ?? "") == apiKey else {
-                    throw SQLiteStore.Failure(message: "Keychain verification failed; the old config was preserved.")
+                    throw SQLiteStore.Failure(message: "Credential storage verification failed; the old config was preserved.")
                 }
                 persistedCredential = apiKey
             }
             let data = try JSONEncoder().encode(config)
-            try data.write(to: configURL, options: .atomic)
+            try PrivateConfiguration.write(data, to: configURL)
             if migratesUserDefaults, UserDefaults.standard.string(forKey: "deepseek.apiKey") == apiKey {
                 UserDefaults.standard.removeObject(forKey: "deepseek.apiKey")
             }
             // An older settings.json may still contain the same plaintext.
-            // Scrub it only after the Keychain and replacement config succeeded.
+            // Scrub it only after the replacement configuration succeeded.
             let legacy = folder.appendingPathComponent("settings.json")
             if let bytes = try? Data(contentsOf: legacy),
                var object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] {
@@ -462,7 +471,7 @@ final class AppSettings: ObservableObject {
             isLoadingConfig = false
             guard !configurationLoadFailed, !credentialReadFailed else { return }
         }
-        if credentialReadFailed {
+        if credentialReadFailed, let credentialStore {
             do {
                 let stored = try credentialStore.read(account: credentialID)
                 credentialReadFailed = false

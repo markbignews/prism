@@ -35,6 +35,13 @@ struct SettingsView: View {
                     .padding(6)
                     .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
 
+                Text(ProviderFailure.localized("API Key 明文保存在本机配置文件中，不访问钥匙串。", "API Key 以明文儲存在本機設定檔中，不存取鑰匙圈。", "The API key is saved in a local plaintext configuration file. Keychain is not accessed.", language: settings.language))
+                    .font(.caption).foregroundStyle(.secondary)
+                if settings.needsCredentialReentry {
+                    Text(ProviderFailure.localized("旧版密钥保存在钥匙串中，请重新粘贴一次。", "舊版密鑰儲存在鑰匙圈中，請重新貼上一次。", "Your previous key was stored in Keychain. Please paste it here once.", language: settings.language))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 TextField(L10n.text(.baseURL, settings.language), text: $settings.baseURL)
                     .textFieldStyle(.roundedBorder)
 

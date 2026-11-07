@@ -151,7 +151,7 @@ import Testing
         #expect(agent.timelineWordingFailed && agent.narrativeTimeline == cached)
     }
 
-    @Test func legacyNodesDecodeAndWordingStringsAreLocalized() throws {
+    @Test func legacyNodesStillDecodeWithoutDisplayWording() throws {
         let (root, agent, _, _) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
         let original = agent.narrativeTimeline[0]
@@ -159,10 +159,6 @@ import Testing
         object.removeValue(forKey: "wording")
         let loaded = try SQLiteStore.decoder().decode(NarrativeEvent.self, from: JSONSerialization.data(withJSONObject: object))
         #expect(loaded == original && loaded.wording == nil)
-        for language in AppLanguage.allCases {
-            for key: L10n.Key in [.timelineUnifyWording, .timelineUnifyingWording, .timelineWordingFailed, .timelineOriginalNodes, .timelineSourceWording] {
-                #expect(L10n.text(key, language) != key.rawValue)
-            }
-        }
+
     }
 }

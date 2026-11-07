@@ -186,7 +186,8 @@ struct DeepSeekClient {
             reasoningEffort: parameters.thinkingEnabled ? parameters.reasoningEffort : nil,
             stream: true,
             streamOptions: StreamOptions(includeUsage: true),
-            tools: tools
+            tools: tools,
+            toolChoice: tools?.isEmpty == false ? "auto" : nil
         )
 
         var request = URLRequest(url: url)
@@ -233,6 +234,7 @@ struct DeepSeekClient {
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8) else { continue }
+            if let error = ProviderFailure.streamError(data) { throw error }
             let chunk = try JSONDecoder().decode(StreamResponse.self, from: data)
             if let usage = chunk.usage { finalUsage = usage }
             guard let delta = chunk.choices.first?.delta else { continue }
@@ -414,6 +416,8 @@ enum DeepSeekError: LocalizedError {
     case invalidBaseURL
     case invalidResponse
     case emptyResponse
+    case contextTooLong
+    case contentRejected
     case api(String)
 
     var errorDescription: String? {
@@ -422,13 +426,15 @@ enum DeepSeekError: LocalizedError {
         case .malformedAPIKey: "API Key 格式不正确。请只粘贴密钥本身，不要包含空格、引号或 Bearer 前缀。"
         case .http(let status): ProviderFailure.httpMessage(status, language: .simplifiedChinese)
         case .invalidModel:
-            "DeepSeek model name is missing."
+            "还没有选择模型，请到设置中选择后重试。"
         case .invalidBaseURL:
-            "DeepSeek base URL is invalid."
+            "模型服务地址不正确，请在设置中检查完整的网址。"
         case .invalidResponse:
-            "The server response was invalid."
+            "模型服务返回的内容没能正常读取，请重试；若持续出现，请检查服务地址或更换模型。"
         case .emptyResponse:
-            "The model returned an empty response."
+            "模型这次没有返回正文，请重新发送。"
+        case .contextTooLong, .contentRejected:
+            ProviderFailure.message(self, language: .simplifiedChinese)
         case .api(let detail):
             detail
         }
@@ -449,6 +455,7 @@ private struct ChatRequest: Encodable {
     var stream: Bool
     var streamOptions: StreamOptions?
     var tools: [ToolDef]?
+    var toolChoice: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case model, messages, temperature
@@ -462,6 +469,7 @@ private struct ChatRequest: Encodable {
         case stream
         case streamOptions = "stream_options"
         case tools
+        case toolChoice = "tool_choice"
     }
 }
 

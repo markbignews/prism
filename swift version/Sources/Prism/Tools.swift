@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Tool Registry
 
 /// Retrieval and evidence tools available to the main model. Local tools read
-/// the app's archives; search_psychology calls only DeepSeek's official search
+/// the app's archives; search_web calls only DeepSeek's official search
 /// endpoint and returns a JSON result string.
 /// Quality guard checks run automatically in the pre‑pipeline — they are not
 /// exposed as tools.
@@ -16,30 +16,26 @@ enum ToolRegistry {
         .searchChapters,
         .fetchChapterMessages,
         .searchMemory,
-        .searchPsychology,
+        .searchWeb,
         .manageNarrativeTimeline,
         .requestUserInput,
     ]
+
+    /// A new chat can retrieve other conversations from its very first turn.
+    static func availableDefinitions(baseURL: String, includeHistory: Bool = true) -> [ToolDef] {
+        let officialSearch = URL(string: baseURL)?.host?.lowercased() == "api.deepseek.com"
+        return definitions.filter { tool in
+            let name = tool.function.name
+            if name == "search_web", !officialSearch { return false }
+            return includeHistory || ["search_web", "search_memory", "search_chapters", "fetch_chapter_messages", "manage_narrative_timeline", "request_user_input"].contains(name)
+        }
+    }
 
     // MARK: - Memory Search
 
     @MainActor private static func searchMemory(query: String, store: ChatAgent, limit: Int) -> String {
         let entries = store.searchMemory(query: query, limit: limit)
-        let results: [[String: Any]] = entries.map { entry in
-            [
-                "content": entry.content,
-                "keywords": entry.keywords,
-                "sourceChapter": entry.sourceChapterTitle,
-                "timeSpanStart": entry.timeSpanStart?.ISO8601Format() ?? NSNull(),
-                "timeSpanEnd": entry.timeSpanEnd?.ISO8601Format() ?? NSNull(),
-                "recallCount": entry.recallCount,
-            ]
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: results),
-              let str = String(data: data, encoding: .utf8) else {
-            return "[]"
-        }
-        return str
+        return encodeMemoryResults(entries, store: store)
     }
 
     /// Execute a retrieval tool call locally and return the result.
@@ -59,7 +55,7 @@ enum ToolRegistry {
                 else if let value = pair.value as? NSNumber { result[pair.key] = value.stringValue }
             }
         } else {
-            print("[ToolRegistry] ⚠ invalid UTF-8 or malformed JSON arguments: \(arguments.prefix(120))")
+            print("[ToolRegistry] ⚠ invalid UTF-8 or malformed JSON arguments")
             args = [:]
         }
 
@@ -68,11 +64,11 @@ enum ToolRegistry {
         case "track_person":
             result = trackPerson(name: args["name"] ?? "", store: store)
         case "emotion_timeline":
-            let n = Int(args["count"] ?? "5") ?? 5
+            let n = min(10, max(1, Int(args["count"] ?? "5") ?? 5))
             result = emotionTimeline(count: n, store: store)
         case "search_chapters":
             if settings != nil {
-                let n = Int(args["count"] ?? "5") ?? 5
+                let n = min(10, max(1, Int(args["count"] ?? "5") ?? 5))
                 let chapters = await store.searchChaptersSemantic(query: args["query"] ?? "", limit: n)
                 result = buildChapterResults(chapters: chapters.map(\.chapter), store: store)
             } else {
@@ -81,14 +77,14 @@ enum ToolRegistry {
         case "fetch_chapter_messages":
             result = fetchChapterMessages(args: args, store: store)
         case "search_memory":
-            let n = Int(args["count"] ?? "10") ?? 10
+            let n = min(20, max(1, Int(args["count"] ?? "10") ?? 10))
             if settings != nil {
                 let entries = await store.searchMemorySemantic(query: args["query"] ?? "", limit: n)
-                result = encodeMemoryResults(entries)
+                result = encodeMemoryResults(entries, store: store)
             } else {
                 result = searchMemory(query: args["query"] ?? "", store: store, limit: n)
             }
-        case "search_psychology":
+        case "search_web", "search_psychology": // Replay compatibility for older tool exchanges.
             if let settings {
                 result = await DeepSeekWebSearchClient.search(query: args["query"] ?? "", settings: settings)
             } else {
@@ -104,8 +100,12 @@ enum ToolRegistry {
         }
 
         // Log tool execution for observability
-        let preview = result.count > 120 ? String(result.prefix(120)) + "…" : result
-        print("[Tool] \(name) | args: \(arguments.prefix(80)) | → \(preview)")
+        if name == "search_web" || name == "search_psychology" {
+            print("[Tool] \(name) | query omitted | result: \(result.count) characters")
+        } else {
+            let preview = result.count > 120 ? String(result.prefix(120)) + "…" : result
+            print("[Tool] \(name) | args: \(arguments.prefix(80)) | → \(preview)")
+        }
 
         return result
     }
@@ -133,9 +133,18 @@ enum ToolRegistry {
     }
 
     /// Encode memory entries as JSON for tool response.
-    @MainActor private static func encodeMemoryResults(_ entries: [MemoryEntry]) -> String {
+    @MainActor private static func encodeMemoryResults(_ entries: [MemoryEntry], store: ChatAgent) -> String {
         let results: [[String: Any]] = entries.map { entry in
-            [
+            let conversation = store.conversations.first { $0.id == entry.sourceConversationID }
+            return [
+                "memoryId": entry.id.uuidString,
+                "sourceConversationId": entry.sourceConversationID.uuidString,
+                "sourceConversationTitle": conversation?.title ?? NSNull(),
+                "sourceMessageIds": entry.sourceMessageIDs?.map(\.uuidString) ?? [],
+                "evidenceStatus": entry.evidenceStatus ?? "model_inferred",
+                "timeSpanStart": entry.timeSpanStart?.ISO8601Format() ?? NSNull(),
+                "timeSpanEnd": entry.timeSpanEnd?.ISO8601Format() ?? NSNull(),
+                "identityConfirmed": false, // A memory hit is not an identity link.
                 "content": entry.content,
                 "keywords": entry.keywords,
                 "sourceChapter": entry.sourceChapterTitle,
@@ -237,6 +246,34 @@ enum ToolRegistry {
 
     /// Fetch all messages for a specific chapter by index (1-based).
     @MainActor private static func fetchChapterMessages(args: [String: String], store: ChatAgent) -> String {
+        if let rawID = args["memory_id"] {
+            guard let id = UUID(uuidString: rawID),
+                  let entry = store.memoryStore.first(where: { $0.id == id }),
+                  let conversation = store.conversations.first(where: { $0.id == entry.sourceConversationID }) else {
+                return #"{"error":"memory source not found"}"#
+            }
+            let sourceIDs = Set(entry.sourceMessageIDs ?? [])
+            // Legacy memories may have no message IDs; only use the matching
+            // chapter, never the whole conversation as purported source evidence.
+            let legacyIDs = Set(conversation.chapters.first { $0.title == entry.sourceChapterTitle }?.messageIDs ?? [])
+            let ids = sourceIDs.isEmpty ? legacyIDs : sourceIDs
+            let originals = conversation.messages.filter { $0.role == .user && ids.contains($0.id) }
+            let messages: [[String: Any]] = originals.prefix(12).map {
+                ["id": $0.id.uuidString, "role": $0.role.rawValue, "content": String($0.content.prefix(6000)),
+                 "truncated": $0.content.count > 6000, "sentAt": $0.createdAt.ISO8601Format()]
+            }
+            let payload: [String: Any] = [
+                "memoryId": entry.id.uuidString,
+                "sourceConversationId": conversation.id.uuidString,
+                "sourceConversationTitle": conversation.title,
+                "messages": messages,
+                "sourcesMissing": originals.isEmpty || (!sourceIDs.isEmpty && Set(originals.map(\.id)) != sourceIDs),
+                "truncated": originals.count > 12 || originals.contains { $0.content.count > 6000 }
+            ]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let string = String(data: data, encoding: .utf8) else { return "{}" }
+            return string
+        }
         guard let indexStr = args["index"],
               let index = Int(indexStr),
               index >= 1 else {
@@ -249,15 +286,18 @@ enum ToolRegistry {
         }
 
         let chapter = allChapters[index - 1]
-        let msgs = store.messages(for: chapter)
-            .filter { $0.role != .system }
-            .prefix(12)
-
-        let messageList: [[String: String]] = msgs.map { msg in
-            ["role": msg.role.rawValue, "content": msg.content]
+        let msgs = store.messages(for: chapter).filter { $0.role == .user }
+        let conversation = store.conversations.first { $0.chapters.contains { $0.id == chapter.id } }
+        let messageList: [[String: Any]] = msgs.prefix(12).map { msg in
+            ["id": msg.id.uuidString, "role": msg.role.rawValue, "content": String(msg.content.prefix(6000)),
+             "sentAt": msg.createdAt.ISO8601Format(), "truncated": msg.content.count > 6000]
         }
 
         let result: [String: Any] = [
+            "sourceConversationId": conversation?.id.uuidString ?? NSNull(),
+            "sourceConversationTitle": conversation?.title ?? NSNull(),
+            "sourcesMissing": msgs.isEmpty,
+            "truncated": msgs.count > 12 || msgs.contains { $0.content.count > 6000 },
             "chapter": index,
             "title": chapter.title,
             "summary": chapter.summary,
@@ -335,7 +375,7 @@ struct ToolDef: Encodable, Sendable {
 
     static let requestUserInput = ToolDef(function: .init(
         name: "request_user_input",
-        description: "当一个缺失事实会实质改变判断或下一步时，提出一个简短中性问题，并给出2至4个便于回答的选项。客户端会暂停本轮分析，展示包含选项与手动补充的紧凑追问卡片；只有收到用户答案后才继续。不要每轮都问，不要重复已知信息，不要把推断写成选项中的事实；允许不确定。不必生成其他或手动输入选项，界面始终支持自由输入。使用用户的语言。本次不要同时调用其他工具。",
+        description: "需要询问细节、确认是哪种情况或区分多种可能时，优先用此工具给出一个简短中性问题与2至4个具体易选的选项。若要问情况A还是情况B、前者还是后者，直接用卡片，不要在正文要求用户手打选项或口令。客户端会暂停本轮分析，展示包含选项与手动补充的紧凑追问卡片；只有收到用户答案后才继续。鼓励用卡片降低补充门槛，但不要重复已知信息或为问而问；不把推断当事实，不让用户选病名来确诊，适合时提供两者都有、都不符合或不确定。不必生成其他或手动输入选项，界面始终支持自由输入。使用用户的语言。本次不要同时调用其他工具。",
         parameters: .init(properties: [
             "question": .init(type: "string", description: "一个真正影响判断的澄清问题，最多600字"),
             "options": .init(type: "array", description: "2至4个中性、不同的选项，标签最多120字，说明最多300字",
@@ -364,7 +404,7 @@ struct ToolDef: Encodable, Sendable {
 
     static let searchChapters = ToolDef(function: .init(
         name: "search_chapters",
-        description: "语义搜索历史章节（关键词 + 语义理解），返回标题、摘录和关键词。如需阅读完整原文请调 fetch_chapter_messages。当用户提到过去的某个话题、事件或关键词时调用。",
+        description: "检索所有对话的历史章节，第一轮即可由模型自主选择。按关键词匹配，返回来源对话、章节编号、摘要和关键词；需要原话时用 fetch_chapter_messages(index)核对。可以换关键词重试，命中不代表人物身份已确认。",
         parameters: .init(properties: [
             "query": .init(type: "string", description: "搜索关键词，留空返回最近5章"),
             "count": .init(type: "integer", description: "返回条数，默认5"),
@@ -373,26 +413,27 @@ struct ToolDef: Encodable, Sendable {
 
     static let fetchChapterMessages = ToolDef(function: .init(
         name: "fetch_chapter_messages",
-        description: "获取指定章节的全部原文消息。当 search_chapters 返回的摘要不够详细、需要阅读完整原文时调用。",
+        description: "获取历史依据的原始用户消息：传 index 读取章节，或传 search_memory 返回的 memoryId 为 memory_id 读取该记忆的来源。两者选一。摘要不是独立证据；缺失或截断会明确标记。",
         parameters: .init(properties: [
             "index": .init(type: "integer", description: "章节序号（从1开始），在章节索引中可看到章节编号"),
-        ], required: ["index"])
+            "memory_id": .init(type: "string", description: "search_memory 返回的 memoryId，用于核对原话；与 index 二选一"),
+        ], required: nil)
     ))
 
     static let searchMemory = ToolDef(function: .init(
         name: "search_memory",
-        description: "语义搜索跨对话记忆库（关键词 + 语义理解），返回相关的叙事摘要和洞察。当用户提到过去讨论过的话题、想回顾之前分析过的模式、或需要跨对话上下文时调用。这是长期记忆，不同于 search_chapters 只查当前对话。",
+        description: "检索所有对话的长期记忆，第一轮即可使用，由模型根据上下文自主决定。返回摘要、来源对话、原话ID和memoryId；用 fetch_chapter_messages(memory_id)核对来源。结果只是候选依据，命中姓名或相似经历不证明是同一个人；身份不清时用选项卡确认，不能混用不同人的经历。query用简短的人名、别名或事件词，可换词重试；不是向量语义搜索。",
         parameters: .init(properties: [
             "query": .init(type: "string", description: "搜索关键词或短语，留空返回最近记忆"),
             "count": .init(type: "integer", description: "返回条数，默认10"),
         ], required: ["query"])
     ))
 
-    static let searchPsychology = ToolDef(function: .init(
-        name: "search_psychology",
-        description: "仅在用户的问题明确需要心理学、心理健康或关系沟通方面的研究依据、概念解释或较新的专业资料时调用。搜索由 DeepSeek 官方联网搜索完成，不访问其他搜索服务。查询必须改写成不含姓名、联系方式和可识别细节的中性研究问题；不要用它证明某个人的诊断、人格或主观动机。危机或安全风险下不要调用。返回结果后必须区分研究发现、来源陈述和对用户处境的推断，并保留来源链接。",
+    static let searchWeb = ToolDef(function: .init(
+        name: "search_web",
+        description: "供模型自主选择的联网核查工具。根据完整上下文、已有依据、时效性、不确定性及检索价值决定是否调用；不按关键词或固定类别触发，不要求用户先说联网，第一轮也可选择。可核查个人关系、情绪、心理健康、睡眠压力或生活背景相关的研究、事实、平台功能、公开规则、近期事件与非即时危机的支持信息；这些只是能力范围示例，不代表一律搜索。仅使用 DeepSeek 官方搜索。查询必须最小必要并脱敏，不含姓名、联系方式、账号和可识别细节；不检索具体身边人物或证明其诊断、人格、动机。不为办公文档、代码或其他生产交付任务检索。即时危险时不要调用搜索延误支持。返回后保留来源链接和日期，区分证据与推断，失败时不得声称已核实。",
         parameters: .init(properties: [
-            "query": .init(type: "string", description: "脱敏后的心理学研究问题，例如“亲密关系中的回应不一致与关系不确定感有哪些研究发现”"),
+            "query": .init(type: "string", description: "脱敏后的中性核查问题，例如“回应不一致与关系不确定感的研究”“某社交平台当前的公开消息隐私设置说明”；不包含用户私密经历"),
         ], required: ["query"])
     ))
 

@@ -33,16 +33,46 @@ enum ProviderFailure {
             text = localized("服务拒绝访问，请确认账户、密钥或所选模型的使用权限。", "服務拒絕存取，請確認帳戶、密鑰或所選模型的使用權限。", "Access was denied. Check your account, API key and model permissions.", language: language)
         case 404:
             text = localized("找不到接口或模型，请检查服务地址和模型名称，或重新获取模型列表。", "找不到介面或模型，請檢查服務地址和模型名稱，或重新取得模型清單。", "The endpoint or model was not found. Check the service URL and refresh the model list.", language: language)
+        case 408, 504:
+            text = localized("模型服务等待太久，没有及时回应。请稍后再试；如果一直如此，请检查网络或换一个模型。", "模型服務等候太久，沒有及時回應。請稍後再試；若持續如此，請檢查網路或換一個模型。", "The model service took too long to respond. Retry shortly; check your network or choose another model if it persists.", language: language)
+        case 413:
+            text = localized("这次发送的文字或附件太大，请减少内容或拆成几次发送。", "這次傳送的文字或附件太大，請減少內容或分幾次傳送。", "This message or its attachments are too large. Send less content or split it into smaller parts.", language: language)
         case 400, 422:
-            text = localized("服务无法接受本次请求，请检查模型和推理参数；若持续出现，请更新 Prism 或更换模型后重试。", "服務無法接受本次請求，請檢查模型和推理參數；若持續出現，請更新 Prism 或更換模型後重試。", "The service rejected the request format or parameters. Check the model and reasoning settings; update Prism if it persists.", language: language)
+            text = localized("这次请求没能被模型服务接受，可能是所选模型与当前功能不兼容。请换一个模型重试；如果仍然失败，请更新 Prism 或反馈问题。", "這次請求未被模型服務接受，可能是所選模型與目前功能不相容。請換一個模型重試；若仍失敗，請更新 Prism 或回報問題。", "The service rejected the request format or parameters. Check the model and reasoning settings; update Prism if it persists.", language: language)
         case 429:
             text = localized("请求过于频繁或已达到服务限额，请稍等片刻再试。", "請求過於頻繁或已達到服務限額，請稍候再試。", "The request rate or service quota was exceeded. Wait a moment and retry.", language: language)
+        case 503:
+            text = localized("模型服务现在太忙，暂时排不上队。请稍等一会儿再发送。", "模型服務目前太忙，暫時排不上隊。請稍候再傳送。", "The model service is overloaded. Wait a little before sending again.", language: language)
         case 500...599:
             text = localized("服务暂时繁忙或发生故障，请稍后重试。", "服務暫時繁忙或發生故障，請稍後重試。", "The service is busy or temporarily unavailable. Please retry shortly.", language: language)
         default:
             text = localized("服务未能完成请求，请检查设置或稍后重试。", "服務未能完成請求，請檢查設定或稍後重試。", "The service could not complete the request. Check Settings or retry later.", language: language)
         }
         return text + " (HTTP \(status))"
+    }
+
+    /// Translate structured stream errors without retaining provider text, which
+    /// may contain credentials, private inputs or implementation details.
+    static func streamError(_ data: Data) -> DeepSeekError? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = object["error"], !(raw is NSNull) else { return nil }
+        let error = raw as? [String: Any] ?? [:]
+        let identifiers = [error["code"] as? String, error["type"] as? String].compactMap { $0?.lowercased() }
+        for code in identifiers {
+            switch code {
+            case "context_length_exceeded", "context_window_exceeded": return .contextTooLong
+            case "invalid_api_key", "authentication_error": return .http(401)
+            case "insufficient_balance": return .http(402)
+            case "rate_limit_exceeded", "rate_limit_error": return .http(429)
+            case "server_overloaded", "overloaded_error": return .http(503)
+            case "content_filter", "content_policy_violation": return .contentRejected
+            case "invalid_request_error": continue
+            default: continue
+            }
+        }
+        if let status = error["status"] as? Int ?? error["status_code"] as? Int,
+           (400...599).contains(status) { return .http(status) }
+        return identifiers.contains("invalid_request_error") ? .http(400) : .invalidResponse
     }
 
     static func message(_ error: any Error, language: AppLanguage) -> String {
@@ -54,6 +84,8 @@ enum ProviderFailure {
             case .invalidBaseURL: return localized("服务地址无效，请填写完整的 http 或 https 地址。", "服務地址無效，請填寫完整的 http 或 https 地址。", "Enter a valid http or https service URL.", language: language)
             case .invalidModel: return localized("尚未选择模型，请获取模型列表后选择。", "尚未選擇模型，請取得模型清單後選擇。", "Select a model after refreshing the model list.", language: language)
             case .emptyResponse: return localized("服务没有返回有效内容，请重试。", "服務沒有返回有效內容，請重試。", "The service returned no usable content. Please retry.", language: language)
+            case .contextTooLong: return localized("这段对话加上附件已经超过模型一次能阅读的长度。请开启新对话，或缩短本次内容后重试。", "這段對話加上附件已超過模型一次能閱讀的長度。請開新對話，或縮短本次內容後重試。", "The conversation and attachments exceed what this model can read at once. Start a new chat or shorten the content.", language: language)
+            case .contentRejected: return localized("模型服务没有接受这次内容。请换一种表述后重试；如果是正常的经历描述仍被拦截，可以更换模型。", "模型服務未接受這次內容。請換一種說法重試；若正常經歷描述仍被攔截，可以更換模型。", "The model service declined this content. Rephrase and retry, or choose another model if an ordinary personal account is still declined.", language: language)
             case .invalidResponse: break
             case .api(let detail):
                 // This case is used only for client-authored messages.

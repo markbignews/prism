@@ -65,3 +65,70 @@ import Testing
         #expect(AppSettings(storagePath: root.path, credentialStore: credentials).apiKey.isEmpty)
     }
 }
+
+@Suite @MainActor struct PlaintextCredentialTests {
+    private func folder() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func defaultStoragePersistsLocallyWithOwnerOnlyPermissionsAndClears() throws {
+        let root = try folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let settings = AppSettings(storagePath: root.path)
+        settings.apiKey = "test-local-key"
+        let file = root.appendingPathComponent("config.json")
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        #expect(object["apiKey"] as? String == "test-local-key")
+        #expect(object["credentialID"] == nil)
+        #expect(AppSettings(storagePath: root.path).apiKey == "test-local-key")
+        settings.model = "custom-model"
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        settings.apiKey = ""
+        #expect(AppSettings(storagePath: root.path).apiKey.isEmpty)
+        #expect(!String(decoding: try Data(contentsOf: file), as: UTF8.self).contains("test-local-key"))
+    }
+
+    @Test func oldKeychainOnlyConfigurationRequestsReentryWithoutReadingKeychain() throws {
+        let root = try folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("config.json")
+        try Data(#"{"credentialID":"old-keychain-item","model":"custom-model"}"#.utf8).write(to: file)
+        let settings = AppSettings(storagePath: root.path)
+        #expect(settings.apiKey.isEmpty && settings.needsCredentialReentry)
+        #expect(settings.storageError == nil)
+        #expect(AppSettings(storagePath: root.path).needsCredentialReentry)
+        settings.apiKey = "replacement-local-key"
+        let restored = AppSettings(storagePath: root.path)
+        #expect(restored.apiKey == "replacement-local-key")
+        #expect(!restored.needsCredentialReentry && restored.model == "custom-model")
+    }
+
+    @Test func existingPlaintextMigratesWithoutSecretDuplicationAndSurvivesFolderChange() throws {
+        let root = try folder(), destination = try folder()
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: destination) }
+        try Data(#"{"apiKey":"legacy-local-key","baseURL":"https://api.deepseek.com"}"#.utf8)
+            .write(to: root.appendingPathComponent("settings.json"))
+        let settings = AppSettings(storagePath: root.path)
+        #expect(settings.apiKey == "legacy-local-key")
+        #expect(!String(decoding: try Data(contentsOf: root.appendingPathComponent("settings.json")), as: UTF8.self).contains("legacy-local-key"))
+        settings.dataPath = destination.path
+        #expect(settings.storageError == nil)
+        #expect(AppSettings(storagePath: destination.path).apiKey == "legacy-local-key")
+    }
+
+    @Test func malformedConfigurationIsNotOverwrittenByPlaintextSave() throws {
+        let root = try folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("config.json")
+        let original = Data("{broken".utf8)
+        try original.write(to: file)
+        let settings = AppSettings(storagePath: root.path)
+        settings.apiKey = "must-not-overwrite"
+        settings.retryCredentialStorage()
+        #expect(try Data(contentsOf: file) == original)
+        #expect(settings.storageError != nil)
+    }
+}

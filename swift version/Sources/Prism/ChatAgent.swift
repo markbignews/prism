@@ -402,7 +402,7 @@ final class ChatAgent {
                     messages: roundMessages,
                     memoryContext: (memoryContext ?? "") + earlierToolContext,
                     supervisorHint: buildGuardHint(from: preResult),
-                    tools: round == 2 ? nil : ToolRegistry.definitions,
+                    tools: round == 2 ? nil : ToolRegistry.availableDefinitions(baseURL: settings.baseURL),
                     toolExchanges: toolExchanges
                 ) { [weak self] delta in
                     self?.append(delta, to: assistantID, in: conversationID)
@@ -962,24 +962,15 @@ final class ChatAgent {
             // completion tokens.
             let maxToolExecutionRounds = 2
 
-            // On a brand-new conversation (no assistant reply yet),
-            // do not expose retrieval tools on the first round — there is no
-            // history, chapter, or archive context to retrieve, so inviting
-            // speculative tool calls would only delay the first visible reply.
+            // New chats can retrieve cross-conversation memory immediately.
+            // Only current-chat person/emotion tools wait for a completed turn.
             let hasCompletedTurn = conversations[index].messages.contains(where: {
                 $0.role == .assistant
                     && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             })
-            let psychologySearchAvailable = URL(string: settings.baseURL)?.host?.lowercased() == "api.deepseek.com"
-            let availableTools = psychologySearchAvailable
-                ? ToolRegistry.definitions
-                : ToolRegistry.definitions.filter { $0.function.name != "search_psychology" }
             let toolsForRound: (Int) -> [ToolDef]? = { round in
-                // A new conversation has no history to retrieve, but it can
-                // already contain a clear autobiographical time node.
-                (round == 0 && !hasCompletedTurn)
-                    ? [.manageNarrativeTimeline, .requestUserInput]
-                    : availableTools
+                ToolRegistry.availableDefinitions(baseURL: settings.baseURL,
+                    includeHistory: round > 0 || hasCompletedTurn)
             }
 
             // Reserve one final, tool-free request after the capped execution
@@ -1305,7 +1296,7 @@ final class ChatAgent {
             }
         } catch {
             lastSummarySucceeded = false
-            lastSummaryStatus = L10n.format(.summaryAPIFailed, settings.language, error.localizedDescription)
+            lastSummaryStatus = L10n.format(.summaryAPIFailed, settings.language, ProviderFailure.message(error, language: settings.language))
             print("[FullReSummarize] Failed: \(error.localizedDescription)")
         }
     }
@@ -1471,7 +1462,7 @@ final class ChatAgent {
             await updateConversationTitle(for: index, settings: settings)
         } catch {
             lastSummarySucceeded = false
-            lastSummaryStatus = L10n.format(.summaryAPIFailed, settings.language, error.localizedDescription)
+            lastSummaryStatus = L10n.format(.summaryAPIFailed, settings.language, ProviderFailure.message(error, language: settings.language))
             print("[AutoSummarize] Failed: \(error.localizedDescription)")
         }
     }
@@ -2001,6 +1992,13 @@ final class ChatAgent {
         delegate?.agentStateDidChange()
     }
 
+    func removeMemoryEntries(conversationID: UUID) {
+        guard memoryStore.contains(where: { $0.sourceConversationID == conversationID }) else { return }
+        memoryStore.removeAll { $0.sourceConversationID == conversationID }
+        saveJSON(memoryStore, to: memoryURL)
+        delegate?.agentStateDidChange()
+    }
+
     func narrativeEvents(for conversationID: UUID?) -> [NarrativeEvent] {
         narrativeTimeline
             .filter { conversationID == nil || $0.conversationID == conversationID }
@@ -2245,6 +2243,7 @@ final class ChatAgent {
 
     /// Search memory entries by keyword relevance, return top matches.
     func searchMemory(query: String, limit: Int = 10) -> [MemoryEntry] {
+        guard limit > 0 else { return [] }
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return Array(memoryStore.suffix(limit)) }
 

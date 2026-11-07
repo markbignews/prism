@@ -1,48 +1,30 @@
 import Foundation
-import Security
+import Darwin
 
+/// Injectable persistence used by tests. Production settings save locally and
+/// never instantiate or call a Keychain client.
 @MainActor protocol CredentialStore {
     func read(account: String) throws -> String?
     func write(_ value: String, account: String) throws
     func remove(account: String) throws
 }
 
-@MainActor final class KeychainCredentials: CredentialStore {
-    private let service = "com.prism.chatclient.provider-key"
-    private func query(_ account: String) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-         kSecAttrAccount as String: account, kSecAttrSynchronizable as String: false]
-    }
-    private func check(_ status: OSStatus) throws {
-        guard status == errSecSuccess else {
-            throw SQLiteStore.Failure(message: "Keychain: " + ((SecCopyErrorMessageString(status, nil) as String?) ?? String(status)))
+enum PrivateConfiguration {
+    /// Create the temporary file as owner-only before writing any plaintext,
+    /// then atomically replace the configuration without widening permissions.
+    static func write(_ data: Data, to destination: URL) throws {
+        let temporary = destination.deletingLastPathComponent()
+            .appendingPathComponent(".prism-config-" + UUID().uuidString)
+        let manager = FileManager.default
+        guard manager.createFile(atPath: temporary.path, contents: nil,
+                                 attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
         }
-    }
-    func read(account: String) throws -> String? {
-        var request = query(account)
-        request[kSecReturnData as String] = true
-        request[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(request as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        try check(status)
-        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
-            throw SQLiteStore.Failure(message: "Keychain returned invalid credential data.")
+        defer { try? manager.removeItem(at: temporary) }
+        try data.write(to: temporary)
+        let result = temporary.path.withCString { source in
+            destination.path.withCString { target in Darwin.rename(source, target) }
         }
-        return value
-    }
-    func write(_ value: String, account: String) throws {
-        let data = Data(value.utf8)
-        let status = SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var request = query(account)
-            request[kSecValueData as String] = data
-            request[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            try check(SecItemAdd(request as CFDictionary, nil))
-        } else { try check(status) }
-    }
-    func remove(account: String) throws {
-        let status = SecItemDelete(query(account) as CFDictionary)
-        if status != errSecItemNotFound { try check(status) }
+        if result != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
 }

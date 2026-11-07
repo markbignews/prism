@@ -1460,37 +1460,12 @@ struct MessageBubble: View {
 
                     // Thinking chain
                     if message.role == .assistant, let reasoning = message.reasoning, !reasoning.isEmpty {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isReasoningExpanded.toggle()
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "brain.head.profile").font(.caption2)
-                                    Text(L10n.text(.thinking, settings.language)).font(.caption.weight(.semibold))
-                                    Spacer()
-                                    Image(systemName: isReasoningExpanded ? "chevron.down" : "chevron.right").font(.caption2.weight(.semibold))
-                                }
-                                .foregroundStyle(.secondary)
-                                if isReasoningExpanded {
-                                    Text(verbatim: reasoning)
-                                        .font(.callout)
-                                        .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .transition(.move(edge: .top).combined(with: .opacity))
-                                }
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            // Clip only the moving disclosure content. Keeping
-                            // the glass modifier outside preserves its edge
-                            // refraction in both collapsed and expanded states.
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .glassBackground(cornerRadius: 14, style: .secondary)
+                        ReasoningDisclosure(
+                            text: reasoning,
+                            language: settings.language,
+                            isStreaming: isStreaming,
+                            isExpanded: $isReasoningExpanded
+                        )
                     }
 
                     if message.role == .user, !message.attachments.isEmpty {
@@ -1644,30 +1619,159 @@ extension MessageBubble: @MainActor Equatable {
     }
 }
 
+// MARK: - Reasoning Disclosure
+
+private struct ReasoningDisclosure: View {
+    let text: String
+    let language: AppLanguage
+    let isStreaming: Bool
+    @Binding var isExpanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var bodyHeight: CGFloat = 180
+    @State private var followsLatest = true
+    @State private var isUserScrolling = false
+    @State private var reasoningScrollPosition = ScrollPosition()
+
+    private struct ScrollMetrics: Equatable {
+        let contentHeight: CGFloat
+        let viewportHeight: CGFloat
+        let visibleBottom: CGFloat
+
+        var isAtBottom: Bool { contentHeight - visibleBottom <= 24 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Only the header is a button. Selecting text, opening a Markdown
+            // link or copying code must not collapse the reasoning panel.
+            Button {
+                // Long text should appear immediately, without animating the
+                // height/layout of every paragraph and the surrounding history.
+                if !isExpanded { followsLatest = true }
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "brain.head.profile").font(.caption2)
+                    Text(L10n.text(.thinking, language)).font(.caption.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isExpanded)
+                }
+                .foregroundStyle(.secondary)
+                .padding(10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Divider().padding(.horizontal, 10)
+                ScrollView(.vertical) {
+                    MarkdownText(text: text, style: .reasoning).equatable()
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .onGeometryChange(for: CGFloat.self) { geometry in
+                            // Once capped, incoming text no longer resizes the
+                            // bubble or invalidates the outer chat's layout.
+                            min(260, max(44, geometry.size.height.rounded(.up)))
+                        } action: { height in
+                            if bodyHeight != height { bodyHeight = height }
+                        }
+                }
+                .frame(height: bodyHeight)
+                .defaultScrollAnchor(.top)
+                .defaultScrollAnchor(isStreaming ? .bottom : .top, for: .initialOffset)
+                // Follow the rendered Markdown's actual size changes, which
+                // arrive after async parsing, rather than the incoming token.
+                .defaultScrollAnchor(.top, for: .sizeChanges)
+                .scrollPosition($reasoningScrollPosition)
+                .onScrollPhaseChange { _, phase, context in
+                    isUserScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+                    if isUserScrolling || phase == .idle {
+                        followsLatest = context.geometry.contentSize.height - context.geometry.visibleRect.maxY <= 24
+                    }
+                }
+                .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
+                    ScrollMetrics(contentHeight: geometry.contentSize.height.rounded(),
+                                  viewportHeight: geometry.containerSize.height.rounded(),
+                                  visibleBottom: geometry.visibleRect.maxY.rounded())
+                } action: { old, new in
+                    // Scrollbar, keyboard and accessibility scrolling may not
+                    // emit a gesture phase. An offset-only change is a scroll,
+                    // while a growing document must not disable following.
+                    let offsetOnly = old.contentHeight == new.contentHeight
+                        && old.viewportHeight == new.viewportHeight
+                        && old.visibleBottom != new.visibleBottom
+                    if isUserScrolling || offsetOnly { followsLatest = new.isAtBottom }
+                    let resized = old.contentHeight != new.contentHeight || old.viewportHeight != new.viewportHeight
+                    if resized, isStreaming, followsLatest, !isUserScrolling {
+                        reasoningScrollPosition.scrollTo(edge: .bottom)
+                    }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .transition(.identity)
+            }
+        }
+        .background(.primary.opacity(0.035))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.primary.opacity(0.10), lineWidth: 0.75)
+        }
+    }
+}
+
 // MARK: - Thinking Indicator
 
 struct ThinkingIndicator: View {
     let language: AppLanguage
-    @State private var isPulsing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(Color.secondary)
-                .frame(width: 7, height: 7)
-                .scaleEffect(isPulsing ? 1 : 0.55)
-                .opacity(isPulsing ? 0.95 : 0.35)
-
-            Text(L10n.text(.thinkingNow, language))
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                isPulsing = true
+        // The repeating animation lives in a separate leaf, so stream updates
+        // neither restart the sweep nor animate the message's changing layout.
+        Text(L10n.text(.thinkingNow, language))
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.secondary)
+            .overlay {
+                if !reduceMotion && scenePhase != .background {
+                    ThinkingTextWave()
+                        .mask(Text(L10n.text(.thinkingNow, language))
+                            .font(.callout.weight(.medium)))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
             }
+    }
+}
+
+private struct ThinkingTextWave: View {
+    @State private var hasStarted = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        GeometryReader { geometry in
+            // A soft-edged tonal wave with a legible contrast change, rather than a white reflective
+            // stripe. Primary ink gently deepens in light mode and lifts in dark.
+            let peak = colorScheme == .dark ? 0.68 : 0.56
+            LinearGradient(stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .primary.opacity(peak * 0.08), location: 0.18),
+                .init(color: .primary.opacity(peak * 0.48), location: 0.35),
+                .init(color: .primary.opacity(peak), location: 0.50),
+                .init(color: .primary.opacity(peak * 0.48), location: 0.65),
+                .init(color: .primary.opacity(peak * 0.08), location: 0.82),
+                .init(color: .clear, location: 1)
+            ], startPoint: .leading, endPoint: .trailing)
+            .frame(width: geometry.size.width * 0.72)
+            .offset(x: geometry.size.width * (hasStarted ? 1.10 : -0.85))
+            .animation(.linear(duration: 2.2).repeatForever(autoreverses: false), value: hasStarted)
         }
+        .clipped()
+        .onAppear { hasStarted = true }
     }
 }
 
@@ -1824,16 +1928,8 @@ struct ComposerView: View {
                     .accessibilityLabel(addAttachmentText)
                     .help(addAttachmentText)
 
-                    ZStack(alignment: .topLeading) {
-                        ScrollableComposer(text: $draft, placeholder: inputPlaceholder, onSubmit: submit)
-                        if draft.isEmpty {
-                            Text(inputPlaceholder)
-                                .font(.body).foregroundStyle(.tertiary)
-                                .padding(.top, 4)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    ScrollableComposer(text: $draft, placeholder: inputPlaceholder, onSubmit: submit)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
 
                     ModeBadgeButton(mode: mode, language: language, onCycle: onCycleMode)
                     ContextUsageButton(snapshot: contextUsage, language: language)
@@ -2235,36 +2331,64 @@ struct MemoryPanelView: View {
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedSourceID: UUID?
+
+    private var sourceID: UUID? {
+        if let selectedSourceID, chatStore.conversations.contains(where: { $0.id == selectedSourceID }) {
+            return selectedSourceID
+        }
+        return chatStore.selectedConversationID ?? chatStore.conversations.first?.id
+    }
+
+    private var sourceSelection: Binding<UUID?> {
+        Binding(get: { sourceID }, set: { selectedSourceID = $0 })
+    }
+
+    private var sourceLabel: String {
+        switch settings.language {
+        case .english: "Source conversation"
+        case .traditionalChinese: "來源對話"
+        case .simplifiedChinese: "来源对话"
+        }
+    }
+
+    private var removeInsightsLabel: String {
+        switch settings.language {
+        case .english: "Delete insights from this conversation"
+        case .traditionalChinese: "刪除這個對話的洞察"
+        case .simplifiedChinese: "删除这个对话的洞察"
+        }
+    }
 
     private var currentPeople: [PersonRecord] {
-        guard let id = chatStore.selectedConversationID else { return [] }
+        guard let id = sourceID else { return [] }
         return chatStore.personArchive.filter { $0.conversationIDs?.contains(id) == true }
     }
 
     private var currentPersonLinkProposals: [PersonLinkProposal] {
-        guard let id = chatStore.selectedConversationID else { return [] }
+        guard let id = sourceID else { return [] }
         return chatStore.personLinkProposals
             .filter { $0.conversationID == id && $0.decision == "pending" }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
     private var currentUserProfile: [UserProfileObservation] {
-        guard let id = chatStore.selectedConversationID else { return [] }
+        guard let id = sourceID else { return [] }
         return chatStore.userProfileObservations.filter { $0.sourceConversationID == id }.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     private var currentEmotions: [EmotionEntry] {
-        guard let id = chatStore.selectedConversationID else { return [] }
+        guard let id = sourceID else { return [] }
         return chatStore.emotionTimeline.filter { $0.conversationID == id }
     }
 
     private var currentBlindspots: [BlindspotMemory.Group] {
-        guard let id = chatStore.selectedConversationID else { return [] }
+        guard let id = sourceID else { return [] }
         return BlindspotMemory.groups(chatStore.blindspots.filter { $0.conversationID == id })
     }
 
     private var currentMemories: [MemoryEntry] {
-        guard let id = chatStore.selectedConversationID else { return [] }
+        guard let id = sourceID else { return [] }
         return chatStore.memoryStore.filter { $0.sourceConversationID == id }
     }
 
@@ -2285,276 +2409,287 @@ struct MemoryPanelView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Text(L10n.text(.inferredDataHint, settings.language))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary))
-
-                    // The narrative timeline follows when events happened in
-                    // the user's story, not when messages were sent.
-                    MemorySection(title: L10n.text(.memoryTimeline, settings.language), icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", color: .indigo) {
-                        Text(L10n.text(.timelineNaturalLanguageHint, settings.language))
-                            .font(.caption).foregroundStyle(.secondary)
-                        let events = chatStore.narrativeTimeline
-                            .filter { $0.conversationID == chatStore.selectedConversationID }
-                        if events.isEmpty {
-                            Text(L10n.text(.narrativeNoEvents, settings.language))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            TimelineWordingView(events: events)
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(sourceLabel).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 12).padding(.top, 12)
+                    List(selection: sourceSelection) {
+                        ForEach(chatStore.conversations.sorted { $0.updatedAt > $1.updatedAt }) { conversation in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(conversation.title).font(.callout).lineLimit(2)
+                                Text(conversation.createdAt, style: .date)
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                            .tag(conversation.id)
                         }
                     }
+                    .listStyle(.sidebar)
+                    .accessibilityLabel(sourceLabel)
+                }
+                .frame(width: 180)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        Text(L10n.text(.inferredDataHint, settings.language))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary))
 
-                    if !currentPersonLinkProposals.isEmpty {
-                        MemorySection(
-                            title: personLinkTitle,
-                            icon: "person.badge.questionmark",
-                            color: .orange
-                        ) {
-                            ForEach(currentPersonLinkProposals) { proposal in
-                                if let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
-                                   let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
-                                    VStack(alignment: .leading, spacing: 7) {
-                                        Text(personLinkQuestion(source: source, candidate: candidate))
-                                            .font(.callout.weight(.semibold))
-                                        Text(proposal.evidence)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(3)
-                                        Text(personLinkConfidence(proposal.confidence))
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        HStack(spacing: 8) {
-                                            Button(personLinkConfirmText) {
-                                                chatStore.confirmPersonLinkProposal(id: proposal.id)
-                                            }
-                                            .buttonStyle(.borderedProminent)
-                                            Button(personLinkRejectText) {
-                                                chatStore.rejectPersonLinkProposal(id: proposal.id)
-                                            }
-                                            .buttonStyle(.bordered)
-                                        }
-                                    }
-                                    .padding(10)
-                                    .background(RoundedRectangle(cornerRadius: 10).fill(.orange.opacity(0.08)))
-                                }
+                        // The narrative timeline follows when events happened in
+                        // the user's story, not when messages were sent.
+                        MemorySection(title: L10n.text(.memoryTimeline, settings.language), icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", color: .indigo) {
+                            Text(L10n.text(.timelineNaturalLanguageHint, settings.language))
+                                .font(.caption).foregroundStyle(.secondary)
+                            let events = chatStore.narrativeTimeline
+                                .filter { $0.conversationID == sourceID }
+                            if events.isEmpty {
+                                Text(L10n.text(.narrativeNoEvents, settings.language))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                NarrativeTimelineView(events: events)
                             }
                         }
-                    }
 
-                    if !currentUserProfile.isEmpty {
-                        MemorySection(title: profileTitle, icon: "person.text.rectangle", color: .teal) {
-                            ForEach(currentUserProfile.prefix(16)) { observation in
-                                VStack(alignment: .leading, spacing: 3) {
-                                    HStack {
-                                        Text(profileCategory(observation.category))
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.teal)
-                                        Spacer()
-                                        Text("\(Int(observation.confidence * 100))%")
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        Button {
-                                            chatStore.removeUserProfileObservation(id: observation.id)
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                        }
-                                        .buttonStyle(.plain)
-                                        .foregroundStyle(.secondary)
-                                        .help(L10n.text(.removeInferredObservation, settings.language))
-                                        .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
-                                    }
-                                    Text(observation.statement)
-                                        .font(.callout)
-                                    Text(profileEvidenceLabel + "：" + observation.evidence)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                }
-                                .padding(8)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(.teal.opacity(0.06)))
-                            }
-                        }
-                    }
-
-                    // 人物：只展示当前对话明确归属的人物档案。
-                    if !currentPeople.isEmpty {
-                        MemorySection(title: L10n.text(.memoryPeople, settings.language), icon: "person.2.fill", color: .blue) {
-                            ForEach(currentPeople.sorted { $0.mentionCount > $1.mentionCount }) { person in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(person.name).font(.headline)
-                                            Text("\(person.isSelf ? L10n.text(.memorySelf, settings.language) : person.role) · \(L10n.text(.memoryMentions, settings.language)) \(person.mentionCount) \(L10n.text(.memoryTimes, settings.language))")
-                                                .font(.caption).foregroundStyle(.secondary)
-                                            if !person.aliases.isEmpty {
-                                                Text("\(L10n.text(.memoryAliases, settings.language))：\(person.aliases.joined(separator: "、"))")
-                                                    .font(.caption2).foregroundStyle(.tertiary)
-                                            }
-                                        }
-                                        Spacer()
-                                        if !person.emotionalArc.isEmpty {
-                                            Text(person.emotionalArc)
-                                                .font(.caption).foregroundStyle(.blue)
-                                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                                .background(Capsule().fill(.blue.opacity(0.1)))
-                                        }
-                                    }
-
-                                    ForEach(person.traits) { trait in
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            HStack(spacing: 6) {
-                                                Text(L10n.personPattern(trait.pattern, settings.language))
-                                                    .font(.caption.weight(.medium))
-                                                    .foregroundStyle(.orange)
-                                                Text(L10n.text(.memorySuspected, settings.language))
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                                    .padding(.horizontal, 5)
-                                                    .padding(.vertical, 1)
-                                                    .background(Capsule().fill(.orange.opacity(0.12)))
-                                                Spacer()
-                                                  Text(trait.scope == "repeated_pattern" ? L10n.text(.memoryRepeatedPattern, settings.language) : L10n.text(.memorySingleObservation, settings.language))
-                                                      .font(.caption2)
-                                                      .foregroundStyle(.secondary)
-                                                  Button {
-                                                      chatStore.removePersonTrait(personID: person.id, traitID: trait.id)
-                                                  } label: {
-                                                      Image(systemName: "xmark.circle.fill")
-                                                  }
-                                                  .buttonStyle(.plain)
-                                                  .foregroundStyle(.secondary)
-                                                  .help(L10n.text(.removeInferredObservation, settings.language))
-                                                  .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
-                                              }
-                                            ForEach(Array(trait.evidence.prefix(2).enumerated()), id: \.offset) { _, evidence in
-                                                Text("\(L10n.text(.memoryEvidence, settings.language))：\(evidence)")
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                                    .lineLimit(2)
-                                            }
-                                            Text("\(L10n.text(.memoryConfidence, settings.language))：\(Int(trait.confidence * 100))% · \(trait.occurrenceCount)\(L10n.text(.memoryTimes, settings.language))")
+                        if !currentPersonLinkProposals.isEmpty {
+                            MemorySection(
+                                title: personLinkTitle,
+                                icon: "person.badge.questionmark",
+                                color: .orange
+                            ) {
+                                ForEach(currentPersonLinkProposals) { proposal in
+                                    if let source = chatStore.personArchive.first(where: { $0.id == proposal.sourcePersonID }),
+                                       let candidate = chatStore.personArchive.first(where: { $0.id == proposal.candidatePersonID }) {
+                                        VStack(alignment: .leading, spacing: 7) {
+                                            Text(personLinkQuestion(source: source, candidate: candidate))
+                                                .font(.callout.weight(.semibold))
+                                            Text(proposal.evidence)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(3)
+                                            Text(personLinkConfidence(proposal.confidence))
                                                 .font(.caption2)
                                                 .foregroundStyle(.tertiary)
+                                            HStack(spacing: 8) {
+                                                Button(personLinkConfirmText) {
+                                                    chatStore.confirmPersonLinkProposal(id: proposal.id)
+                                                }
+                                                .buttonStyle(.borderedProminent)
+                                                Button(personLinkRejectText) {
+                                                    chatStore.rejectPersonLinkProposal(id: proposal.id)
+                                                }
+                                                .buttonStyle(.bordered)
+                                            }
                                         }
-                                        .padding(8)
-                                        .background(RoundedRectangle(cornerRadius: 8).fill(.orange.opacity(0.06)))
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
-                    }
-
-                    // 情绪轨迹 — grouped by type, most recent intensity
-                    if !currentEmotions.isEmpty {
-                        MemorySection(title: L10n.text(.memoryEmotions, settings.language), icon: "waveform.path.ecg", color: .purple) {
-                            let grouped = groupEmotions(currentEmotions.suffix(20))
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(grouped, id: \.emotion) { item in
-                                        VStack(spacing: 4) {
-                                            Text(item.emotion)
-                                                .font(.caption.weight(.medium))
-                                            Text("\(Int(item.intensity * 100))%")
-                                                .font(.caption2).foregroundStyle(.secondary)
-                                            Text("×\(item.count)")
-                                                .font(.caption2).foregroundStyle(.tertiary)
-                                        }
-                                        .padding(.horizontal, 10).padding(.vertical, 6)
-                                        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+                                        .padding(10)
+                                        .background(RoundedRectangle(cornerRadius: 10).fill(.orange.opacity(0.08)))
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // 盲点
-                    if !currentBlindspots.isEmpty {
-                        MemorySection(title: L10n.text(.memoryBlindspots, settings.language), icon: "eye.slash.fill", color: .red) {
-                            ForEach(currentBlindspots) { group in
-                                BlindspotMemoryCard(group: group, language: settings.language) {
-                                    chatStore.removeBlindspotGroup(id: group.latest.id)
-                                }
-                            }
-                        }
-                    }
-
-                    // 洞察
-                    if !currentMemories.isEmpty {
-                        MemorySection(title: L10n.text(.memoryInsights, settings.language), icon: "lightbulb.fill", color: .yellow) {
-                            let memories = currentMemories.sorted { ($0.lastRecalledAt ?? $0.createdAt) > ($1.lastRecalledAt ?? $1.createdAt) }
-                            ForEach(memories.prefix(20)) { memory in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(memory.content).font(.callout).lineLimit(4)
-                                    HStack(spacing: 4) {
-                                        ForEach(memory.keywords.prefix(4), id: \.self) { kw in
-                                            Text(kw).font(.caption2)
-                                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                                .background(Capsule().fill(.quaternary))
+                        if !currentUserProfile.isEmpty {
+                            MemorySection(title: profileTitle, icon: "person.text.rectangle", color: .teal) {
+                                ForEach(currentUserProfile.prefix(16)) { observation in
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack {
+                                            Text(profileCategory(observation.category))
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.teal)
+                                            Spacer()
+                                            Text("\(Int(observation.confidence * 100))%")
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                            Button {
+                                                chatStore.removeUserProfileObservation(id: observation.id)
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                            }
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(.secondary)
+                                            .help(L10n.text(.removeInferredObservation, settings.language))
+                                            .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
                                         }
-                                        Spacer()
-                                          if memory.recallCount > 0 {
-                                              Image(systemName: "arrow.triangle.2.circlepath").font(.caption2)
-                                              Text("\(memory.recallCount)").font(.caption2).foregroundStyle(.tertiary)
-                                          }
-                                          Button {
-                                              chatStore.removeMemoryEntry(id: memory.id)
-                                          } label: {
-                                              Image(systemName: "xmark.circle.fill")
-                                          }
-                                          .buttonStyle(.plain)
-                                          .foregroundStyle(.secondary)
-                                          .help(L10n.text(.removeInferredObservation, settings.language))
-                                          .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
-                                      }
+                                        Text(observation.statement)
+                                            .font(.callout)
+                                        Text(profileEvidenceLabel + "：" + observation.evidence)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                    .padding(8)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(.teal.opacity(0.06)))
                                 }
-                                .padding(.vertical, 4)
+                            }
+                        }
+
+                        // 人物：只展示当前对话明确归属的人物档案。
+                        if !currentPeople.isEmpty {
+                            MemorySection(title: L10n.text(.memoryPeople, settings.language), icon: "person.2.fill", color: .blue) {
+                                ForEach(currentPeople.sorted { $0.mentionCount > $1.mentionCount }) { person in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(person.name).font(.headline)
+                                                Text("\(person.isSelf ? L10n.text(.memorySelf, settings.language) : person.role) · \(L10n.text(.memoryMentions, settings.language)) \(person.mentionCount) \(L10n.text(.memoryTimes, settings.language))")
+                                                    .font(.caption).foregroundStyle(.secondary)
+                                                if !person.aliases.isEmpty {
+                                                    Text("\(L10n.text(.memoryAliases, settings.language))：\(person.aliases.joined(separator: "、"))")
+                                                        .font(.caption2).foregroundStyle(.tertiary)
+                                                }
+                                            }
+                                            Spacer()
+                                            if !person.emotionalArc.isEmpty {
+                                                Text(person.emotionalArc)
+                                                    .font(.caption).foregroundStyle(.blue)
+                                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                                    .background(Capsule().fill(.blue.opacity(0.1)))
+                                            }
+                                        }
+
+                                        ForEach(person.traits) { trait in
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                HStack(spacing: 6) {
+                                                    Text(L10n.personPattern(trait.pattern, settings.language))
+                                                        .font(.caption.weight(.medium))
+                                                        .foregroundStyle(.orange)
+                                                    Text(L10n.text(.memorySuspected, settings.language))
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 1)
+                                                        .background(Capsule().fill(.orange.opacity(0.12)))
+                                                    Spacer()
+                                                      Text(trait.scope == "repeated_pattern" ? L10n.text(.memoryRepeatedPattern, settings.language) : L10n.text(.memorySingleObservation, settings.language))
+                                                          .font(.caption2)
+                                                          .foregroundStyle(.secondary)
+                                                      Button {
+                                                          chatStore.removePersonTrait(personID: person.id, traitID: trait.id)
+                                                      } label: {
+                                                          Image(systemName: "xmark.circle.fill")
+                                                      }
+                                                      .buttonStyle(.plain)
+                                                      .foregroundStyle(.secondary)
+                                                      .help(L10n.text(.removeInferredObservation, settings.language))
+                                                      .accessibilityLabel(L10n.text(.removeInferredObservation, settings.language))
+                                                  }
+                                                ForEach(Array(trait.evidence.prefix(2).enumerated()), id: \.offset) { _, evidence in
+                                                    Text("\(L10n.text(.memoryEvidence, settings.language))：\(evidence)")
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(2)
+                                                }
+                                                Text("\(L10n.text(.memoryConfidence, settings.language))：\(Int(trait.confidence * 100))% · \(trait.occurrenceCount)\(L10n.text(.memoryTimes, settings.language))")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.tertiary)
+                                            }
+                                            .padding(8)
+                                            .background(RoundedRectangle(cornerRadius: 8).fill(.orange.opacity(0.06)))
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                            }
+                        }
+
+                        // 情绪轨迹 — grouped by type, most recent intensity
+                        if !currentEmotions.isEmpty {
+                            MemorySection(title: L10n.text(.memoryEmotions, settings.language), icon: "waveform.path.ecg", color: .purple) {
+                                let grouped = groupEmotions(currentEmotions.suffix(20))
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(grouped, id: \.emotion) { item in
+                                            VStack(spacing: 4) {
+                                                Text(item.emotion)
+                                                    .font(.caption.weight(.medium))
+                                                Text("\(Int(item.intensity * 100))%")
+                                                    .font(.caption2).foregroundStyle(.secondary)
+                                                Text("×\(item.count)")
+                                                    .font(.caption2).foregroundStyle(.tertiary)
+                                            }
+                                            .padding(.horizontal, 10).padding(.vertical, 6)
+                                            .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 盲点
+                        if !currentBlindspots.isEmpty {
+                            MemorySection(title: L10n.text(.memoryBlindspots, settings.language), icon: "eye.slash.fill", color: .red) {
+                                ForEach(currentBlindspots) { group in
+                                    BlindspotMemoryCard(group: group, language: settings.language) {
+                                        chatStore.removeBlindspotGroup(id: group.latest.id)
+                                    }
+                                }
+                            }
+                        }
+
+                        // 洞察
+                        if !currentMemories.isEmpty {
+                            MemorySection(title: L10n.text(.memoryInsights, settings.language), icon: "lightbulb.fill", color: .yellow) {
+                                Text(MemoryInsight.paragraph(currentMemories, language: settings.language))
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
+                                HStack {
+                                    Spacer()
+                                    Button {
+                                        if let sourceID { chatStore.removeMemoryEntries(conversationID: sourceID) }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .help(removeInsightsLabel)
+                                    .accessibilityLabel(removeInsightsLabel)
+                                }
+                            }
+                        }
+
+                        if currentPersonLinkProposals.isEmpty && currentUserProfile.isEmpty && currentPeople.isEmpty && currentEmotions.isEmpty
+                            && currentBlindspots.isEmpty && currentMemories.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "brain.head.profile").font(.system(size: 32)).foregroundStyle(.tertiary)
+                                Text(L10n.text(.memoryEmptyTitle, settings.language)).font(.headline).foregroundStyle(.secondary)
+                                Text(L10n.text(.memoryEmptyHint, settings.language))
+                                    .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 60)
+                        }
+
+                        Divider()
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                guard let id = sourceID else { return }
+                                Task { await chatStore.rebuildMemory(conversationID: id, settings: settings) }
+                            } label: {
+                                Label(L10n.text(.rebuildMemory, settings.language), systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .disabled(sourceID == nil || chatStore.isSending || chatStore.isSummarizing || chatStore.isRebuildingMemory || chatStore.hasStorageFailure)
+                            Text(L10n.text(.memoryRebuildHint, settings.language))
+                                .font(.caption).foregroundStyle(.secondary)
+                            if chatStore.memoryRebuildConversationID == sourceID,
+                               !chatStore.memoryRebuildStatus.isEmpty {
+                                HStack(spacing: 6) {
+                                    if chatStore.isRebuildingMemory { ProgressView().controlSize(.small) }
+                                    Text(chatStore.memoryRebuildStatus).font(.caption)
+                                }
+                                .foregroundStyle(.secondary)
                             }
                         }
                     }
-
-                    if currentPersonLinkProposals.isEmpty && currentUserProfile.isEmpty && currentPeople.isEmpty && currentEmotions.isEmpty
-                        && currentBlindspots.isEmpty && currentMemories.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "brain.head.profile").font(.system(size: 32)).foregroundStyle(.tertiary)
-                            Text(L10n.text(.memoryEmptyTitle, settings.language)).font(.headline).foregroundStyle(.secondary)
-                            Text(L10n.text(.memoryEmptyHint, settings.language))
-                                .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity).padding(.vertical, 60)
-                    }
-
-                    Divider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            guard let id = chatStore.selectedConversationID else { return }
-                            Task { await chatStore.rebuildMemory(conversationID: id, settings: settings) }
-                        } label: {
-                            Label(L10n.text(.rebuildMemory, settings.language), systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .disabled(chatStore.selectedConversationID == nil || chatStore.isSending || chatStore.isSummarizing || chatStore.isRebuildingMemory || chatStore.hasStorageFailure)
-                        Text(L10n.text(.memoryRebuildHint, settings.language))
-                            .font(.caption).foregroundStyle(.secondary)
-                        if chatStore.memoryRebuildConversationID == chatStore.selectedConversationID,
-                           !chatStore.memoryRebuildStatus.isEmpty {
-                            HStack(spacing: 6) {
-                                if chatStore.isRebuildingMemory { ProgressView().controlSize(.small) }
-                                Text(chatStore.memoryRebuildStatus).font(.caption)
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                    }
+                    .padding()
                 }
-                .padding()
+                .id(sourceID)
             }
         }
-        .frame(minWidth: 480, idealWidth: 560, minHeight: 420, idealHeight: 600)
+        .frame(minWidth: 680, idealWidth: 760, minHeight: 420, idealHeight: 600)
+        .onAppear { selectedSourceID = sourceID }
     }
 }
 

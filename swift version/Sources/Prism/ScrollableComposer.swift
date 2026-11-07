@@ -13,6 +13,7 @@ struct ScrollableComposer: NSViewRepresentable {
         let editor = ComposerTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
         editor.delegate = context.coordinator
         editor.onSubmit = onSubmit
+        editor.placeholder = placeholder
         editor.isRichText = false
         editor.isAutomaticQuoteSubstitutionEnabled = false
         editor.isAutomaticDashSubstitutionEnabled = false
@@ -48,10 +49,12 @@ struct ScrollableComposer: NSViewRepresentable {
         context.coordinator.parent = self
         guard let editor = scroll.documentView as? ComposerTextView else { return }
         editor.onSubmit = onSubmit
+        editor.placeholder = placeholder
         editor.setAccessibilityLabel(placeholder)
         // Do not replace the storage while an input method owns marked text.
         if editor.string != text, !editor.hasMarkedText() {
             editor.string = text
+            editor.needsDisplay = true
             editor.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
             scroll.resizeDocument()
             editor.scrollRangeToVisible(editor.selectedRange())
@@ -74,6 +77,34 @@ struct ScrollableComposer: NSViewRepresentable {
 
 final class ComposerTextView: NSTextView {
     var onSubmit: () -> Void = {}
+    var placeholder = "" { didSet { if oldValue != placeholder { needsDisplay = true } } }
+    var shouldShowPlaceholder: Bool { string.isEmpty && !hasMarkedText() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard shouldShowPlaceholder else { return }
+        let origin = textContainerOrigin
+        (placeholder as NSString).draw(in: NSRect(
+            x: origin.x, y: origin.y,
+            width: max(0, bounds.width - origin.x), height: bounds.height - origin.y
+        ), withAttributes: [.font: font ?? .systemFont(ofSize: NSFont.systemFontSize),
+                            .foregroundColor: NSColor.placeholderTextColor])
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        needsDisplay = true
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        needsDisplay = true
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
+    }
     override func keyDown(with event: NSEvent) {
         if (event.keyCode == 36 || event.keyCode == 76), !hasMarkedText(),
            event.modifierFlags.intersection([.shift, .option, .control]).isEmpty {

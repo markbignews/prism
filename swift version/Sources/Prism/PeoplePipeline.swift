@@ -37,7 +37,7 @@ extension ChatAgent {
         - 证据充分且置信度至少 0.85：输出 person_id 和规范 name。
         - 有合理候选但证据不足（0.50–0.84）：person_id 必须为 null，candidate_person_id 输出候选 ID，match_evidence 用一句话说明依据；这不会自动合并，用户会确认。
         - 更低置信度：两个 ID 都为 null。
-        不要为了减少条目而强行合并。
+        相同姓名、角色、关系称呼或相似情节本身不足以证明跨对话是同一人；只有用户明确指认或有足够独特且不矛盾的上下文依据时，才可跨对话匹配。不要为了减少条目而强行合并。
 
         可选 traits 只能使用以下 ID：control_autonomy、communication_withdrawal、invalidates_feelings、boundary_violation、guilt_pressure、promise_action_mismatch、threat_or_coercion。每项必须有当前用户消息中的具体可观察 evidence、confidence（证据强度）和 scope(single_event|repeated_pattern)。不要诊断或制造人格标签；没有明确行为证据时返回 []。
 
@@ -199,7 +199,8 @@ extension ChatAgent {
                 }
             }()
             let exactIndex = personArchive.firstIndex { person in
-                guard person.isSelf == finding.isSelf, peopleRolesCompatible(person.role, finding.role) else { return false }
+                guard person.conversationIDs?.contains(conversationID) == true,
+                      person.isSelf == finding.isSelf, peopleRolesCompatible(person.role, finding.role) else { return false }
                 return ([person.name] + person.aliases).contains {
                     peopleNormalizedLabel($0) == peopleNormalizedLabel(finding.name)
                         || peopleNormalizedLabel($0) == peopleNormalizedLabel(mention)
