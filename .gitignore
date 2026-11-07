@@ -17,3 +17,12 @@ swift version/Untitled.icon/
 # Other platform versions (not mature)
 Qt Version/
 Web Version/
+
+# Local uploads, package cache and project-writing material
+/.dsh-uploads/
+/.pnpm-store/
+/Prism/
+
+# Generated distributions live in GitHub Releases, not the source tree
+/release/*
+!/release/README.md

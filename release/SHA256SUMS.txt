@@ -1,2 +1,0 @@
-3dd5e0c2a37a28b9d0342a149f5ee3595cc85fd0791cf8d4db0a7e00ec353bd2  Prism-SwiftUI-macOS-1.0.25.dmg
-558b42ef2eb3db11510e6c1cdaf91c871c7bef81e10733dce031f4c35ec6e4bb  Prism-SwiftUI-macOS-1.0.25.zip

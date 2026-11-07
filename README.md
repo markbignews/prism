@@ -26,9 +26,9 @@ Prism does not run a model on this Mac. Messages you send, attachments you add, 
 
 | Main window: conversations settle into chapters | Memory panel: timeline, people, emotions, findings | Reasoning: an expandable chain of thought |
 |---|---|---|
-| ![Main window](assets/1.png) | ![Memory panel](assets/3.png) | ![Reasoning](assets/2.png) |
+| ![Main window](assets/screenshots/01-main.png) | ![Memory panel](assets/screenshots/02-memory.png) | ![Reasoning](assets/screenshots/03-reasoning.png) |
 
-*Interface available in Simplified Chinese, Traditional Chinese, and English. Shots are from the current build; replacement conventions are in [`assets/screenshots/README.md`](assets/screenshots/README.md).*
+*Interface available in Simplified Chinese, Traditional Chinese, and English. These are earlier interface examples; the current source includes newer UI changes. Screenshot conventions are in [`assets/screenshots/README.md`](assets/screenshots/README.md).*
 
 ## Features
 
@@ -47,7 +47,7 @@ Turn long conversations into chapters you can return to, instead of one endless 
 Turn people, emotions, events, and conclusions scattered across chats into structured records.
 
 - Seven record types: chapters, cross-conversation memory, people, narrative timeline, emotion timeline, blind spots, and user profile.
-- The memory panel shows them together; traits, emotions, blind spots, insights, and profile observations can be removed. “Rebuild memory” at the bottom regenerates observations, insights and blind spots from the current conversation’s originals, replacing old cards only on success.
+- One memory panel groups records by source conversation. Browsing a source does not switch the active chat. Insights use one short paragraph; legacy archives initially show bounded extracts. “Rebuild memory” uses all original user messages in the selected source to generate one summary and replace observations and blind spots only on success. Inferred records remain removable.
 - Token usage, cache hit rate and account balance appear at the top of Settings.
 - Cross-conversation memory is derived from chapter summaries, with source chapter and time span; capped at 500 entries and trimmed to the most recent 300.
 - Recalls are counted, so you can see which insights actually get used.
@@ -68,7 +68,7 @@ Separate when something happened from when it was mentioned.
 - Nodes can be exact dates, fuzzy periods ("sophomore year"), or a mix, ordered by lived sequence rather than message order.
 - Prism identifies key experiences in ordinary conversation and asks whether to add them to the timeline. The model can only propose; nothing is written until you click Save. Proposals are bound to the source turn and expire when you send a new message or switch conversations.
 - When the time is unclear and would change the conclusion, Prism asks one clarifying question before writing.
-- Each node uses the same natural sentence style: its time phase, who did what, and any explicit change. Existing nodes are rewritten automatically, or through “Unify node wording”; original nodes remain available in the expandable details.
+- The timeline shows the approved time labels, titles and descriptions directly. Opening the panel does not request display rewrites.
 
 ### User profile
 
@@ -119,7 +119,7 @@ The model can consult its own archive, but only what it needs.
 - Eight tools: person, emotions, chapters, chapter text, cross-conversation memory, psychology search, timeline, and structured clarification.
 - Retrieval is ranked locally by title, keywords, and summary, with Chinese/English synonym expansion; no second model call re-ranks results. The ranked candidates still travel with the turn to the model.
 - At most two tool rounds, then a forced tool-free synthesis, so a capped turn still produces a visible answer.
-- Person lookup is scoped to the current conversation; cross-conversation memory must be retrieved explicitly and is never injected every turn.
+- Person lookup is scoped to the current conversation. The model can choose cross-conversation memory and chapter retrieval from the first turn, with source conversation and message IDs for checking originals. Same-name hits are candidates, not proof of identity; ambiguous links require a clarification card. Old narratives are not injected wholesale every turn.
 
 ### Psychology search
 
@@ -135,7 +135,7 @@ Two models, split by job, with visible cost.
 
 - Your chosen model handles the conversation; the auxiliary model handles pre-analysis, summaries, people, profiles, and search. Background tasks always run with thinking disabled.
 - The model list is discovered after you enter a key (about 600 ms debounce), Flash first and de-duplicated; manual model IDs are kept.
-- A key is validated before use (model list only); malformed keys are rejected locally, provider errors become readable messages, raw provider bodies are not shown, and the key lives in the Keychain.
+- A key is validated before use (model list only); malformed keys are rejected locally, provider errors become readable messages, raw provider bodies are not shown, and this test build saves the key in a local plaintext configuration file.
 - Response length sets the output budget: brief 1024, standard 4096, detailed 8192 tokens; reasoning effort can be Low / High / Max.
 - The panel shows cumulative input/output tokens, cache hit rate, and account balance; balance checks consume no model tokens.
 
@@ -143,7 +143,7 @@ Two models, split by job, with visible cost.
 
 The archive stays on this Mac; inference requests leave it. Export, import, and snapshots keep it portable and recoverable.
 
-- Conversations and archives live in SQLite on this Mac; the API key lives in the Keychain. Writes are transactional with revision checks; failures can be retried and conflicts exported before reloading.
+- Conversations and archives live in SQLite on this Mac; the API key is saved in the local plaintext config with owner-only file permissions. Writes are transactional with revision checks; failures can be retried and conflicts exported before reloading.
 - Full JSON snapshots can be exported and imported (without the key); imports back up first and reject incomplete or incompatible files.
 - Legacy `conversations.json`, `settings.json`, and UserDefaults migrate automatically; a maintenance script can prune history and reclaim space after backing up.
 
@@ -199,7 +199,7 @@ Nothing else escalates:
 - **Last turn's risk does not carry over.** Crisis context is background only; each turn is re-evaluated, and your explicit correction wins.
 - **Short messages are checked too.** A first turn or a two-character input still runs the pre-analysis — a brief "help me" can carry an urgent signal.
 
-The boundaries are recorded item by item in [`SEMANTIC_ACCEPTANCE.md`](swift%20version/SEMANTIC_ACCEPTANCE.md), including one real failure (negation over-read as crisis) and the prompt tightening that followed — **passing automation does not mean the semantics pass**.
+The boundaries are recorded item by item in [`SEMANTIC_ACCEPTANCE.md`](docs/SEMANTIC_ACCEPTANCE.md), including one real failure (negation over-read as crisis) and the prompt tightening that followed — **passing automation does not mean the semantics pass**.
 
 ## Memory and retrieval
 
@@ -230,7 +230,7 @@ The main model can call eight tools (`Tools.swift`):
 
 **Retrieval is ranked locally**: title hits weigh most, then keywords, then summary. Queries expand through a Chinese/English synonym table covering emotions, family, romance, work, and inner patterns. No second model call re-ranks; the ranked candidates are then sent to the main model with the turn.
 
-**Recalls are counted**: each hit records a recall time and count, shown in the memory panel so you can tell which insights actually matter.
+**Recalls are counted**: retrieval still records recall time and count. The panel shows concise prose instead of keyword chips and counters; the full archive remains searchable.
 
 ## Context and streaming
 
@@ -260,7 +260,7 @@ Compression is not deletion: older messages are replaced by **the chapter summar
 
 - **Model discovery**: after you enter a key and stop typing for about 600 ms, Prism requests `/models` — metadata only, no model call. Results are de-duplicated with Flash first. Manual model IDs are kept. On failure the current settings stay and a readable reason is shown; raw provider bodies (which may echo credentials) are never displayed.
 - **Response length** sets the output budget: brief 1024, standard 4096, detailed 8192 tokens.
-- **Reset** clears the database, config, usage stats, Keychain item, and related UserDefaults, then quits the app.
+- **Reset** clears the database, config (including the locally saved key), usage stats, and related UserDefaults, then quits the app.
 
 ## Data and privacy
 
@@ -269,7 +269,7 @@ The default data folder is `~/Documents/Prism/`; you can change it in Settings (
 ```
 ~/Documents/Prism/
 ├── prism.sqlite3          conversations + seven structured archives
-├── config.json            non-sensitive settings + Keychain item ID (no API key)
+├── config.json            settings + local plaintext API key (permissions 0600)
 ├── usage_stats.json       local token accounting
 ├── prism.log              optional log, exportable
 ├── Data/*.json            legacy data, import-compatible only
@@ -280,7 +280,7 @@ The default data folder is `~/Documents/Prism/`; you can change it in Settings (
 
 **What each request actually sends**: the conversation needed for this turn (older parts already replaced by chapter summaries), attachments you added, archive entries retrieved for this turn, and a locally generated random installation ID (`user_id`). Nothing else — no telemetry, no analytics, no crash reporting.
 
-- **The API key lives in the macOS Keychain** (`com.prism.chatclient.provider-key`, `WhenUnlockedThisDeviceOnly`, not synchronizable). Migration writes to the Keychain, reads back to verify, then atomically saves a config without plaintext; a read failure never deletes the old key.
+- **This test build saves the API key locally in plaintext**, in `config.json` with owner-only permissions (0600) and atomic replacement. It never reads or modifies Keychain. If an older build stored your key only in Keychain, paste it into Settings once. Copying the entire data folder includes the key; window JSON exports do not.
 - **Installation ID**: `user_id` is a random string generated on first run (`prism_swift_…`), used only so the provider can group requests from the same install; it contains no device model, account, or location. Reset clears it and generates a new one.
 - **Key format is validated first**: trimmed, then empty values, `Bearer` prefixes, quotes, and non-printable characters are rejected.
 - **Writes are transactional.** The database uses WAL and `synchronous=FULL`; all collections in a batch share `BEGIN IMMEDIATE`; failure rolls back both data and cached revisions; stale writes are rejected by revision rather than silently overwriting.
@@ -289,7 +289,7 @@ The default data folder is `~/Documents/Prism/`; you can change it in Settings (
 - **History is bounded.** `history` keeps the latest five versions per record, up to 10,000 rows and 32MiB of payload.
 - **Deletes cascade.** Deleting a conversation removes its timeline, memories, blind spots, profile observations, and proposals in one transaction; people lose references but keep their records. Startup reconciles orphans after a complete load.
 - **Snapshots.** Export is a full JSON snapshot without the API key. Import validates the version, every collection, and decoding, creates `pre-import-<UUID>.sqlite3` through the SQLite backup API, then replaces atomically. Incomplete snapshots are rejected and existing data is untouched. Import bumps the storage generation, so late background people/profile results are dropped.
-- **Migration paths stay compatible**: legacy `conversations.json` leaves a `.pre-sqlite.bak` before import; keys in legacy `settings.json` and UserDefaults move to the Keychain and plaintext is scrubbed; switching folders requires a destination without an existing database.
+- **Migration paths stay compatible**: legacy `conversations.json` leaves a `.pre-sqlite.bak` before import; keys in legacy `settings.json` and UserDefaults move into the local config, and old duplicate fields are removed only after a successful save; switching folders requires a destination without an existing database.
 - **Usage and logs**: token stats live in `usage_stats.json`; with logging on, `prism.log` records send summaries (conversation ID, text length), failures, and storage reconciliation — never message bodies.
 - **The database is not encrypted**; it relies on disk encryption and folder permissions. Keep it out of synced folders if that matters.
 
@@ -309,7 +309,7 @@ Prism runs on **macOS 15 or later** on Apple Silicon (arm64). You can download a
 
 **Option 1 — download**
 
-Download [`Prism-SwiftUI-macOS-1.0.25.dmg`](release/Prism-SwiftUI-macOS-1.0.25.dmg), open it, and drag **Prism** into **Applications**.
+Download [`Prism-SwiftUI-macOS-1.0.25.dmg`](https://github.com/markbignews/prism/releases/download/v1.0.25/Prism-SwiftUI-macOS-1.0.25.dmg), open it, and drag **Prism** into **Applications**. This published release predates the latest changes on `main`; build from source to try those changes.
 
 **Option 2 — build from source**
 
@@ -355,17 +355,18 @@ Open the DMG, drag **Prism** into **Applications**, then launch it from Applicat
 
 The build is **ad hoc signed and not notarized**. On first launch macOS may block it: open System Settings → Privacy & Security, click "Open Anyway", and confirm. Do not disable Gatekeeper globally.
 
-You can also run the committed `release/Prism-SwiftUI-macOS.app` directly, or build your own with `build_app.py`. Intel Macs are not supported.
+Published downloads are in [GitHub Releases](https://github.com/markbignews/prism/releases). Build the latest source with `build_app.py`; generated app bundles are not committed. Intel Macs are not supported.
 
 ## Project layout
 
 ```
 .
 ├── assets/          screenshots and icon
-├── release/         DMG and committed arm64 bundle
+├── docs/            technical notes and acceptance checks
+├── release/         links to published downloads
 ├── scripts/         build, package, database maintenance
 ├── VERSION          single source of the version
-└── swift version/   sources, tests, and docs
+└── swift version/   sources and tests
 ```
 
 Key modules, in reading order:
@@ -383,7 +384,7 @@ Key modules, in reading order:
 | `Tools.swift` | Definitions and local execution for the eight tools |
 | `SafetyAssessment.swift` | Safety gate (all three conditions) |
 | `SQLiteStore.swift` / `StorageWriter.swift` | Schema, transactions, revision checks, serial writes |
-| `AppSettings.swift` / `CredentialStore.swift` / `CredentialCheck.swift` | Config, model discovery, Keychain migration and validation |
+| `AppSettings.swift` / `CredentialStore.swift` / `CredentialCheck.swift` | Config, local credential persistence, model discovery and validation |
 | `ModelCatalog.swift` / `ModelDiscoverySection.swift` | `/models` discovery, sorting and de-duplication, manual IDs |
 | `UsageStatsStore.swift` / `PrismLog.swift` | Token accounting and file logging |
 | `NativeSupport.swift` | Clipboard, save/open panels, quit protection — the AppKit boundary |
@@ -395,9 +396,11 @@ Key modules, in reading order:
 
 ## Documentation
 
-- [Technical spec](swift%20version/TECHNICAL_SPEC.md): storage, concurrency, context, packaging, and their boundaries
-- [Regression checklist](swift%20version/REGRESSION_CHECKLIST.md): what automation covers and what still needs a human
-- [Semantic acceptance](swift%20version/SEMANTIC_ACCEPTANCE.md): status of the 12 scenarios with real samples
+- [Changelog](CHANGELOG.md): dated changes and verification boundaries
+
+- [Technical spec](docs/TECHNICAL_SPEC.md): storage, concurrency, context, packaging, and their boundaries
+- [Regression checklist](docs/REGRESSION_CHECKLIST.md): what automation covers and what still needs a human
+- [Semantic acceptance](docs/SEMANTIC_ACCEPTANCE.md): status of the 12 scenarios with real samples
 - Engineering review, repair report, and handoff live in local `ENGINEERING_*.md` files and are not part of the public repository.
 
 ## License

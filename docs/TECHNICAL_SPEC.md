@@ -1,13 +1,13 @@
 # Prism SwiftUI 技术说明
 
-本文描述当前源码。版本号唯一来源为 `../VERSION`；打包脚本读取该文件。仓库内应用包通过 `--sync-release` 同步；单独修改源码不会自动更新二进制。
+本文描述当前源码。版本号唯一来源为 `../VERSION`；打包脚本读取该文件。本地应用包可通过 `--sync-release` 同步到忽略的 `release/` 输出目录；二进制不纳入源码提交，公开安装包在 GitHub Releases。单独修改源码不会自动更新二进制。
 
 ## 运行与构建
 
 - 原生 SwiftUI + AppKit，Swift 6，运行最低 macOS 15。
 - 编译需要 Xcode 26 或更新的 macOS SDK，因为源码使用受 availability 保护的 macOS 26 Liquid Glass API；较早系统运行时使用 material 回退。
 - SwiftPM manifest 仅声明包。`scripts/build_app.py` 与打包入口通过 `xcrun --sdk macosx --show-sdk-version` 查询实际 SDK 并传给链接器，修正 Swift Build 把 SDK 错记为 deployment target 的行为；SDK 缺失或过旧时明确报错，不伪造 SDK 版本。
-- 没有第三方依赖；`CSQLite` 是系统 SQLite 的模块映射，Security 是系统 Keychain 框架。
+- 没有第三方依赖；`CSQLite` 是系统 SQLite 的模块映射。
 - 当前打包目标为 Apple Silicon arm64；Intel 未列入本轮支持范围。
 
 ```sh
@@ -62,7 +62,7 @@ swift run -c release Prism
 默认目录为 `~/Documents/Prism`，可在设置中更换本地目录：
 
 - `prism.sqlite3`：会话及七类结构化档案。
-- `config.json`：非敏感设置与 Keychain 条目 ID。
+- `config.json`：设置与本机明文 API Key；原子写入，POSIX 权限 0600。
 - `usage_stats.json`、可选 `prism.log`：用量统计和日志。
 - `Data/*.json`、`*.pre-sqlite.bak`：旧版本数据及迁移备份，仅兼容导入；后续写入以 SQLite 为准。
 
@@ -82,13 +82,15 @@ SQLite schema 保持 `user_version=1`，不改变现有 record payload 结构。
 
 只有所有集合完整加载成功后才做启动孤儿对账。清理不存在会话的引用时，把会话 revision 也纳入同一事务校验；保留人物本体和旧版本无 scope 的人物。成功清理记录数量无关的简短日志，不输出档案原文。
 
-`history` 每条 record 保留最近五版，总计最多 10,000 条、32MiB 历史 payload；启动与写入事务都会裁剪旧历史。该上限不包括活跃数据、索引、空闲页和 WAL，不能称为数据库物理文件上限。需要回收旧空闲页时，退出应用后运行 `../scripts/storage_maintenance.py --help`；脚本默认只报告统计，写入前先备份。
+`history` 每条 record 保留最近五版，总计最多 10,000 条、32MiB 历史 payload；启动与写入事务都会裁剪旧历史。该上限不包括活跃数据、索引、空闲页和 WAL，不能称为数据库物理文件上限。需要回收旧空闲页时，退出应用后从仓库根目录运行 `python3 scripts/storage_maintenance.py --help`；脚本默认只报告统计，写入前先备份。
 
 ## 密钥与迁移
 
-API Key 使用系统 Keychain generic password，设置文件只保存条目 ID，不启用 iCloud Keychain 同步。迁移旧 `config.json`、`settings.json` 或 UserDefaults 时先写 Keychain、读回确认，再原子保存去掉明文的配置并清理旧字段。Keychain 失败时保留原配置，允许重试；禁止因为读失败把旧 Key 当空值删除。
+当前测试/比赛版本把 API Key 明文保存在本机 `config.json`，写入前先创建 0600 临时文件，再原子替换配置。默认构造不再访问 Keychain；代码中无 Keychain 读写实现。设置与引导页面注明本机明文保存。
 
-已存在的系统备份/同步盘副本不会被程序追溯擦除。数据目录迁移保留同一 credential ID；复制快照到其他机器需重新设置该机器的 Key。Keychain 的系统权限提示与签名身份稳定性需要真实应用升级验收。
+旧明文 `config.json`、`settings.json` 或 UserDefaults 中的 Key 可以转入当前配置；旧字段只在新配置写入成功后清理。旧版仅在 Keychain 保存的 Key 不自动读取、不删除，设置页提示重新粘贴一次。读取损坏配置或写入失败时保留原文件，可重试。测试仍可注入内存凭据存储验证失败恢复；该路径不是正式运行时的 Keychain 功能。
+
+移动数据目录时由内存设置写入目标配置；复制整个数据目录会包含明文 Key，窗口 JSON 导出仍不包含 Key。历史备份与旧 Keychain 条目不追溯修改。
 
 ## 导出、导入与备份
 
@@ -115,3 +117,11 @@ python3 scripts/package_app.py --sync-release
 这是来源摘要，不承诺不同工具链下的二进制逐字节相同。打包命令始终运行构建，前后核对源码摘要，并验证二进制的 arm64、最低 macOS 与实际 SDK 记录。
 
 默认 ad hoc 签名，未做 Developer ID 公证；Apple Silicon 的支持范围不因签名改变。可用 `--identity` 和已有 `--notary-profile` 完成正式签名、公证和 stapling。仓库不存证书、私钥或公证凭据。`codesign --verify`、`stapler validate` 与干净 Mac 首次打开是不同验收项目。
+
+## 统一记忆入口与跨对话依据
+
+面板左侧按来源对话分组，查看来源与活动聊天独立；重建和删除只作用于所选来源。洞察显示一段限长文字：旧记录仅做摘录预览、保留完整检索数据，重建后生成至多一个有原话来源的摘要段落。章节归纳后若产生多个洞察记录，会触发完整去重重建。
+
+新对话第一轮开放 search_memory、search_chapters 和 fetch_chapter_messages，由模型自主决定是否检索。记忆结果携带来源会话、原话ID、memoryId；fetch_chapter_messages 可用 memory_id 核对原始用户消息，不把助手推断当原始依据。缺失和截断明确标注；同名不确认身份，歧义通过原生选项卡澄清，最新用户纠正优先。
+
+时间轴直接展示已确认节点，不再自动整理展示措辞，也不显示旧措辞缓存和相关按钮。历史字段保留读取兼容性。
