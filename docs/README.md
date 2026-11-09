@@ -1,5 +1,7 @@
 # 文档索引
 
+- [上下文优化](CONTEXT_OPTIMIZATION.md)：请求快照、自动思考、可回查压缩和验证边界。
+
 - [技术说明](TECHNICAL_SPEC.md)：存储、上下文、检索、打包的实现与边界。
 - [回归清单](REGRESSION_CHECKLIST.md)：自动化覆盖和需要人工检查的项目。
 - [语义验收](SEMANTIC_ACCEPTANCE.md)：真实模型样本、原生界面检查及未完成的验收。

@@ -34,6 +34,7 @@ enum DeepSeekWebSearchClient {
         let requestBody: [String: Any] = [
             "model": DeepSeekModels.flash,
             "max_tokens": 4096,
+            "thinking": ["type": "disabled"],
             "system": searchInstructions + AgentPrompt.productScopeRules,
             "messages": [[
                 "role": "user",
@@ -51,7 +52,7 @@ enum DeepSeekWebSearchClient {
         ]
 
         do {
-            let body = try JSONSerialization.data(withJSONObject: requestBody, options: [])
+            let body = try JSONSerialization.data(withJSONObject: requestBody, options: [.sortedKeys])
             var request = URLRequest(url: officialSearchURL)
             request.httpMethod = "POST"
             request.timeoutInterval = 90
@@ -69,12 +70,28 @@ enum DeepSeekWebSearchClient {
             guard (200..<300).contains(http.statusCode) else {
                 return errorJSON(ProviderFailure.httpMessage(http.statusCode, language: settings.language))
             }
+            if let usage = responseUsage(data) {
+                UsageStatsStore.shared.record(usage, purpose: "search")
+            }
             return parseResponse(data: data, query: normalizedQuery)
         } catch is CancellationError {
             return errorJSON("搜索已取消。")
         } catch {
             return errorJSON(ProviderFailure.message(error, language: settings.language))
         }
+    }
+
+    static func responseUsage(_ data: Data) -> TokenUsage? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let usage = object["usage"] as? [String: Any],
+              let input = usage["input_tokens"] as? Int64,
+              let output = usage["output_tokens"] as? Int64,
+              input >= 0, output >= 0 else { return nil }
+        let read = max(0, usage["cache_read_input_tokens"] as? Int64 ?? 0)
+        let write = max(0, usage["cache_creation_input_tokens"] as? Int64 ?? 0)
+        guard input <= Int64.max - read, input + read <= Int64.max - write else { return nil }
+        return TokenUsage(promptTokens: input + read + write, completionTokens: output,
+                          promptCacheHitTokens: read, promptCacheMissTokens: input + write)
     }
 
     private static func normalizeQuery(_ query: String) -> String {

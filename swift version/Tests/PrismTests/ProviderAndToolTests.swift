@@ -25,6 +25,32 @@ import Testing
         #expect(messages[5]["reasoning_content"] as? String == "第二轮全文")
         #expect(messages[6]["tool_call_id"] as? String == "b")
     }
+    @Test func toolEvidenceAppearsOnceAndOriginalRequestPrefixStaysStable() throws {
+        let client = DeepSeekClient(apiKey: "placeholder", baseURL: "https://provider.test/v1", model: "model",
+            parameters: ModelParameters(thinkingEnabled: true, reasoningEffort: "high"), language: .simplifiedChinese)
+        let input = [ChatMessage(role: .user, content: "请分析这个话题")]
+        let evidence = String(repeating: "独特证据内容", count: 2000)
+        let call = ToolCall(id: "lookup-1", name: "search_memory", arguments: "{}")
+        let exchange = ToolExchange(response: DeepSeekResult(content: "", reasoning: "继续核对", toolCalls: [call]),
+                                    results: [.init(toolCallID: call.id, name: call.name, content: evidence)])
+        func messages(_ exchanges: [ToolExchange]) throws -> [[String: Any]] {
+            let request = try client.makeStreamRequest(messages: input, memoryContext: "已有记忆",
+                                                       tools: ToolRegistry.definitions, toolExchanges: exchanges)
+            let data = try #require(request.httpBody)
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            return try #require(object["messages"] as? [[String: Any]])
+        }
+        let initial = try messages([])
+        let afterTool = try messages([exchange])
+        #expect(initial.count == 2 && afterTool.count == 4)
+        #expect(initial[0]["content"] as? String == afterTool[0]["content"] as? String)
+        #expect(initial[1]["content"] as? String == afterTool[1]["content"] as? String)
+        #expect(afterTool[3]["role"] as? String == "tool")
+        #expect(afterTool[3]["content"] as? String == evidence)
+        #expect(!(afterTool[1]["content"] as? String ?? "").contains(evidence))
+        #expect(afterTool[2]["reasoning_content"] as? String == "继续核对")
+    }
+
 }
 
 @Suite struct ProviderMessageTests {

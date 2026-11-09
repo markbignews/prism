@@ -6,7 +6,7 @@ import Testing
 @Suite struct SearchAndScopeContractTests {
     @Test func firstTurnProvidesWebAndCrossConversationRetrieval() throws {
         let tools = ToolRegistry.availableDefinitions(baseURL: "https://api.deepseek.com", includeHistory: false)
-        #expect(Set(tools.map(\.function.name)) == ["search_web", "search_memory", "search_chapters", "fetch_chapter_messages", "manage_narrative_timeline", "request_user_input"])
+        #expect(Set(tools.map(\.function.name)) == ["track_person", "emotion_timeline", "search_web", "search_memory", "search_chapters", "fetch_chapter_messages", "manage_narrative_timeline", "request_user_input", "fetch_context", "request_deeper_analysis"])
         let client = DeepSeekClient(apiKey: "placeholder", baseURL: "https://api.deepseek.com", model: "deepseek-flash",
             parameters: ModelParameters(), language: .simplifiedChinese)
         let request = try client.makeStreamRequest(messages: [.init(role: .user, content: "这个心理学说法有依据吗？")],

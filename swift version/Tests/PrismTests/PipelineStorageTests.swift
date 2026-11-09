@@ -59,7 +59,7 @@ import Testing
         #expect(ContextUsageSnapshot.compressionThresholdTokens < ContextUsageSnapshot.criticalThresholdTokens)
     }
 
-    @Test func contextUsesTokenThresholdInsteadOfMessageCountAndPreservesRecentOriginals() throws {
+    @Test func historyRemainsCompleteWithoutAValidatedCheckpoint() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let agent = ChatAgent(storagePath: root.path)
@@ -70,7 +70,7 @@ import Testing
         let recent = [ChatMessage(role: .assistant, content: "recent answer"), ChatMessage(role: .user, content: "current question")]
         conversation.messages = [large] + recent
         let window = agent.buildWindowedMessages(for: 0, includeReasoning: false, context: conversation)
-        #expect(window.first?.role == .system)
+        #expect(window == conversation.messages)
         #expect(Array(window.suffix(2)) == recent)
         #expect(conversation.messages == [large] + recent)
     }

@@ -19,6 +19,8 @@ enum ToolRegistry {
         .searchWeb,
         .manageNarrativeTimeline,
         .requestUserInput,
+        .fetchContext,
+        .requestDeeperAnalysis,
     ]
 
     /// A new chat can retrieve other conversations from its very first turn.
@@ -27,7 +29,30 @@ enum ToolRegistry {
         return definitions.filter { tool in
             let name = tool.function.name
             if name == "search_web", !officialSearch { return false }
-            return includeHistory || ["search_web", "search_memory", "search_chapters", "fetch_chapter_messages", "manage_narrative_timeline", "request_user_input"].contains(name)
+            // Keep the same schema set throughout a request series, including
+            // new chats. Empty archives are safe results, not changing schemas.
+            return true
+        }
+    }
+
+    static func displayName(_ name: String, language: AppLanguage) -> String {
+        let labels: [String: (String, String, String)] = [
+            "track_person": ("查询人物", "查詢人物", "Looking up a person"),
+            "emotion_timeline": ("查看情绪变化", "檢視情緒變化", "Reviewing emotions"),
+            "search_chapters": ("检索章节", "檢索章節", "Searching chapters"),
+            "fetch_chapter_messages": ("核对原话", "核對原話", "Checking original messages"),
+            "search_memory": ("检索记忆", "檢索記憶", "Searching memories"),
+            "search_web": ("联网核查", "連網查核", "Checking web sources"),
+            "request_user_input": ("等待补充", "等待補充", "Waiting for your input"),
+            "manage_narrative_timeline": ("整理时间轴", "整理時間軸", "Reviewing the timeline"),
+            "fetch_context": ("回查原始记录", "回查原始記錄", "Reopening original records"),
+            "request_deeper_analysis": ("进一步分析", "進一步分析", "Taking a closer look")
+        ]
+        guard let label = labels[name] else { return name }
+        switch language {
+        case .simplifiedChinese: return label.0
+        case .traditionalChinese: return label.1
+        case .english: return label.2
         }
     }
 
@@ -61,6 +86,10 @@ enum ToolRegistry {
 
         let result: String
         switch name {
+        case "fetch_context":
+            result = fetchContext(args: args, store: store)
+        case "request_deeper_analysis":
+            result = #"{"deeper_analysis_requested":true}"#
         case "track_person":
             result = trackPerson(name: args["name"] ?? "", store: store)
         case "emotion_timeline":
@@ -156,6 +185,36 @@ enum ToolRegistry {
             return "[]"
         }
         return str
+    }
+
+    @MainActor private static func fetchContext(args: [String: String], store: ChatAgent) -> String {
+        guard let rawConversation = args["conversation_id"], let conversationID = UUID(uuidString: rawConversation),
+              let rawMessage = args["message_id"], let messageID = UUID(uuidString: rawMessage),
+              let conversation = store.conversations.first(where: { $0.id == conversationID }),
+              let message = conversation.messages.first(where: { $0.id == messageID }) else {
+            return #"{"error":"source missing or deleted; do not infer its contents"}"#
+        }
+        let original: String
+        if let callID = args["tool_call_id"], !callID.isEmpty {
+            guard let result = message.toolTranscript?.flatMap(\.results).first(where: { $0.toolCallID == callID }) else {
+                return #"{"error":"original tool result missing; do not invent evidence"}"#
+            }
+            original = result.content
+        } else { original = message.content }
+        let offset = max(0, Int(args["offset"] ?? "0") ?? 0)
+        let count = min(6000, max(1, Int(args["count"] ?? "3000") ?? 3000))
+        guard offset <= original.count else { return #"{"error":"offset exceeds original length"}"# }
+        let page = String(original.dropFirst(offset).prefix(count))
+        let end = offset + page.count
+        let payload: [String: Any] = [
+            "sourceConversationId": conversation.id.uuidString, "sourceConversationTitle": conversation.title,
+            "sourceMessageId": message.id.uuidString, "toolCallId": args["tool_call_id"] ?? NSNull(),
+            "role": message.role.rawValue, "content": page, "offset": offset,
+            "totalCharacters": original.count, "truncated": offset > 0 || end < original.count,
+            "nextOffset": end < original.count ? end as Any : NSNull()
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
     }
 
     // MARK: - Individual Tool Executors
@@ -384,6 +443,24 @@ struct ToolDef: Encodable, Sendable {
                     "description": .init(type: "string", description: "可为空的简短说明，不暗示用户应选哪个")
                 ], required: ["label", "description"]), minItems: 2, maxItems: 4)
         ], required: ["question", "options"])
+    ))
+
+    static let fetchContext = ToolDef(function: .init(
+        name: "fetch_context",
+        description: "按来源精确回查压缩摘要中的原话或被裁剪的完整工具结果。返回分页文本和nextOffset；仍有省略时不得宣称完整阅读。来源已删除或缺失时不能猜测补齐。",
+        parameters: .init(properties: [
+            "conversation_id": .init(type: "string", description: "来源对话UUID"),
+            "message_id": .init(type: "string", description: "来源消息UUID"),
+            "tool_call_id": .init(type: "string", description: "回查工具原始结果时填写其调用ID；回查消息原话时省略"),
+            "offset": .init(type: "integer", description: "从0开始的字符位置，接续nextOffset"),
+            "count": .init(type: "integer", description: "本页字符数，默认3000，最多6000")
+        ], required: ["conversation_id", "message_id"])
+    ))
+
+    static let requestDeeperAnalysis = ToolDef(function: .init(
+        name: "request_deeper_analysis",
+        description: "需要复杂推理时申请提高后续分析强度：例如人物身份有歧义、证据冲突、复杂时间线或需要综合不同研究。不要在拿到证据前长篇猜测；简单澄清或承接可直接答。此工具不发起额外搜索、不改动记忆，实际强度受用户设置限制。",
+        parameters: .init(properties: ["reason": .init(type: "string", description: "一句话说明需要核对的复杂性")], required: ["reason"])
     ))
 
     static let trackPerson = ToolDef(function: .init(

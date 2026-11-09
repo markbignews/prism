@@ -7,24 +7,28 @@ struct TokenUsage: Codable, Equatable, Sendable {
     var completionTokens: Int64 = 0
     var promptCacheHitTokens: Int64 = 0
     var promptCacheMissTokens: Int64 = 0
+    var reasoningTokens: Int64?
 
     enum CodingKeys: String, CodingKey {
         case promptTokens = "prompt_tokens"
         case completionTokens = "completion_tokens"
         case promptCacheHitTokens = "prompt_cache_hit_tokens"
         case promptCacheMissTokens = "prompt_cache_miss_tokens"
+        case reasoningTokens = "completion_tokens_details"
     }
 
     init(
         promptTokens: Int64 = 0,
         completionTokens: Int64 = 0,
         promptCacheHitTokens: Int64 = 0,
-        promptCacheMissTokens: Int64 = 0
+        promptCacheMissTokens: Int64 = 0,
+        reasoningTokens: Int64? = nil
     ) {
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
         self.promptCacheHitTokens = promptCacheHitTokens
         self.promptCacheMissTokens = promptCacheMissTokens
+        self.reasoningTokens = reasoningTokens
     }
 
     init(from decoder: Decoder) throws {
@@ -33,6 +37,17 @@ struct TokenUsage: Codable, Equatable, Sendable {
         completionTokens = try container.decodeIfPresent(Int64.self, forKey: .completionTokens) ?? 0
         promptCacheHitTokens = try container.decodeIfPresent(Int64.self, forKey: .promptCacheHitTokens) ?? 0
         promptCacheMissTokens = try container.decodeIfPresent(Int64.self, forKey: .promptCacheMissTokens) ?? 0
+        struct Details: Decodable { var reasoning_tokens: Int64? }
+        reasoningTokens = (try? container.decodeIfPresent(Details.self, forKey: .reasoningTokens))?.reasoning_tokens
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(promptTokens, forKey: .promptTokens)
+        try c.encode(completionTokens, forKey: .completionTokens)
+        try c.encode(promptCacheHitTokens, forKey: .promptCacheHitTokens)
+        try c.encode(promptCacheMissTokens, forKey: .promptCacheMissTokens)
+        if let reasoningTokens { try c.encode(["reasoning_tokens": reasoningTokens], forKey: .reasoningTokens) }
     }
 }
 
@@ -43,6 +58,9 @@ struct UsageStats: Codable, Equatable, Sendable {
     var cacheHitTokens: Int64 = 0
     var cacheMissTokens: Int64 = 0
     var requestCount: Int64 = 0
+    var reportedReasoningTokens: Int64?
+    var backgroundRequests: Int64?
+    var compactionRequests: Int64?
 
     var cacheHitRate: Double? {
         // DeepSeek defines prompt_tokens as cache-hit plus cache-miss tokens.
@@ -50,12 +68,15 @@ struct UsageStats: Codable, Equatable, Sendable {
         return Double(cacheHitTokens) / Double(inputTokens)
     }
 
-    mutating func add(_ usage: TokenUsage) {
+    mutating func add(_ usage: TokenUsage, purpose: String = "conversation") {
         inputTokens += max(0, usage.promptTokens)
         outputTokens += max(0, usage.completionTokens)
         cacheHitTokens += max(0, usage.promptCacheHitTokens)
         cacheMissTokens += max(0, usage.promptCacheMissTokens)
         requestCount += 1
+        if let tokens = usage.reasoningTokens { reportedReasoningTokens = (reportedReasoningTokens ?? 0) + max(0, tokens) }
+        if purpose != "conversation" { backgroundRequests = (backgroundRequests ?? 0) + 1 }
+        if purpose == "compaction" { compactionRequests = (compactionRequests ?? 0) + 1 }
     }
 }
 
@@ -74,10 +95,10 @@ final class UsageStatsStore: ObservableObject {
         reload()
     }
 
-    func record(_ usage: TokenUsage) {
+    func record(_ usage: TokenUsage, purpose: String = "conversation") {
         // Reload before merging so another Prism window cannot overwrite a newer snapshot.
         reload()
-        stats.add(usage)
+        stats.add(usage, purpose: purpose)
         save()
     }
 

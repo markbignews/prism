@@ -1264,22 +1264,15 @@ struct ContextUsageButton: View {
     private var compressionText: String {
         if snapshot.compressionActive {
             switch language {
-            case .simplifiedChinese: return "已达到 75%：发送时压缩旧内容，保留最近约 \(number(snapshot.retainedRecentTokens)) Token 原文；本地记录不删除。"
-            case .traditionalChinese: return "已達到 75%：傳送時壓縮舊內容，保留最近約 \(number(snapshot.retainedRecentTokens)) Token 原文；本機記錄不刪除。"
-            case .english: return "At 75%: older request context is compressed while about \(number(snapshot.retainedRecentTokens)) recent tokens stay verbatim; local history is untouched."
-            }
-        }
-        if snapshot.preparationActive {
-            switch language {
-            case .simplifiedChinese: return "当前占用已超过 55%。这只是容量提醒，发送内容不会变化；达到 75% 后才会压缩旧内容，还差约 \(number(snapshot.tokensUntilCompression)) Token。"
-            case .traditionalChinese: return "目前佔用已超過 55%。這只是容量提醒，傳送內容不會變化；達到 75% 後才會壓縮舊內容，還差約 \(number(snapshot.tokensUntilCompression)) Token。"
-            case .english: return "Usage is above 55%. This is only a capacity notice and does not change the request; older context is compressed at 75%, about \(number(snapshot.tokensUntilCompression)) tokens away."
+            case .simplifiedChinese: return "已整理较早的对话，近期原文仍保留；完整记录可回查。"
+            case .traditionalChinese: return "已整理較早的對話，近期原文仍保留；完整記錄可回查。"
+            case .english: return "Older context has been summarized; recent messages remain verbatim and originals can be reopened."
             }
         }
         switch language {
-        case .simplifiedChinese: return "达到 55% 时仅显示容量提醒，不会改变发送内容（还差约 \(number(snapshot.tokensUntilPreparation)) Token）；达到 75% 后才会压缩旧内容。"
-        case .traditionalChinese: return "達到 55% 時只顯示容量提醒，不會改變傳送內容（還差約 \(number(snapshot.tokensUntilPreparation)) Token）；達到 75% 後才會壓縮舊內容。"
-        case .english: return "At 55%, Prism only shows a capacity notice and does not change the request (about \(number(snapshot.tokensUntilPreparation)) tokens away); older context is compressed at 75%."
+        case .simplifiedChinese: return "请求接近约 \(number(snapshot.compressionThresholdTokens)) Token 时，先缩减过长工具结果，再按需整理旧对话。还差约 \(number(snapshot.tokensUntilCompression)) Token。"
+        case .traditionalChinese: return "請求接近約 \(number(snapshot.compressionThresholdTokens)) Token 時，先縮減過長工具結果，再依需要整理舊對話。還差約 \(number(snapshot.tokensUntilCompression)) Token。"
+        case .english: return "Near \(number(snapshot.compressionThresholdTokens)) tokens, oversized tool results are reduced before older context is summarized if needed. About \(number(snapshot.tokensUntilCompression)) tokens remain."
         }
     }
 
@@ -1297,9 +1290,9 @@ struct ContextUsageButton: View {
     private var riskText: String {
         if snapshot.critical {
             switch language {
-            case .simplifiedChinese: return "未压缩内容已超过 85%。Prism 会强制压缩请求，避免截断、失败或挤占回复空间。"
-            case .traditionalChinese: return "未壓縮內容已超過 85%。Prism 會強制壓縮請求，避免截斷、失敗或擠佔回覆空間。"
-            case .english: return "Uncompressed context is above 85%. Prism compacts the request to avoid truncation, failure, or crowding out the reply."
+            case .simplifiedChinese: return "当前估算已接近模型上限。Prism 会尝试安全整理；当前消息或附件过大时，仍可能需要缩短后再发送。"
+            case .traditionalChinese: return "目前估算已接近模型上限。Prism 會嘗試安全整理；目前訊息或附件過大時，仍可能需要縮短後再傳送。"
+            case .english: return "The estimate is close to the model limit. Prism will attempt safe compaction; a very large current message or attachment may still need shortening."
             }
         }
         if snapshot.preparationActive {
@@ -1488,7 +1481,7 @@ struct MessageBubble: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: "wrench.and.screwdriver")
                                             .font(.caption2)
-                                        Text(call.name)
+                                        Text(ToolRegistry.displayName(call.name, language: settings.language))
                                             .font(.caption2.weight(.medium))
                                             .lineLimit(1)
                                     }

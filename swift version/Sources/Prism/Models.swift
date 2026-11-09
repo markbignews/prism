@@ -34,6 +34,12 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var clarification: UserClarification?
     var createdAt = Date()
     var suggestions: [String] = []
+    // Immutable model-visible context and exact tool subturns for replay.
+    var requestContext: String?
+    var requestHint: String?
+    var toolTranscript: [ToolExchange]?
+    var wireReasoning: String?
+    var wireContent: String?
     /// Runtime-only payloads for the current request. Attachment bytes are
     /// never written to conversations.json.
     var isToolPlaceholder = false
@@ -41,6 +47,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, role, content, reasoning, toolCalls, clarification, createdAt, suggestions
+        case requestContext, requestHint, toolTranscript, wireReasoning, wireContent
     }
 }
 
@@ -54,6 +61,8 @@ struct Conversation: Identifiable, Codable, Equatable {
     /// Per-conversation mode override. When nil,
     /// the global setting `AppSettings.conversationMode` applies.
     var mode: ConversationMode?
+    var compactionCheckpoint: CompactionCheckpoint?
+    var optimizationReport: RequestOptimizationReport?
     /// Kept for backward compatibility — no longer drives summarization logic.
     var summaryIntervalMinutes: Int = 5
     var lastSummarizedAt: Date?
@@ -88,12 +97,14 @@ struct Conversation: Identifiable, Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, createdAt, updatedAt, messages, chapters, mode
+        case compactionCheckpoint, optimizationReport
         case summaryIntervalMinutes, lastSummarizedAt, lastSummaryMessageIndex
         case completedDialogCount, incrementalChapterCount
     }
 }
 
 struct StoryChapter: Identifiable, Codable, Equatable {
+    var profileInputFingerprint: String?
     var id = UUID()
     var title: String
     var summary: String
@@ -106,6 +117,8 @@ struct StoryChapter: Identifiable, Codable, Equatable {
 struct ModelParameters: Codable, Equatable {
     var thinkingEnabled: Bool = true
     var reasoningEffort: String = "high"
+    var adaptiveThinking: Bool?
+    var contextWindowTokens: Int?
 }
 
 enum ConversationMode: String, CaseIterable, Codable {
@@ -440,5 +453,6 @@ struct ToolCallDelta: Codable {
 struct ToolResult: Codable, Equatable {
     var toolCallID: String
     var name: String
-    var content: String  // JSON result string
+    var content: String  // Full original result, retained for exact reread.
+    var projectedContent: String?
 }

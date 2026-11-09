@@ -98,7 +98,8 @@ struct DeepSeekClient {
         supervisorHint: String? = nil,
         tools: [ToolDef]? = nil,
         toolResults: [ToolResult] = [],
-        toolExchanges: [ToolExchange] = []
+        toolExchanges: [ToolExchange] = [],
+        allowTools: Bool = true
     ) throws -> URLRequest {
         let key = try APICredentials.normalized(apiKey)
         let modelName = DeepSeekModels.canonical(model.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: baseURL)
@@ -127,42 +128,46 @@ struct DeepSeekClient {
         let tail = messages
         let lastAssistantInTail = tail.lastIndex(where: { $0.role == .assistant })
         let lastUserInTail = tail.lastIndex(where: { $0.role == .user })
-        requestMessages += tail.enumerated().map { i, msg in
+        for (i, msg) in tail.enumerated() {
             let keepToolCalls = !toolResults.isEmpty && i == lastAssistantInTail
-            // Tool-enabled thinking requires reasoning from every assistant turn,
-            // including final answers. Legacy records may have no saved reasoning.
-            let reasoning: String? = parameters.thinkingEnabled && (tools?.isEmpty == false || !toolExchanges.isEmpty || !toolResults.isEmpty) && msg.role == .assistant
-                ? (msg.reasoning ?? "") : nil
-            var content = msg.role == .user
-                ? "[sentAt=\(AgentPrompt.transcriptTimestamp(msg.createdAt))]\n\(msg.content)"
-                : msg.content
-            if msg.role == .user, i == lastUserInTail {
-                var dynamicContext = ""
-                if let hint = supervisorHint, !hint.isEmpty {
-                    dynamicContext += "\n\n[监督者方向]\n\(hint)"
+            let needsReasoning = parameters.thinkingEnabled && (tools?.isEmpty == false || !toolExchanges.isEmpty || !toolResults.isEmpty)
+            if msg.role == .assistant {
+                for exchange in msg.toolTranscript ?? [] {
+                    requestMessages.append(APIMessage(role: "assistant", content: .text(exchange.response.wireContent ?? exchange.response.content),
+                        reasoningContent: needsReasoning ? (exchange.response.reasoning ?? "") : nil,
+                        toolCalls: exchange.response.toolCalls))
+                    for result in exchange.results {
+                        requestMessages.append(APIMessage(role: "tool", content: .text(result.projectedContent ?? result.content),
+                            toolCallID: result.toolCallID, name: result.name))
+                    }
                 }
-                if let memoryContext, !memoryContext.isEmpty {
-                    dynamicContext += "\n\n\(memoryContext)"
-                }
-                content += dynamicContext
             }
-            return APIMessage(role: msg.role.rawValue, content: contentValue(for: msg, text: content, includeAttachments: i == lastUserInTail),
-                              reasoningContent: reasoning,
-                              toolCalls: keepToolCalls ? msg.toolCalls : nil)
+            let reasoning = needsReasoning && msg.role == .assistant ? (msg.wireReasoning ?? msg.reasoning ?? "") : nil
+            var content = msg.role == .user
+                ? "[sentAt=\(AgentPrompt.transcriptTimestamp(msg.createdAt))]\n\(msg.content)" : (msg.wireContent ?? msg.content)
+            if msg.role == .user {
+                let context = msg.requestContext ?? (i == lastUserInTail ? memoryContext : nil)
+                let hint = msg.requestHint ?? (i == lastUserInTail ? supervisorHint : nil)
+                if let hint, !hint.isEmpty { content += "\n\n[监督者方向]\n\(hint)" }
+                if let context, !context.isEmpty { content += "\n\n\(context)" }
+            }
+            requestMessages.append(APIMessage(role: msg.role.rawValue,
+                content: contentValue(for: msg, text: content, includeAttachments: i == lastUserInTail),
+                reasoningContent: reasoning, toolCalls: keepToolCalls ? msg.toolCalls : nil))
         }
         // Inject tool results from previous round as role:"tool" messages
         for tr in toolResults {
-            requestMessages.append(APIMessage(role: "tool", content: .text(tr.content), toolCallID: tr.toolCallID, name: tr.name))
+            requestMessages.append(APIMessage(role: "tool", content: .text(tr.projectedContent ?? tr.content), toolCallID: tr.toolCallID, name: tr.name))
         }
 
         // Replay each subturn separately. Combining all reasoning/tool calls into
         // one assistant message loses earlier tool results on the next request.
         for exchange in toolExchanges {
-            requestMessages.append(APIMessage(role: "assistant", content: .text(exchange.response.content),
+            requestMessages.append(APIMessage(role: "assistant", content: .text(exchange.response.wireContent ?? exchange.response.content),
                 reasoningContent: parameters.thinkingEnabled ? (exchange.response.reasoning ?? "") : nil,
                 toolCalls: exchange.response.toolCalls))
             for result in exchange.results {
-                requestMessages.append(APIMessage(role: "tool", content: .text(result.content),
+                requestMessages.append(APIMessage(role: "tool", content: .text(result.projectedContent ?? result.content),
                     toolCallID: result.toolCallID, name: result.name))
             }
         }
@@ -187,7 +192,7 @@ struct DeepSeekClient {
             stream: true,
             streamOptions: StreamOptions(includeUsage: true),
             tools: tools,
-            toolChoice: tools?.isEmpty == false ? "auto" : nil
+            toolChoice: tools?.isEmpty == false ? (allowTools ? "auto" : "none") : nil
         )
 
         var request = URLRequest(url: url)
@@ -195,18 +200,20 @@ struct DeepSeekClient {
         request.timeoutInterval = 300
         request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        request.httpBody = try encoder.encode(body)
 
         return request
     }
 
     func stream(
         messages: [ChatMessage], memoryContext: String?, supervisorHint: String? = nil,
-        tools: [ToolDef]? = nil, toolResults: [ToolResult] = [], toolExchanges: [ToolExchange] = [],
+        tools: [ToolDef]? = nil, toolResults: [ToolResult] = [], toolExchanges: [ToolExchange] = [], allowTools: Bool = true,
         onDelta: @MainActor @Sendable @escaping (DeepSeekStreamDelta) -> Void
     ) async throws -> DeepSeekResult {
         let request = try makeStreamRequest(messages: messages, memoryContext: memoryContext,
-            supervisorHint: supervisorHint, tools: tools, toolResults: toolResults, toolExchanges: toolExchanges)
+            supervisorHint: supervisorHint, tools: tools, toolResults: toolResults, toolExchanges: toolExchanges, allowTools: allowTools)
         try Task.checkCancellation()
 
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
@@ -220,6 +227,13 @@ struct DeepSeekClient {
             throw DeepSeekError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            // Read a bounded error envelope; never surface or log raw provider text.
+            var envelope = Data()
+            for try await byte in bytes {
+                envelope.append(byte)
+                if envelope.count >= 16_384 { break }
+            }
+            if case .contextTooLong? = ProviderFailure.streamError(envelope) { throw DeepSeekError.contextTooLong }
             throw DeepSeekError.http(http.statusCode)
         }
 
@@ -281,7 +295,9 @@ struct DeepSeekClient {
         return DeepSeekResult(
             content: content.trimmingCharacters(in: .whitespacesAndNewlines),
             reasoning: hasReasoning ? reasoning : nil,
-            toolCalls: allToolCalls
+            toolCalls: allToolCalls,
+            usage: finalUsage,
+            wireContent: content
         )
     }
 
@@ -293,6 +309,10 @@ struct DeepSeekClient {
     /// Non-streaming call for incremental summarization (lightweight, no thinking)
     func summarize(systemPrompt: String, userContent: String) async throws -> String {
         return try await summarizeRequest(systemPrompt: systemPrompt, userContent: userContent, maxTokens: 1024, timeout: 120)
+    }
+
+    func compact(systemPrompt: String, userContent: String) async throws -> String {
+        try await summarizeRequest(systemPrompt: systemPrompt, userContent: userContent, maxTokens: 8192, timeout: 180, purpose: "compaction")
     }
 
     /// Validate an API key against the provider's `/models` endpoint
@@ -332,7 +352,7 @@ struct DeepSeekClient {
         }
     }
 
-    private func summarizeRequest(systemPrompt: String, userContent: String, maxTokens: Int, timeout: Double) async throws -> String {
+    private func summarizeRequest(systemPrompt: String, userContent: String, maxTokens: Int, timeout: Double, purpose: String = "background") async throws -> String {
         let key = try APICredentials.normalized(apiKey)
         let modelName = DeepSeekModels.canonical(model.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: baseURL)
         guard !modelName.isEmpty else {
@@ -365,7 +385,9 @@ struct DeepSeekClient {
         request.timeoutInterval = timeout
         request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        request.httpBody = try encoder.encode(body)
 
         try Task.checkCancellation()
         let (data, response): (Data, URLResponse)
@@ -385,7 +407,10 @@ struct DeepSeekClient {
 
         let result = try JSONDecoder().decode(ChatResponse.self, from: data)
         if let usage = result.usage {
-            await UsageStatsStore.shared.record(usage)
+            await UsageStatsStore.shared.record(usage, purpose: purpose)
+        }
+        if purpose == "compaction", result.choices.first?.finishReason == "length" {
+            throw ContextOptimizationError.summaryInvalid
         }
         return result.choices.first?.message.content ?? ""
     }
@@ -397,15 +422,17 @@ enum DeepSeekStreamDelta: Sendable {
     case toolCall(ToolCallDelta)
 }
 
-struct ToolExchange: Sendable {
+struct ToolExchange: Codable, Equatable, Sendable {
     var response: DeepSeekResult
     var results: [ToolResult]
 }
 
-struct DeepSeekResult: Sendable {
+struct DeepSeekResult: Codable, Equatable, Sendable {
     var content: String
     var reasoning: String?
     var toolCalls: [ToolCall] = []
+    var usage: TokenUsage?
+    var wireContent: String?
 }
 
 enum DeepSeekError: LocalizedError {
@@ -556,6 +583,11 @@ private struct ChatResponse: Decodable {
 
 private struct Choice: Decodable {
     var message: ResponseMessage
+    var finishReason: String?
+    enum CodingKeys: String, CodingKey {
+        case message
+        case finishReason = "finish_reason"
+    }
 }
 
 private struct ResponseMessage: Decodable {

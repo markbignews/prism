@@ -43,15 +43,42 @@ extension ChatAgent {
             for chapter in chapters {
                 guard self.storageGeneration == generation,
                       self.memoryRebuildRevisions[conversationID, default: 0] == rebuildRevision else { return }
+                guard let current = self.conversations.first(where: { $0.id == conversationID }),
+                      let stored = current.chapters.first(where: { $0.id == chapter.id }) else { continue }
+                let fingerprint = Self.profileFingerprint(chapter: chapter, conversation: current, settings: settings)
+                    + ":\(rebuildRevision)"
+                let key = chapter.id.uuidString + ":" + fingerprint
+                guard stored.profileInputFingerprint != fingerprint, !self.pendingProfileKeys.contains(key) else { continue }
+                self.pendingProfileKeys.insert(key)
                 let result = await self.runProfilePipeline(
                     for: chapter,
                     conversationID: conversationID,
                     settings: settings
                 )
+                self.pendingProfileKeys.remove(key)
                 guard self.memoryRebuildRevisions[conversationID, default: 0] == rebuildRevision else { return }
-                self.applyProfileResults(result, from: chapter, conversationID: conversationID, generation: generation)
+                guard let fresh = self.conversations.first(where: { $0.id == conversationID }),
+                      let freshChapter = fresh.chapters.first(where: { $0.id == chapter.id }),
+                      Self.profileFingerprint(chapter: freshChapter, conversation: fresh, settings: settings) + ":\(rebuildRevision)" == fingerprint else { continue }
+                self.applyProfileResults(result, from: freshChapter, conversationID: conversationID, generation: generation)
+                if !result.analysisUnavailable {
+                    self.markProfileAnalyzed(freshChapter, conversationID: conversationID, fingerprint: fingerprint, generation: generation)
+                }
             }
         }
+    }
+
+    static func profileFingerprint(chapter: StoryChapter, conversation: Conversation, settings: AppSettings) -> String {
+        let sourceIDs = Set(chapter.messageIDs)
+        let originals = conversation.messages.filter { sourceIDs.contains($0.id) && $0.role == .user }.map { original in
+            var message = original
+            message.requestContext = nil
+            message.requestHint = nil
+            return message
+        }
+        return ContextMeter.digest(ContextMeter.fingerprint(originals) + ":" + chapter.title + ":" + chapter.summary
+            + ":" + chapter.keywords.joined(separator: "|") + ":" + settings.language.rawValue
+            + ":" + settings.baseURL + ":" + settings.flashModel)
     }
 
     private func runProfilePipeline(

@@ -76,6 +76,9 @@ enum ProviderFailure {
     }
 
     static func message(_ error: any Error, language: AppLanguage) -> String {
+        if error is ContextOptimizationError {
+            return localized("这次自动整理未能安全完成，原始记录已保留。请重试；如果当前消息或附件特别长，请缩短后再发送。", "這次自動整理未能安全完成，原始記錄已保留。請重試；如果目前訊息或附件特別長，請縮短後再傳送。", "Context optimization could not finish safely. Originals were retained. Retry, or shorten a very large current message or attachment.", language: language)
+        }
         if let error = error as? DeepSeekError {
             switch error {
             case .http(let status): return httpMessage(status, language: language)

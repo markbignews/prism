@@ -96,7 +96,7 @@ struct SettingsView: View {
                 HStack {
                     Text(L10n.text(.contextWindow, settings.language))
                     Spacer()
-                    Text("55% · 75% · 85%")
+                    Text(ProviderFailure.localized("按模型容量管理", "依模型容量管理", "Managed by model capacity", language: settings.language))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
@@ -216,6 +216,29 @@ private extension SettingsView {
                 )
             }
 
+            HStack(spacing: 12) {
+                usageMetric(ProviderFailure.localized("已报告的思考 token", "已回報的思考 token", "Reported reasoning tokens", language: settings.language),
+                    usageStatsStore.stats.reportedReasoningTokens.map(tokenText) ?? "—")
+                usageMetric(ProviderFailure.localized("后台请求", "背景請求", "Background requests", language: settings.language),
+                    tokenText(usageStatsStore.stats.backgroundRequests ?? 0))
+                usageMetric(ProviderFailure.localized("上下文整理请求", "上下文整理請求", "Context summary requests", language: settings.language),
+                    tokenText(usageStatsStore.stats.compactionRequests ?? 0))
+            }
+            if let report = chatStore.selectedConversation?.optimizationReport, report.beforeTokens > 0 {
+                Text(ProviderFailure.localized("最近请求估算：", "最近請求估算：", "Latest request estimate: ", language: settings.language)
+                     + "\(report.beforeTokens) → \(report.afterTokens) token")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let actual = report.observedInputTokens {
+                    Text(ProviderFailure.localized("服务商最近报告的输入：", "服務商最近回報的輸入：", "Last provider-reported input: ", language: settings.language)
+                         + "\(actual) token")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if report.summaryFailed {
+                    Text(ProviderFailure.localized("这次自动整理未完成，原始内容已保留。", "這次自動整理未完成，原始內容已保留。", "Automatic context summary did not finish; originals were retained.", language: settings.language))
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }
+
             if let providerBalance = settings.providerBalance, !providerBalance.balanceInfos.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.text(.accountBalance, settings.language))
@@ -290,6 +313,14 @@ struct ModelParameterSection: View {
                     set: { parameters.thinkingEnabled = $0 }
                 ))
 
+                Toggle(ProviderFailure.localized("按任务自动调整思考", "依任務自動調整思考", "Adapt thinking to the task", language: settings.language), isOn: Binding(
+                    get: { parameters.adaptiveThinking != false },
+                    set: { parameters.adaptiveThinking = $0 }
+                ))
+                .disabled(!parameters.thinkingEnabled)
+                Text(ProviderFailure.localized("普通承接和工具选择优先用较低强度；需要深入分析时提高到你设置的强度。仅对官方 DeepSeek 服务启用自动调整。", "一般承接與工具選擇優先用較低強度；需要深入分析時提高至你設定的強度。僅對官方 DeepSeek 服務啟用自動調整。", "Use lower effort for initial replies and tool selection, and your chosen effort for deeper analysis. Automatic adjustment applies only to official DeepSeek routes.", language: settings.language))
+                    .font(.caption).foregroundStyle(.secondary)
+
                 Picker(L10n.text(.reasoningEffort, settings.language), selection: Binding(
                     get: { parameters.reasoningEffort },
                     set: { parameters.reasoningEffort = $0 }
@@ -299,6 +330,15 @@ struct ModelParameterSection: View {
                     Text(L10n.text(.max, settings.language)).tag("max")
                 }
                 .disabled(!parameters.thinkingEnabled)
+
+                TextField(ProviderFailure.localized("模型可阅读长度（token）", "模型可閱讀長度（token）", "Model context window (tokens)", language: settings.language), value: Binding(
+                    get: { ContextPolicy.resolve(client: DeepSeekClient(apiKey: "", baseURL: settings.baseURL,
+                        model: settings.model, parameters: parameters, language: settings.language)).window },
+                    set: { parameters.contextWindowTokens = min(32_000_000, max(8192, $0)) }
+                ), format: .number)
+                .textFieldStyle(.roundedBorder)
+                Text(ProviderFailure.localized("应与服务商公布的模型上限一致。未识别的模型先按保守值估算；这不是实际计费数量。", "應與服務商公布的模型上限一致。未識別的模型先依保守值估算；這不是實際計費數量。", "Match your provider's model limit. Unrecognized models start with a conservative estimate; this is not a billing count.", language: settings.language))
+                    .font(.caption).foregroundStyle(.secondary)
 
                 Text(L10n.text(.thinkingHint, settings.language))
                     .font(.caption)

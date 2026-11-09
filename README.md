@@ -107,7 +107,7 @@ Enter the safety path only when there is clear evidence of present danger.
 
 Manage context by token budget, not by deleting messages.
 
-- Model capacity is estimated at 1M tokens: 55% shows a notice, 75% compresses older content, 85% adds stronger protection.
+- Pressure is estimated from the complete request, the selected model window and reserved output; oversized tool results are reduced before older turns are summarized if needed.
 - Compression replaces older messages with the chapter summaries that cover them, plus a recent chapter index, then keeps recent originals; nothing is removed from the local database.
 - A percentage capsule beside the composer shows estimated usage; expand it for pre-compression size, reserved reply tokens, message count, and turns until the next synthesis.
 - The first frame appears immediately, later deltas are batched at 50 ms, and only the active message updates. Tool calls and reasoning are preserved and expandable; you can stop or regenerate any reply.
@@ -116,7 +116,7 @@ Manage context by token budget, not by deleting messages.
 
 The model can consult its own archive, but only what it needs.
 
-- Eight tools: person, emotions, chapters, chapter text, cross-conversation memory, psychology search, timeline, and structured clarification.
+- Ten tools: person, emotions, chapters, chapter text, cross-conversation memory, psychology search, timeline, and structured clarification.
 - Retrieval is ranked locally by title, keywords, and summary, with Chinese/English synonym expansion; no second model call re-ranks results. The ranked candidates still travel with the turn to the model.
 - At most two tool rounds, then a forced tool-free synthesis, so a capped turn still produces a visible answer.
 - Person lookup is scoped to the current conversation. The model can choose cross-conversation memory and chapter retrieval from the first turn, with source conversation and message IDs for checking originals. Same-name hits are candidates, not proof of identity; ambiguous links require a clarification card. Old narratives are not injected wholesale every turn.
@@ -177,9 +177,9 @@ your message
 - **Pre-analysis only decides how this turn should run.** It returns five quality dimensions (reality / spiral / blindspots / ingratiation / action_hollow), a safety assessment, and emotion labels. A warning becomes a "supervisor hint" that restates the evidence and negation rules; it never blocks or rewrites what you said.
 - **Time context is injected separately.** Each request carries the conversation start, elapsed time, timestamps and gaps for the last eight user messages, daypart, recent chapter spans, recent emotions, people in this conversation, and memory time spans. The prompt requires asking for an approximate time when a new event has none — never inventing one.
 - **A chapter index stays present.** Before compression kicks in, a lightweight index (title + first 150 characters of each summary) tells the model which originals are available, instead of stuffing the whole transcript in.
-- **Prefix-cache friendly.** The system prompt is stable; memory, supervisor hints, and time context hang off the last user message, so each turn does not invalidate the cache prefix.
+- **More stable prefix replay.** Memory, guard hints and time are saved as per-turn snapshots and replayed unchanged. Updated chapter indexes belong to the current turn, not the head of the transcript.
 - **Stable sampling.** With thinking off, `temperature 0.2` and `top_p 0.95` are fixed; with thinking on, temperature is omitted. All three tones share the same sampling and evidence standard, so changing tone does not change the conclusion.
-- **Tool rounds are capped.** At most two execution rounds plus one tool-free synthesis. A brand-new conversation has no history to retrieve, so only the timeline and clarification tools are exposed. Tool calls and results are replayed per sub-turn, so dependent calls keep their upstream results.
+- **Tool rounds are capped.** Two execution rounds are followed by a synthesis round that disallows further calls. History is available from the first turn; schemas stay stable and full tool subturns are retained for replay.
 - **Failure is not danger.** A timeout, truncated JSON, or missing field is recorded as "analysis unavailable"; the main model still judges independently. It never triggers crisis mode and is never a reason to refuse.
 - **Switching away still summarizes.** If a conversation has unsynthesized turns when you leave it, Prism folds them in first.
 
@@ -215,7 +215,7 @@ The boundaries are recorded item by item in [`SEMANTIC_ACCEPTANCE.md`](docs/SEMA
 
 **Chapters** are produced by the auxiliary model: a full synthesis yields 3–10 chapters, titles ≤12 characters, summaries of 80–140 characters, and 3–5 keywords, split at narrative turns rather than by message count. Later passes are incremental (80–120 character summaries); every third incremental pass triggers a full re-scan so style and granularity do not drift. A finished synthesis rewrites the conversation title.
 
-The main model can call eight tools (`Tools.swift`):
+The main model can call ten tools (`Tools.swift`):
 
 | Tool | Purpose |
 |---|---|
@@ -224,9 +224,11 @@ The main model can call eight tools (`Tools.swift`):
 | `search_chapters` | Keyword + synonym search over chapters, returns global chapter numbers |
 | `fetch_chapter_messages` | Fetch a chapter's original messages by index (up to 12) |
 | `search_memory` | Search the cross-conversation memory store |
-| `search_psychology` | DeepSeek official web search; exposed only on the official endpoint |
+| `search_web` | DeepSeek official web search; exposed only on the official endpoint |
 | `manage_narrative_timeline` | `list` reads; `upsert` only creates a preview awaiting confirmation |
 | `request_user_input` | Structured clarification with one question and 2–4 options |
+| `fetch_context` | Reread original messages or full tool results by source IDs, with pagination |
+| `request_deeper_analysis` | Request deeper analysis within the user's configured effort |
 
 **Retrieval is ranked locally**: title hits weigh most, then keywords, then summary. Queries expand through a Chinese/English synonym table covering emotions, family, romance, work, and inner patterns. No second model call re-ranks; the ranked candidates are then sent to the main model with the turn.
 
@@ -234,17 +236,10 @@ The main model can call eight tools (`Tools.swift`):
 
 ## Context and streaming
 
-Context is managed by estimated tokens, not by message count. Model capacity is a constant of 1,000,000 tokens:
+The complete request is estimated against the selected model's window, with space reserved for output. Near capacity, Prism reduces oversized tool results, remeasures, and summarizes older complete turns only if still needed. Recent messages stay verbatim; originals remain local and can be reread with `fetch_context`. Invalid, stale, non-shrinking or uncommitted summaries are not activated.
 
-| Estimated usage | Behaviour |
-|---|---|
-| 550,000 | Show a capacity notice; do not change this turn's payload |
-| 750,000 | Compress older context in the request; keep about 200,000 recent tokens |
-| 850,000 | Stronger compression; keep about 150,000 recent tokens |
+Known official Flash/Pro routes default to a 1M window; unknown/custom routes start conservatively at 131,072, with an editable limit in Settings. Estimates are not provider billing; explicit context overflow permits one safe retry before output begins. See [context optimization](docs/CONTEXT_OPTIMIZATION.md) for policy, thinking adaptation, persistence and validation boundaries.
 
-Compression is not deletion: older messages are replaced by **the chapter summaries that cover them**, plus a recent chapter index, then a run of recent originals. Not one message disappears from the local database; compression only changes what is sent this turn.
-
-- Estimates are not server-side usage; a single message above the recent budget is still kept.
 - The first stream frame appears immediately; later content and reasoning are batched at 50 ms; completion flushes the buffer and publishes the final history. You can stop mid-generation or regenerate any assistant reply.
 
 ## Settings
@@ -255,7 +250,7 @@ Compression is not deletion: older messages are replaced by **the chapter summar
 | DeepSeek | API key (single-line secret field), base URL, fetch models, verification state, conversation and auxiliary models (picker + manual ID) |
 | Conversation parameters | Thinking toggle, reasoning effort Low / High / Max |
 | Auxiliary model | Same parameters, but background tasks always run without thinking; the section states it only summarizes, chapters, and checks |
-| Interface | Language (Simplified / Traditional Chinese / English), default tone, response length, context thresholds (55% · 75% · 85%), logging, AI disclosure |
+| Interface | Language (Simplified / Traditional Chinese / English), default tone, response length, model-aware context management, logging, AI disclosure |
 | Storage | Data folder, open folder, export/import snapshot, export log, reset |
 
 - **Model discovery**: after you enter a key and stop typing for about 600 ms, Prism requests `/models` — metadata only, no model call. Results are de-duplicated with Flash first. Manual model IDs are kept. On failure the current settings stay and a readable reason is shown; raw provider bodies (which may echo credentials) are never displayed.
@@ -381,7 +376,7 @@ Key modules, in reading order:
 | `PeoplePipeline.swift` / `ProfilePipeline.swift` | Async people resolution and profile building after a reply |
 | `StoryMemory.swift` | Local paragraph split, chapter filing, relevant-chapter selection |
 | `SearchExpander.swift` | Chinese/English synonym expansion |
-| `Tools.swift` | Definitions and local execution for the eight tools |
+| `Tools.swift` | Definitions and local execution for the ten tools |
 | `SafetyAssessment.swift` | Safety gate (all three conditions) |
 | `SQLiteStore.swift` / `StorageWriter.swift` | Schema, transactions, revision checks, serial writes |
 | `AppSettings.swift` / `CredentialStore.swift` / `CredentialCheck.swift` | Config, local credential persistence, model discovery and validation |
@@ -395,6 +390,8 @@ Key modules, in reading order:
 | `L10n.swift` | Three-language strings |
 
 ## Documentation
+
+- [Context optimization](docs/CONTEXT_OPTIMIZATION.md): request snapshots, adaptive thinking, compression, reread and validation
 
 - [Changelog](CHANGELOG.md): dated changes and verification boundaries
 
