@@ -78,11 +78,14 @@ private final class SearchURLProtocol: URLProtocol, @unchecked Sendable {
 }
 
 @Suite(.serialized) @MainActor struct OfficialSearchTransportTests {
-    @Test func broaderSearchUsesOfficialEndpointAndRedactsQueryBeforeSending() async throws {
+    @Test(arguments: [true, false])
+    func broaderSearchUsesLowIndependentlyAndRedactsQueryBeforeSending(mainThinkingEnabled: Bool) async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let settings = AppSettings(storagePath: folder.path, credentialStore: TestCredentials())
         settings.apiKey = "placeholder"
+        settings.parameters = ModelParameters(thinkingEnabled: mainThinkingEnabled, reasoningEffort: "max")
+        settings.flashParameters = ModelParameters(thinkingEnabled: mainThinkingEnabled, reasoningEffort: "high")
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SearchURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -92,6 +95,11 @@ private final class SearchURLProtocol: URLProtocol, @unchecked Sendable {
             #expect(request.url?.absoluteString == "https://api.deepseek.com/anthropic/v1/messages")
             let bodyData = try searchRequestBody(request)
             let body = try #require(try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+            #expect(body["model"] as? String == DeepSeekModels.flash)
+            #expect((body["thinking"] as? [String: String])?["type"] == "enabled")
+            #expect((body["output_config"] as? [String: String])?["effort"] == "low")
+            #expect(body["reasoning_effort"] == nil) // Messages API uses output_config.
+            #expect(body["max_tokens"] as? Int == 4096)
             let system = try #require(body["system"] as? String)
             #expect(system.contains(expectedInstructions))
             #expect(system.contains(AgentPrompt.productScopeRules))
@@ -107,12 +115,43 @@ private final class SearchURLProtocol: URLProtocol, @unchecked Sendable {
             #expect(choice["type"] == "auto")
             let tools = try #require(body["tools"] as? [[String: Any]])
             #expect(tools.first?["type"] as? String == "web_search_20250305")
-            return Data(#"{"content":[{"type":"text","text":"模拟核查结论 [官方说明](https://example.com/rules)"}]}"#.utf8)
+            #expect(tools.first?["max_uses"] as? Int == 5)
+            return Data(#"{"content":[{"type":"thinking","thinking":"内部推理草稿"},{"type":"web_search_tool_result","content":[{"type":"web_search_result","url":"https://example.com/rules","title":"官方说明"}]},{"type":"text","text":"模拟核查结论 [官方说明](https://example.com/rules)"}],"stop_reason":"end_turn"}"#.utf8)
         } }
         let result = await DeepSeekWebSearchClient.search(
             query: "当前社交平台公开消息隐私设置 test@example.com 13912345678 https://private.test/path",
             settings: settings, session: session)
         #expect(result.contains("模拟核查结论"))
         #expect(!result.contains("test@example.com"))
+        #expect(!result.contains("内部推理草稿"))
+        let payload = try #require(try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any])
+        let sources = try #require(payload["sources"] as? [[String: String]])
+        #expect(sources.first?["url"] == "https://example.com/rules")
+        #expect(settings.parameters.thinkingEnabled == mainThinkingEnabled)
+        #expect(settings.parameters.reasoningEffort == "max")
+    }
+
+    @Test(arguments: ["end_turn", "max_tokens"])
+    func incompleteSearchDoesNotBecomeEvidence(stopReason: String) async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let settings = AppSettings(storagePath: folder.path, credentialStore: TestCredentials())
+        settings.apiKey = "placeholder"
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SearchURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        SearchURLProtocol.handler.withLock { $0 = { _ in
+            let content: [[String: Any]] = stopReason == "max_tokens"
+                ? [["type": "text", "text": "未完成的来源结论"]]
+                : [["type": "thinking", "thinking": "尚未形成证据", "content": "内部推理草稿"]]
+            return try JSONSerialization.data(withJSONObject: ["content": content, "stop_reason": stopReason])
+        } }
+        let result = await DeepSeekWebSearchClient.search(query: "依恋研究中的证据是什么", settings: settings, session: session)
+        let payload = try #require(try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any])
+        #expect(payload["error"] as? String != nil)
+        #expect(payload["answer"] == nil)
+        #expect(!result.contains("内部推理草稿"))
+        #expect(!result.contains("未完成的来源结论"))
     }
 }

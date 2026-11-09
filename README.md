@@ -145,7 +145,7 @@ Go online only for research evidence, and only through the official route.
 
 Two models, split by job, with visible cost.
 
-- Your chosen model handles conversations and context-compaction summaries; the auxiliary model handles pre-analysis, chapter synthesis, people, and profiles. Official search uses Flash. Context summaries, search, and background tasks run with thinking disabled.
+- Your chosen model handles conversations and context-compaction summaries; the auxiliary model handles pre-analysis, chapter synthesis, people, and profiles. Official search uses Flash with Low thinking to screen sources and flag uncertainty; the main model handles the final synthesis. Context summaries and background tasks run with thinking disabled.
 - The model list is discovered after you enter a key (about 600 ms debounce), Flash first and de-duplicated; manual model IDs are kept.
 - A key is validated before use (model list only); malformed keys are rejected locally, provider errors become readable messages, raw provider bodies are not shown, and this test build saves the key in a local plaintext configuration file.
 - Response length sets the output budget: brief 1024, standard 4096, detailed 8192 tokens; reasoning effort can be Low / High / Max.
