@@ -32,12 +32,24 @@ Prism does not run a model on this Mac. Messages you send, attachments you add, 
 
 ## Features
 
+### Adaptive thinking and context you can trace back
+
+Keep long conversations grounded in their sources while allocating reasoning effort by stage.
+
+- **Start light, go deeper when needed.** With adaptation enabled on official DeepSeek routes, the first request uses Low. Simple replies can finish immediately; the model can request deeper analysis. Stages after tool results use your configured effort. Adaptation can be disabled, and custom providers retain fixed settings.
+- **Stable replay with less duplication.** Time, relevant memory and guard context are saved as per-turn snapshots. Tool definitions stay stable and each tool result appears once per request, reducing unnecessary changes to the request prefix.
+- **Reduce first, summarize if necessary.** Pressure is assessed against the model window, complete request and reserved output. Oversized tool results are reduced and remeasured before older complete turns are summarized; recent messages remain verbatim.
+- **Summaries with sources, originals you can reopen.** Full messages and tool results remain local and can be reread in pages. Summaries require valid quotes, roles, unchanged sources and a successful write; source edits or deletion invalidate them.
+- **Estimates kept separate from measurements.** Settings shows input, output, cache rate, provider-reported reasoning tokens, and background/context-summary request counts. Explicit overflow permits at most one recovery retry after a safe reduction, before any output begins.
+
+Actual cache hit rates, fees and summary quality still require live-service comparisons; no fixed savings percentage is promised. See [context optimization](docs/CONTEXT_OPTIMIZATION.md) for implementation and validation boundaries.
+
 ### Conversations and chapters
 
 Turn long conversations into chapters you can return to, instead of one endless scroll.
 
 - Messages are filed locally by paragraph; every N turns the auxiliary model folds them into 3–10 chapters with a title, summary, keywords, and message range.
-- Chapters are both the unit of compression and a navigation entry: click one to jump to the source, open its detail to read the summary, keywords, and original messages.
+- Chapters organize the archive and provide a navigation entry: click one to jump to the source, open its detail to read the summary, keywords, and original messages.
 - Chapters can be rebuilt manually; synthesizing, done, and failed states are explicit, and failures explain themselves.
 - Messages can be edited and resent, regenerated, or deleted in pairs. Editing truncates everything after that message; deleting invalidates chapters and memories that depend on it.
 - The composer grows with the draft and scrolls internally after six lines.
@@ -108,7 +120,7 @@ Enter the safety path only when there is clear evidence of present danger.
 Manage context by token budget, not by deleting messages.
 
 - Pressure is estimated from the complete request, the selected model window and reserved output; oversized tool results are reduced before older turns are summarized if needed.
-- Compression replaces older messages with the chapter summaries that cover them, plus a recent chapter index, then keeps recent originals; nothing is removed from the local database.
+- Older context is replaced only by a validated, source-linked summary; complete local messages and tool results remain available for rereading.
 - A percentage capsule beside the composer shows estimated usage; expand it for pre-compression size, reserved reply tokens, message count, and turns until the next synthesis.
 - The first frame appears immediately, later deltas are batched at 50 ms, and only the active message updates. Tool calls and reasoning are preserved and expandable; you can stop or regenerate any reply.
 
@@ -116,7 +128,7 @@ Manage context by token budget, not by deleting messages.
 
 The model can consult its own archive, but only what it needs.
 
-- Ten tools: person, emotions, chapters, chapter text, cross-conversation memory, psychology search, timeline, and structured clarification.
+- Ten tools cover people, emotions, chapters, chapter text, cross-conversation memory, web search, timeline, clarification, original-context rereading, and requests for deeper analysis.
 - Retrieval is ranked locally by title, keywords, and summary, with Chinese/English synonym expansion; no second model call re-ranks results. The ranked candidates still travel with the turn to the model.
 - At most two tool rounds, then a forced tool-free synthesis, so a capped turn still produces a visible answer.
 - Person lookup is scoped to the current conversation. The model can choose cross-conversation memory and chapter retrieval from the first turn, with source conversation and message IDs for checking originals. Same-name hits are candidates, not proof of identity; ambiguous links require a clarification card. Old narratives are not injected wholesale every turn.
@@ -133,7 +145,7 @@ Go online only for research evidence, and only through the official route.
 
 Two models, split by job, with visible cost.
 
-- Your chosen model handles the conversation; the auxiliary model handles pre-analysis, summaries, people, profiles, and search. Background tasks always run with thinking disabled.
+- Your chosen model handles conversations and context-compaction summaries; the auxiliary model handles pre-analysis, chapter synthesis, people, and profiles. Official search uses Flash. Context summaries, search, and background tasks run with thinking disabled.
 - The model list is discovered after you enter a key (about 600 ms debounce), Flash first and de-duplicated; manual model IDs are kept.
 - A key is validated before use (model list only); malformed keys are rejected locally, provider errors become readable messages, raw provider bodies are not shown, and this test build saves the key in a local plaintext configuration file.
 - Response length sets the output budget: brief 1024, standard 4096, detailed 8192 tokens; reasoning effort can be Low / High / Max.
@@ -273,7 +285,7 @@ The default data folder is `~/Documents/Prism/`; you can change it in Settings (
 
 **Storage is local; inference is not.** The archive lives in SQLite on this Mac, but every reply requires sending the turn's content to your provider.
 
-**What each request actually sends**: the conversation needed for this turn (older parts already replaced by chapter summaries), attachments you added, archive entries retrieved for this turn, and a locally generated random installation ID (`user_id`). Nothing else — no telemetry, no analytics, no crash reporting.
+**What each request actually sends**: the conversation needed for this turn (older parts may be represented by validated context summaries), attachments you added, archive entries retrieved for this turn, and a locally generated random installation ID (`user_id`). Nothing else — no telemetry, no analytics, no crash reporting.
 
 - **This test build saves the API key locally in plaintext**, in `config.json` with owner-only permissions (0600) and atomic replacement. It never reads or modifies Keychain. If an older build stored your key only in Keychain, paste it into Settings once. Copying the entire data folder includes the key; window JSON exports do not.
 - **Installation ID**: `user_id` is a random string generated on first run (`prism_swift_…`), used only so the provider can group requests from the same install; it contains no device model, account, or location. Reset clears it and generates a new one.
